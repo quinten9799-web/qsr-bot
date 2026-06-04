@@ -13,21 +13,23 @@ import io
 # ═══════════════════════════════════════════════════════════════════
 #  CONFIG  —  fill these in before launching
 # ═══════════════════════════════════════════════════════════════════
-BOT_TOKEN         = "MTUxMjE0ODEwMTE4NjU4NDczNg.GIF_HB.PtvQgGlJx9WiQKBNeVXgde4hOJ6nZl2T7g-q20"       # from discord.dev
-GUILD_ID          = 123456789                           # right-click server → 963537794976845876
-IRACING_EMAIL     = "quinten9799@gmail.com"        # your iRacing login email
-IRACING_PASSWORD  = "KobeBryant24@"     # your iRacing password
-IRACING_LEAGUE_ID = 8907                         # your league ID from iRacing URL
+import os
 
-STANDINGS_CH      = "points-standings"          # channel for standings
-ANNOUNCEMENTS_CH  = "series-announcements"      # channel for race reminders
-RESULTS_CH        = "race-results"              # channel for race results
-ASK_DALE_CH       = "ask-dale"                  # channel for Q&A
-ADMIN_ROLE        = "Admin"                     # your admin role name
+BOT_TOKEN         = os.environ.get("MTUxMjE0ODEwMTE4NjU4NDczNg.GgsZaX.eGu-C0k_ELAEfvhvzkitJpjZ8n4iNciaAVHnBE")
+GUILD_ID          = int(os.environ.get("963537794976845876", 0))
+IRACING_EMAIL     = os.environ.get("quinten9799@gmail.com")
+IRACING_PASSWORD  = os.environ.get("KobeBryant24@")
+IRACING_LEAGUE_ID = int(os.environ.get("8907", 0))
 
-RACE_DAY          = 0      # 0=Mon 1=Tue 2=Wed 3=Thu 4=Fri 5=Sat 6=Sun
-RACE_TIME_UTC     = "01:00"  # race start time in UTC
-RACE_DURATION_HRS = 3        # how many hours the race window lasts
+STANDINGS_CH      = "points-standings"
+ANNOUNCEMENTS_CH  = "series-announcements"
+RESULTS_CH        = "race-results"
+ASK_DALE_CH       = "ask-dale"
+ADMIN_ROLE        = "Admin"
+
+RACE_DAY          = 1
+RACE_TIME_UTC     = "23:00"
+RACE_DURATION_HRS = 2
 # ═══════════════════════════════════════════════════════════════════
 
 intents = discord.Intents.default()
