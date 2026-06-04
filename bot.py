@@ -465,7 +465,7 @@ async def schedule_cmd(ctx):
 # ─────────────────────────────────────────────────────────────────
 
 @bot.command(name="forceresults")
-@commands.has_role(int(os.environ.get("ADMIN_ROLE_ID", 0)))
+@commands.check(lambda ctx: ctx.author.id == int(os.environ.get("OWNER_ID", 0)))
 async def force_results(ctx, subsession_id: int = 0):
     """
     Manually trigger result fetching for a specific subsession ID.
@@ -479,7 +479,7 @@ async def force_results(ctx, subsession_id: int = 0):
     await post_race_results(subsession_id)
 
 @bot.command(name="stagestage")
-@commands.has_role(int(os.environ.get("ADMIN_ROLE_ID", 0)))
+@commands.check(lambda ctx: ctx.author.id == int(os.environ.get("OWNER_ID", 0)))
 async def add_stage_points(ctx, subsession_id: int, *, entries: str):
     """
     Add stage points to an already-posted race.
@@ -494,7 +494,7 @@ async def add_stage_points(ctx, subsession_id: int, *, entries: str):
     await post_race_results(subsession_id, stage_pts_map)
 
 @bot.command(name="loadschedule")
-@commands.has_role(int(os.environ.get("ADMIN_ROLE_ID", 0)))
+@commands.check(lambda ctx: ctx.author.id == int(os.environ.get("OWNER_ID", 0)))
 async def load_schedule(ctx):
     """Attach a CSV with columns: Track,Date"""
     if not ctx.message.attachments:
@@ -508,7 +508,7 @@ async def load_schedule(ctx):
     await ctx.send(f"✅ Schedule loaded — {len(data['schedule'])} races.")
 
 @bot.command(name="teststatus")
-@commands.has_role(int(os.environ.get("ADMIN_ROLE_ID", 0)))
+@commands.check(lambda ctx: ctx.author.id == int(os.environ.get("OWNER_ID", 0)))
 async def test_status(ctx):
     """Test iRacing API connection."""
     await ctx.send("⏳ Testing iRacing API connection...")
@@ -525,7 +525,7 @@ async def test_status(ctx):
             await ctx.send("❌ iRacing login failed. Check your email/password in bot.py.")
 
 @bot.command(name="restructure")
-@commands.has_role(int(os.environ.get("ADMIN_ROLE_ID", 0)))
+@commands.check(lambda ctx: ctx.author.id == int(os.environ.get("OWNER_ID", 0)))
 async def restructure(ctx):
     NEW_STRUCTURE = {
         "📋 FRONT DESK": ["welcome","get-roles","announcements","qsr-record-book"],
