@@ -89,37 +89,57 @@ async def iracing_login(session: aiohttp.ClientSession) -> bool:
         "Referer": "https://members.iracing.com/",
     }
 
-    for url in [
-        "https://members-ng.iracing.com/auth",
-        "https://members.iracing.com/membersite/login.jsp",
-    ]:
-        try:
-            resp = await session.post(
-                url,
-                json={"email": email, "password": pw_hash},
-                headers=headers,
-                allow_redirects=True,
-                timeout=aiohttp.ClientTimeout(total=15)
-            )
-            print(f"iRacing login attempt at {url}: HTTP {resp.status}")
-            if resp.status == 200:
-                try:
-                    data = await resp.json(content_type=None)
-                    if data.get("authcode", 0) != 0:
-                        cookies = {c.key: c.value for c in session.cookie_jar}
-                        with open(COOKIE_FILE, "w") as f:
-                            json.dump(cookies, f)
-                        print("✅ iRacing login successful")
-                        return True
-                    else:
-                        print(f"❌ iRacing rejected login: authcode=0, message={data.get('message','unknown')}")
-                        return False
-                except Exception as e:
-                    print(f"Login response parse error: {e}")
-                    continue
-        except Exception as e:
-            print(f"Login request error at {url}: {e}")
-            continue
+    # Step 1 — try the JSON auth endpoint
+    try:
+        resp = await session.post(
+            "https://members-ng.iracing.com/auth",
+            json={"email": email, "password": pw_hash},
+            headers=headers,
+            allow_redirects=True,
+            timeout=aiohttp.ClientTimeout(total=15)
+        )
+        print(f"iRacing login attempt at members-ng/auth: HTTP {resp.status}")
+        if resp.status == 200:
+            data = await resp.json(content_type=None)
+            if data.get("authcode", 0) != 0:
+                cookies = {c.key: c.value for c in session.cookie_jar}
+                with open(COOKIE_FILE, "w") as f:
+                    json.dump(cookies, f)
+                print("✅ iRacing login successful via members-ng")
+                return True
+            else:
+                print(f"❌ members-ng rejected: authcode=0, message={data.get('message','unknown')}")
+    except Exception as e:
+        print(f"members-ng login error: {e}")
+
+    # Step 2 — fall back to legacy form-based login (returns HTML, check cookies)
+    try:
+        form_headers = {**headers, "Content-Type": "application/x-www-form-urlencoded"}
+        resp = await session.post(
+            "https://members.iracing.com/membersite/login.jsp",
+            data={"username": email, "password": IRACING_PASSWORD, "utcoffset": "300", "todaysdate": ""},
+            headers=form_headers,
+            allow_redirects=True,
+            timeout=aiohttp.ClientTimeout(total=15)
+        )
+        print(f"iRacing legacy login: HTTP {resp.status}")
+        # Check if we got valid session cookies (irsso_membersv2 is the key cookie)
+        cookie_keys = [c.key for c in session.cookie_jar]
+        print(f"Cookies received: {cookie_keys}")
+        if any("irsso" in k.lower() for k in cookie_keys):
+            cookies = {c.key: c.value for c in session.cookie_jar}
+            with open(COOKIE_FILE, "w") as f:
+                json.dump(cookies, f)
+            print("✅ iRacing login successful via legacy form")
+            return True
+        else:
+            body = await resp.text()
+            if "loginfailed" in body.lower() or "invalid" in body.lower():
+                print("❌ Legacy login failed — wrong email or password")
+            else:
+                print(f"❌ Legacy login — no session cookie. Body snippet: {body[:200]}")
+    except Exception as e:
+        print(f"Legacy login error: {e}")
 
     print("❌ iRacing login failed — all endpoints exhausted")
     return False
