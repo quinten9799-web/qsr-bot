@@ -15,11 +15,13 @@ import io
 # ═══════════════════════════════════════════════════════════════════
 import os
 
-BOT_TOKEN         = os.environ.get("MTUxMjE0ODEwMTE4NjU4NDczNg.GgsZaX.eGu-C0k_ELAEfvhvzkitJpjZ8n4iNciaAVHnBE")
-GUILD_ID          = int(os.environ.get("963537794976845876", 0))
-IRACING_EMAIL     = os.environ.get("quinten9799@gmail.com")
-IRACING_PASSWORD  = os.environ.get("KobeBryant24@")
-IRACING_LEAGUE_ID = int(os.environ.get("8907", 0))
+import os
+
+BOT_TOKEN         = os.environ.get("BOT_TOKEN")
+GUILD_ID          = int(os.environ.get("GUILD_ID", 0))
+IRACING_EMAIL     = os.environ.get("IRACING_EMAIL")
+IRACING_PASSWORD  = os.environ.get("IRACING_PASSWORD")
+IRACING_LEAGUE_ID = int(os.environ.get("IRACING_LEAGUE_ID", 0))
 
 STANDINGS_CH      = "points-standings"
 ANNOUNCEMENTS_CH  = "series-announcements"
