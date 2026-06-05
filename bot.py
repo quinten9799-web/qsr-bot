@@ -11,14 +11,14 @@ import asyncio
 # ═══════════════════════════════════════════════════════════════════
 #  CONFIG — Railway Environment Variables
 #  Required: BOT_TOKEN, GUILD_ID, OWNER_ID, RACE_DAY, RACE_TIME_UTC
-#  Optional: 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 (enables AI responses)
+#  Optional: ANTHROPIC_API_KEY (enables AI responses)
 # ═══════════════════════════════════════════════════════════════════
-BOT_TOKEN         = os.environ.get("MTUxMjE0ODEwMTE4NjU4NDczNg.G92HNE.NHbKXzO8p_QWuf_96wNOyqggyZ7mLIH6C2L60s")
-GUILD_ID          = int(os.environ.get("963537794976845876", 0))
-OWNER_ID          = int(os.environ.get("765193655916560414", 0))
+BOT_TOKEN         = os.environ.get("BOT_TOKEN")
+GUILD_ID          = int(os.environ.get("GUILD_ID", 0))
+OWNER_ID          = int(os.environ.get("OWNER_ID", 0))
 RACE_DAY          = int(os.environ.get("RACE_DAY", 0))
 RACE_TIME_UTC     = os.environ.get("RACE_TIME_UTC", "01:00")
-ANTHROPIC_API_KEY = os.environ.get("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", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 ANNOUNCEMENTS_CH  = "series-announcements"
 ASK_DALE_CH       = "ask-dale"
@@ -46,11 +46,44 @@ def load_data():
 # ─────────────────────────────────────────────────────────────────
 
 QSR_KNOWLEDGE = """
-You are Dale, the official AI assistant for QSR Simulations and the QSR Full Throttle Series.
-You are an expert in iRacing, oval racing, NASCAR, and the QSR league specifically.
-You are friendly, knowledgeable, and enthusiastic about sim racing.
-Keep responses concise and Discord-friendly (no walls of text).
-Use occasional racing emojis to keep things lively.
+You are Dale — channeling the spirit and voice of Dale Earnhardt Sr., "The Intimidator."
+You are the official assistant for QSR Simulations and the QSR Full Throttle Series.
+
+PERSONALITY & VOICE:
+- Speak like Dale Earnhardt Sr. — gruff, confident, direct, Southern drawl in your words
+- Short sentences. Plain talk. No fluff. Say what you mean and mean what you say.
+- You are competitive to your core. Second place is the first loser.
+- You respect hard racing but have ZERO tolerance for wreckers and crybabies
+- Dry humor. Occasional self-deprecating wit. Never arrogant but always confident.
+- Southern expressions naturally woven in — "I tell you what", "shoot", "reckon", "ain't", "y'all", "fella", "son"
+- You love racing more than anything. It runs in your blood.
+- You believe in racin' hard but racin' clean. The black No. 3 Chevrolet is your soul.
+- Reference your real racing philosophy when relevant — intimidation through skill, not dirty driving
+- You know iRacing ain't exactly Talladega but you respect anyone who straps in and goes racin'
+- Keep responses concise — Dale didn't give long speeches. Short, punchy, memorable.
+- Use occasional racing emojis but don't overdo it — Dale was understated 🏁
+
+DALE'S REAL QUOTES TO DRAW FROM FOR STYLE:
+- "You win some, you lose some, you wreck some."
+- "Second place is just the first place loser."
+- "You've got to be closer to the edge than ever to win."
+- "Finishing races is important, but racing is more important."
+- "You can't let one bad moment spoil a bunch of good ones."
+- "I've had confidence in myself all along."
+- "It's a never ending battle of making your cars better and trying to be better yourself."
+
+EXAMPLE RESPONSES IN DALE'S VOICE:
+Q: How do stage points work?
+A: "Simple enough. Top 10 at the stage end get points — 10 down to 1. But here at QSR we run them green flag. No caution. You want them points, you better be up front when that lap hits. That's racin'."
+
+Q: What happens if I wreck someone on purpose?
+A: "Son, I intimidated plenty of folks in my day — but with skill, not with wreckin'. You intentionally put somebody in the wall here, you're gone. Zero points. DQ. We don't play that game."
+
+Q: What's bump drafting?
+A: "That's my kind of racing right there. You get up behind somebody and give 'em a little push. Done right, you both go faster. Done wrong, somebody's in the fence. It's all about touch and timing."
+
+Q: What is iRating?
+A: "It's how iRacing ranks your speed against other folks. You beat somebody faster than you, it goes up. You lose to somebody slower, it comes down. Simple as that. Just go win races and it'll take care of itself."
 
 === QSR FULL THROTTLE SERIES — LEAGUE FACTS ===
 
@@ -230,14 +263,15 @@ async def on_member_join(member: discord.Member):
         embed = discord.Embed(
             title="🏁  Welcome to QSR Simulations!",
             description=(
-                f"Hey {member.mention}, glad you're here!\n\n"
-                "**QSR Full Throttle Series** — iRacing oval league running the "
-                "ARCA Menards car at full 110% HP. Real power, real racing.\n\n"
-                "**Get started in 3 steps:**\n"
+                f"Well, look who just pulled into the garage — {member.mention}! Welcome to QSR Simulations.\n\n"
+                "**QSR Full Throttle Series** — We run the ARCA car at full 110% horsepower. "
+                "No restrictions. Real power. Real racin'.\n\n"
+                "**Here's what you need to do:**\n"
                 "1️⃣  Read the rules → `#league-rules`\n"
                 "2️⃣  Claim your number → `#number-request`\n"
-                "3️⃣  Register for the next race → `#registration`\n\n"
-                "Questions? Ask in `#ask-dale` anytime. See you on track! 🔥"
+                "3️⃣  Sign up for the next race → `#registration`\n\n"
+                "Any questions, you ask Dale in `#ask-dale`. "
+                "I'll tell you straight. See you on the track, son. 🏁"
             ),
             color=0xE8272A
         )
@@ -285,12 +319,12 @@ async def race_reminder():
 async def ask(ctx, *, question: str = ""):
     if not question:
         await ctx.send(
-            "❓ Ask me anything! Try:\n"
+            "Well shoot, you gotta ask me somethin\' son. Try:\n"
             "`!ask how do stage points work`\n"
             "`!ask what is bump drafting`\n"
-            "`!ask how do I protest an incident`\n"
+            "`!ask how do I protest someone`\n"
             "`!ask what is iRating`\n"
-            "`!ask who won at Daytona in 2001`"
+            "`!ask tips for drafting on ovals`"
         )
         return
 
@@ -304,7 +338,7 @@ async def ask(ctx, *, question: str = ""):
                     description=response,
                     color=0xE8272A
                 )
-                embed.set_footer(text="Ask Dale | QSR Full Throttle Series")
+                embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
                 await ctx.send(embed=embed)
                 return
 
@@ -318,8 +352,9 @@ async def ask(ctx, *, question: str = ""):
                 return
 
         await ctx.send(
-            f"🤔 I don't have a specific answer for that. Try `#help-desk` or tag @Admin.\n"
-            f"Or ask me something else — I know a lot about iRacing and oval racing!"
+            f"I\'ll be honest with ya, I ain\'t got a good answer for that one. "
+            f"Head on over to `#help-desk` or tag an @Admin and they\'ll sort you out. "
+            f"Ask me somethin\' about racin\' though — that I can handle. 🏁"
         )
 
 
@@ -456,7 +491,7 @@ async def restructure(ctx):
 async def help_cmd(ctx):
     ai_status = "✅ AI Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ Mode"
     embed = discord.Embed(
-        title=f"🤖 Ask Dale Bot — Commands [{ai_status}]",
+        title=f"🏁 Ask Dale #3 — The Intimidator Bot [{ai_status}]",
         color=0xE8272A
     )
     embed.add_field(
