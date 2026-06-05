@@ -816,7 +816,15 @@ async def on_ready():
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
     else:
         print("⚠️  No ANTHROPIC_API_KEY — using FAQ mode only")
-
+@bot.event
+async def on_ready():
+    print(f"✅  Ask Dale Bot online as {bot.user}")
+    race_reminder.start()
+    dales_weekly_take.start()
+    pre_race_trash_talk.start()
+    race_prediction.start()
+    race_announcement_scheduler.start()  # ← ADD THIS LINE
+    await bot.change_presence(activity=discord.Game("QSR Full Throttle Series 🏁"))
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -1319,4 +1327,67 @@ async def dale_mood_cmd(ctx, mood: str = ""):
         await ctx.send(f"Dale's current mood: `{current}`\nOptions: `neutral` `good` `grumpy` `fired_up`")
 
 # ─────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
+#  RACE ANNOUNCEMENT SCHEDULER
+#  Posts every Monday at 12PM ET to #series-announcements
+#  Channel ID: 1173977366117232731 | @arca Role ID: 1173980377279377538
+# ─────────────────────────────────────────────────────────────────
+
+ANNOUNCEMENT_CHANNEL_ID = 1173977366117232731
+ARCA_ROLE_ID            = 1173980377279377538
+POSTED_FILE             = "posted_announcements.json"
+
+RACE_ANNOUNCEMENTS = [
+    {
+        "date": "2026-07-20",
+        "track": "Daytona International Speedway",
+        "race_num": 1,
+        "laps": 80,
+        "message": (
+            "🏁 **RACE 1 — DAYTONA INTERNATIONAL SPEEDWAY**\n"
+            "<@&1173980377279377538>\n\n"
+            "The QSR Full Throttle Series fires up tonight at the Great American Speedway. "
+            "Daytona. Where legends are made and seasons are defined. "
+            "You want to set the tone for the whole year? Tonight's your shot.\n\n"
+            "🗓️ **Monday, July 20 | 8:00 PM ET**\n"
+            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
+            "🏆 40 pts on the line — Championship starts NOW\n\n"
+            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
+            "📺 Stream: `#how-to-watch`\n\n"
+            "Let's go racing. 🔥"
+        )
+    },
+    {
+        "date": "2026-07-27",
+        "track": "Bristol Motor Speedway",
+        "race_num": 2,
+        "laps": 200,
+        "message": (
+            "🏁 **RACE 2 — BRISTOL MOTOR SPEEDWAY**\n"
+            "<@&1173980377279377538>\n\n"
+            "The Concrete Colosseum. Half-mile of pure chaos. "
+            "Bristol separates the racers from the crashers — and tonight we find out which one you are.\n\n"
+            "🗓️ **Monday, July 27 | 8:00 PM ET**\n"
+            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
+            "🏆 40 pts | Race 2 of 14\n\n"
+            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
+            "📺 Stream: `#how-to-watch`\n\n"
+            "Bristol doesn't lie. Neither does the scoreboard. 🔥"
+        )
+    },
+    {
+        "date": "2026-08-03",
+        "track": "Atlanta Motor Speedway",
+        "race_num": 3,
+        "laps": 130,
+        "message": (
+            "🏁 **RACE 3 — ATLANTA MOTOR SPEEDWAY**\n"
+            "<@&1173980377279377538>\n\n"
+            "Wide open, mile-and-a-half, pack racing at its finest. "
+            "Atlanta rewards the brave and punishes the timid. "
+            "If you've got it — tonight's where you show it.\n\n"
+            "🗓️ **Monday, August 3 | 8:00 PM ET**\n"
+            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
+            "🏆 40 pts | Race 3 of 14\n\n"
+            "Register in `#registration` | Questions? Ask
 bot.run(BOT_TOKEN)
