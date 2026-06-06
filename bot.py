@@ -1398,7 +1398,7 @@ class RoleSelectView(discord.ui.View):
 @is_owner()
 async def setup_roles_cmd(ctx):
     """Post the role selection dropdown in #get-roles. Run once."""
-    guild = bot.get_guild(GUILD_ID)
+    guild = ctx.guild
     ch    = discord.utils.get(guild.text_channels, name="get-roles")
     if not ch:
         await ctx.send("❌ #get-roles channel not found. Create it first.")
