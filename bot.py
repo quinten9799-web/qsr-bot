@@ -1219,87 +1219,6 @@ async def on_member_join(member: discord.Member):
 
 
 # ─────────────────────────────────────────────────────────────────
-#  ROLE SELECTION — #get-roles dropdown
-# ─────────────────────────────────────────────────────────────────
-
-class RoleSelectView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)  # Persistent — never expires
-
-    @discord.ui.select(
-        custom_id="role_select",
-        placeholder="🏁 Select your roles...",
-        min_values=0,
-        max_values=1,
-        options=[
-            discord.SelectOption(
-                label="ARCA Series",
-                value="arca",
-                description="Get pinged for race announcements and series updates",
-                emoji="🏁"
-            ),
-        ]
-    )
-    async def role_select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
-        guild      = interaction.guild
-        arca_role  = guild.get_role(ARCA_ROLE_ID)
-
-        if not arca_role:
-            await interaction.response.send_message(
-                "⚠️ Role not found — contact an admin.", ephemeral=True
-            )
-            return
-
-        member     = interaction.user
-        has_arca   = arca_role in member.roles
-        added      = []
-        removed    = []
-
-        if "arca" in select.values:
-            if not has_arca:
-                await member.add_roles(arca_role)
-                added.append("ARCA Series 🏁")
-        else:
-            if has_arca:
-                await member.remove_roles(arca_role)
-                removed.append("ARCA Series 🏁")
-
-        if added and removed:
-            msg = f"✅ Added: {', '.join(added)}\n❌ Removed: {', '.join(removed)}"
-        elif added:
-            msg = f"✅ You've been given the **{', '.join(added)}** role! You'll now get race announcements."
-        elif removed:
-            msg = f"❌ Removed: **{', '.join(removed)}**"
-        else:
-            msg = "No changes made."
-
-        await interaction.response.send_message(msg, ephemeral=True)
-
-
-@bot.command(name="setuproles")
-@is_owner()
-async def setup_roles_cmd(ctx):
-    """Post the role selection dropdown in #get-roles. Run once."""
-    guild = bot.get_guild(GUILD_ID)
-    ch    = discord.utils.get(guild.text_channels, name="get-roles")
-    if not ch:
-        await ctx.send("❌ #get-roles channel not found. Create it first.")
-        return
-    embed = discord.Embed(
-        title="🏁 QSR Simulations — Get Your Roles",
-        description=(
-            "Select your roles below to get notified for the things that matter to you.\n\n"
-            "**🏁 ARCA Series** — Race announcements, series updates, green flag pings\n\n"
-            "You can add or remove roles at any time by using this menu again."
-        ),
-        color=0xE8272A
-    )
-    embed.set_footer(text="QSR Simulations | More roles coming in future seasons")
-    await ch.send(embed=embed, view=RoleSelectView())
-    await ctx.send("✅ Role selection posted in #get-roles!")
-
-
-# ─────────────────────────────────────────────────────────────────
 #  MEMBER COMMANDS
 # ─────────────────────────────────────────────────────────────────
 
@@ -1416,6 +1335,89 @@ def is_owner():
     async def predicate(ctx):
         return ctx.author.id == OWNER_ID
     return commands.check(predicate)
+
+# ─────────────────────────────────────────────────────────────────
+#  ROLE SELECTION — #get-roles dropdown
+# ─────────────────────────────────────────────────────────────────
+
+class RoleSelectView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)  # Persistent — never expires
+
+    @discord.ui.select(
+        custom_id="role_select",
+        placeholder="🏁 Select your roles...",
+        min_values=0,
+        max_values=1,
+        options=[
+            discord.SelectOption(
+                label="ARCA Series",
+                value="arca",
+                description="Get pinged for race announcements and series updates",
+                emoji="🏁"
+            ),
+        ]
+    )
+    async def role_select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+        guild      = interaction.guild
+        arca_role  = guild.get_role(ARCA_ROLE_ID)
+
+        if not arca_role:
+            await interaction.response.send_message(
+                "⚠️ Role not found — contact an admin.", ephemeral=True
+            )
+            return
+
+        member     = interaction.user
+        has_arca   = arca_role in member.roles
+        added      = []
+        removed    = []
+
+        if "arca" in select.values:
+            if not has_arca:
+                await member.add_roles(arca_role)
+                added.append("ARCA Series 🏁")
+        else:
+            if has_arca:
+                await member.remove_roles(arca_role)
+                removed.append("ARCA Series 🏁")
+
+        if added and removed:
+            msg = f"✅ Added: {', '.join(added)}\n❌ Removed: {', '.join(removed)}"
+        elif added:
+            msg = f"✅ You've been given the **{', '.join(added)}** role! You'll now get race announcements."
+        elif removed:
+            msg = f"❌ Removed: **{', '.join(removed)}**"
+        else:
+            msg = "No changes made."
+
+        await interaction.response.send_message(msg, ephemeral=True)
+
+
+@bot.command(name="setuproles")
+@is_owner()
+async def setup_roles_cmd(ctx):
+    """Post the role selection dropdown in #get-roles. Run once."""
+    guild = bot.get_guild(GUILD_ID)
+    ch    = discord.utils.get(guild.text_channels, name="get-roles")
+    if not ch:
+        await ctx.send("❌ #get-roles channel not found. Create it first.")
+        return
+    embed = discord.Embed(
+        title="🏁 QSR Simulations — Get Your Roles",
+        description=(
+            "Select your roles below to get notified for the things that matter to you.\n\n"
+            "**🏁 ARCA Series** — Race announcements, series updates, green flag pings\n\n"
+            "You can add or remove roles at any time by using this menu again."
+        ),
+        color=0xE8272A
+    )
+    embed.set_footer(text="QSR Simulations | More roles coming in future seasons")
+    await ch.send(embed=embed, view=RoleSelectView())
+    await ctx.send("✅ Role selection posted in #get-roles!")
+
+
+
 
 @bot.command(name="loadschedule")
 @is_owner()
