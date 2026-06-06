@@ -4,6 +4,7 @@ import json
 import os
 import csv
 import io
+import shutil
 import aiohttp
 from datetime import datetime, timedelta
 import asyncio
@@ -19,6 +20,14 @@ OWNER_ID          = int(os.environ.get("OWNER_ID", 0))
 RACE_DAY          = int(os.environ.get("RACE_DAY", 0))
 RACE_TIME_UTC     = os.environ.get("RACE_TIME_UTC", "01:00")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# ── Startup guards — fail loudly if critical env vars are missing ──
+if not BOT_TOKEN:
+    raise RuntimeError("MISSING ENV VAR: BOT_TOKEN is not set. Bot cannot start.")
+if not GUILD_ID:
+    raise RuntimeError("MISSING ENV VAR: GUILD_ID is not set. Bot cannot start.")
+if not OWNER_ID:
+    raise RuntimeError("MISSING ENV VAR: OWNER_ID is not set. Bot cannot start.")
 
 ANNOUNCEMENTS_CH  = "series-announcements"
 ASK_DALE_CH       = "ask-dale"
@@ -37,6 +46,26 @@ def load_data():
         return {"standings": {}, "schedule": [], "race_number": 1}
     with open(DATA_FILE) as f:
         return json.load(f)
+
+def save_data(data: dict):
+    """Save data.json — backs up the existing file before every write.
+    Keeps the 20 most recent backups in the /backups directory.
+    """
+    if os.path.exists(DATA_FILE):
+        backup_dir = "backups"
+        os.makedirs(backup_dir, exist_ok=True)
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(backup_dir, f"data_{ts}.json")
+        shutil.copy2(DATA_FILE, backup_path)
+        # Prune — keep only 20 most recent
+        backups = sorted(
+            [f for f in os.listdir(backup_dir) if f.startswith("data_")],
+            reverse=True
+        )
+        for old in backups[20:]:
+            os.remove(os.path.join(backup_dir, old))
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -839,8 +868,12 @@ async def pre_race_trash_talk():
     if now.weekday() != RACE_DAY:
         return
     race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_time      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    thirty_min_out = race_time - timedelta(minutes=30)
+    race_dt        = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
+    # Handle midnight boundary: if race time is early UTC (e.g. 01:00) and now is late UTC,
+    # the race is on the next calendar day — shift race_dt forward one day.
+    if race_dt < now - timedelta(hours=12):
+        race_dt += timedelta(days=1)
+    thirty_min_out = race_dt - timedelta(minutes=30)
     if abs((now - thirty_min_out).total_seconds()) > 60:
         return
     guild = bot.get_guild(GUILD_ID)
@@ -970,8 +1003,11 @@ async def race_prediction():
     if now.weekday() != RACE_DAY:
         return
     race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_time    = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    one_hour_out = race_time - timedelta(hours=1)
+    race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
+    # Handle midnight boundary
+    if race_dt < now - timedelta(hours=12):
+        race_dt += timedelta(days=1)
+    one_hour_out = race_dt - timedelta(hours=1)
     if abs((now - one_hour_out).total_seconds()) > 60:
         return
     guild = bot.get_guild(GUILD_ID)
@@ -1019,8 +1055,11 @@ async def race_reminder():
     if now.weekday() != RACE_DAY:
         return
     race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_time    = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    one_hour_out = race_time - timedelta(hours=1)
+    race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
+    # Handle midnight boundary
+    if race_dt < now - timedelta(hours=12):
+        race_dt += timedelta(days=1)
+    one_hour_out = race_dt - timedelta(hours=1)
     if abs((now - one_hour_out).total_seconds()) < 3600:
         guild = bot.get_guild(GUILD_ID)
         if not guild:
@@ -1164,9 +1203,10 @@ async def on_member_join(member: discord.Member):
                 "**QSR Full Throttle Series** — We run the ARCA car at full 110% horsepower. "
                 "No restrictions. Real power. Real racin'.\n\n"
                 "**Here's what you need to do:**\n"
-                "1️⃣  Read the rules → `#league-rules`\n"
-                "2️⃣  Claim your number → `#number-request`\n"
-                "3️⃣  Sign up for the next race → `#registration`\n\n"
+                "1️⃣  Grab your roles → `#get-roles`\n"
+                "2️⃣  Read the rules → `#league-rules`\n"
+                "3️⃣  Claim your number → `#number-request`\n"
+                "4️⃣  Sign up for the next race → `#registration`\n\n"
                 "Any questions, you ask Dale in `#ask-dale`. "
                 "I'll tell you straight. See you on the track, son. 🏁"
             ),
@@ -1304,8 +1344,7 @@ async def load_schedule(ctx):
     reader = csv.DictReader(io.StringIO(raw.decode("utf-8")))
     data   = load_data()
     data["schedule"] = [{"track": r["Track"], "date": r["Date"], "complete": False} for r in reader]
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    save_data(data)
     await ctx.send(f"✅ Schedule loaded — {len(data['schedule'])} races.")
 
 @bot.command(name="restructure")
@@ -1322,7 +1361,7 @@ async def restructure(ctx):
             "meme-central", "hot-takes", "nascar-fan-chat", "qsr-race-polls"
         ],
         "📺 BROADCAST & EVENTS": [
-            "how-to-watch", "hosted-sessions", "qsr-live", "league-socials", "team-forming"
+            "how-to-watch", "hosted-sessions", "qsr-live", "league-socials", "team-forming", "dales-post-race"
         ],
         "🔒 STAFF ONLY": ["staff-chat", "staff-docs"],
     }
