@@ -40,12 +40,81 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 DATA_FILE = "data.json"
+REG_FILE  = "registration.json"
+
+# ─────────────────────────────────────────────────────────────────
+#  REGISTRATION DATA HELPERS
+# ─────────────────────────────────────────────────────────────────
+
+VALID_NUMBERS = ["00"] + [str(i) for i in range(0, 100)]  # 00, 0–99
+
+def load_reg() -> dict:
+    if not os.path.exists(REG_FILE):
+        return {"drivers": [], "teams": [], "max_field": 40, "entry_fee": 20}
+    with open(REG_FILE) as f:
+        d = json.load(f)
+    d.setdefault("drivers", [])
+    d.setdefault("teams",   [])
+    d.setdefault("max_field", 40)
+    d.setdefault("entry_fee", 20)
+    return d
+
+def save_reg(d: dict):
+    with open(REG_FILE, "w") as f:
+        json.dump(d, f, indent=2)
+
+def taken_numbers() -> set:
+    reg = load_reg()
+    return {dr["number"] for dr in reg["drivers"]
+            if dr.get("number") and dr.get("status") != "Withdrawn"}
+
+def confirmed_count() -> int:
+    return sum(1 for d in load_reg()["drivers"] if d["status"] == "Confirmed")
+
+def get_driver_reg(discord_id: str) -> dict | None:
+    return next((d for d in load_reg()["drivers"]
+                 if d.get("discord_id") == discord_id), None)
+
+def get_team(team_name: str) -> dict | None:
+    name_lower = team_name.strip().lower()
+    return next((t for t in load_reg()["teams"]
+                 if t["name"].lower() == name_lower), None)
+
+def recalc_team_points():
+    """Recalculate team points from standings. Call after every race result save."""
+    data = load_data()
+    reg  = load_reg()
+    standings = data.get("standings", {})
+    race_results = data.get("race_results", {})
+
+    for team in reg["teams"]:
+        total = 0
+        for member in team.get("members", []):
+            driver_name = member.get("driver_name", "")
+            join_race   = member.get("joined_race", 1)
+            if driver_name not in race_results:
+                continue
+            for race in race_results[driver_name]:
+                if race.get("race", 0) >= join_race:
+                    total += race.get("points", 0) + race.get("stage_pts", 0)
+        team["points"] = total
+    save_reg(reg)
 
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"standings": {}, "schedule": [], "race_number": 1}
+        return {
+            "standings": {},
+            "schedule": [],
+            "race_number": 1,
+            "race_results": {},     # per-race history keyed by driver name
+            "driver_profiles": {},  # sim_racer_hub_url stub, future SRH integration
+        }
     with open(DATA_FILE) as f:
-        return json.load(f)
+        d = json.load(f)
+    # Migrate existing files that don't have these keys yet
+    d.setdefault("race_results", {})
+    d.setdefault("driver_profiles", {})
+    return d
 
 def save_data(data: dict):
     """Save data.json — backs up the existing file before every write.
@@ -1086,7 +1155,8 @@ async def race_reminder():
 
 @bot.event
 async def on_ready():
-    bot.add_view(RoleSelectView())  # Re-register persistent view on restart
+    bot.add_view(RoleSelectView())      # Re-register persistent views on restart
+    bot.add_view(RegistrationView())
     print(f"✅  Ask Dale Bot online as {bot.user}")
     race_reminder.start()
     dales_weekly_take.start()
@@ -1337,6 +1407,453 @@ def is_owner():
     return commands.check(predicate)
 
 # ─────────────────────────────────────────────────────────────────
+#  REGISTRATION — Driver & Team modals + persistent view
+# ─────────────────────────────────────────────────────────────────
+
+STAFF_CH = "staff-chat"
+
+class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
+    full_name = discord.ui.TextInput(
+        label="Full Name",
+        placeholder="e.g. John Smith",
+        max_length=50,
+        required=True,
+    )
+    iracing_id = discord.ui.TextInput(
+        label="iRacing Customer ID",
+        placeholder="Numbers only — find it on iRacing.com",
+        max_length=20,
+        required=True,
+    )
+    car_number = discord.ui.TextInput(
+        label="Car Number (00–99)",
+        placeholder="Enter your number — first come first served",
+        max_length=2,
+        required=True,
+    )
+    rules_ack = discord.ui.TextInput(
+        label="Rules Acknowledgment",
+        placeholder='Type YES to confirm you have read the QSR rulebook',
+        max_length=10,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        name    = self.full_name.value.strip()
+        iid     = self.iracing_id.value.strip()
+        num     = self.car_number.value.strip().upper()
+        ack     = self.rules_ack.value.strip().upper()
+        discord_id = str(interaction.user.id)
+
+        # Rules ack check
+        if ack != "YES":
+            await interaction.response.send_message(
+                "❌ You must type **YES** to acknowledge the rulebook. Try again.",
+                ephemeral=True)
+            return
+
+        # Number validation
+        num_norm = num.lstrip("0") or "0"
+        if num == "00":
+            num_norm = "00"
+        if num_norm not in VALID_NUMBERS and num not in VALID_NUMBERS:
+            await interaction.response.send_message(
+                "❌ Invalid car number. Choose 00 or 0–99.", ephemeral=True)
+            return
+        # Use the canonical form
+        if num == "00":
+            num_final = "00"
+        else:
+            try:
+                num_final = str(int(num))
+            except ValueError:
+                await interaction.response.send_message(
+                    "❌ Invalid car number.", ephemeral=True)
+                return
+
+        reg = load_reg()
+
+        # Already registered?
+        existing = get_driver_reg(discord_id)
+        if existing:
+            await interaction.response.send_message(
+                f"⚠️ You're already registered as **{existing['name']}** "
+                f"(#{existing['number']}, Status: {existing['status']}).\n"
+                f"Contact an admin to make changes.",
+                ephemeral=True)
+            return
+
+        # Number taken?
+        taken = taken_numbers()
+        if num_final in taken:
+            await interaction.response.send_message(
+                f"❌ **#{num_final}** is already taken. Choose a different number.\n"
+                f"Tip: `!numbers` shows what's available.",
+                ephemeral=True)
+            return
+
+        # Field full?
+        conf = confirmed_count()
+        status = "Confirmed" if conf < reg["max_field"] else "Waitlist"
+
+        reg["drivers"].append({
+            "name":          name,
+            "discord_id":    discord_id,
+            "discord_tag":   str(interaction.user),
+            "iracing_id":    iid,
+            "number":        num_final,
+            "status":        status,
+            "paid":          False,
+            "team":          None,
+            "registered_at": datetime.utcnow().isoformat(),
+        })
+        save_reg(reg)
+
+        # Confirm to driver
+        if status == "Confirmed":
+            msg = (f"✅ **You're in, {name}!**\n"
+                   f"Car **#{num_final}** is yours.\n"
+                   f"Status: **Confirmed** — pending payment verification.\n"
+                   f"Entry fee: **${reg['entry_fee']}** — payment details in `#registration`.\n"
+                   f"See you at Daytona. 🏁")
+        else:
+            pos = sum(1 for d in reg["drivers"] if d["status"] == "Waitlist")
+            msg = (f"📋 **{name}, you're on the waitlist** (position {pos}).\n"
+                   f"Car **#{num_final}** is reserved for you if a spot opens.\n"
+                   f"We'll notify you if you move up. 🏁")
+
+        await interaction.response.send_message(msg, ephemeral=True)
+
+        # Staff notification
+        guild    = interaction.guild
+        staff_ch = discord.utils.get(guild.text_channels, name=STAFF_CH)
+        if staff_ch:
+            embed = discord.Embed(
+                title="🆕 New Driver Registration",
+                color=0x2ecc71 if status == "Confirmed" else 0xf1c40f,
+            )
+            embed.add_field(name="Name",       value=name,                     inline=True)
+            embed.add_field(name="Discord",    value=str(interaction.user),    inline=True)
+            embed.add_field(name="Number",     value=f"#{num_final}",          inline=True)
+            embed.add_field(name="iRacing ID", value=iid,                      inline=True)
+            embed.add_field(name="Status",     value=status,                   inline=True)
+            embed.add_field(name="Payment",    value="⏳ Pending",             inline=True)
+            embed.set_footer(text=f"Field: {conf+1 if status=='Confirmed' else conf}/{reg['max_field']} confirmed")
+            await staff_ch.send(embed=embed)
+
+
+class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
+    team_name = discord.ui.TextInput(
+        label="Team Name",
+        placeholder="e.g. Thunder Racing",
+        max_length=50,
+        required=True,
+    )
+    driver2 = discord.ui.TextInput(
+        label="Driver 2 Discord Tag (optional)",
+        placeholder="e.g. username or leave blank",
+        max_length=50,
+        required=False,
+    )
+    driver3 = discord.ui.TextInput(
+        label="Driver 3 Discord Tag (optional)",
+        placeholder="e.g. username or leave blank",
+        max_length=50,
+        required=False,
+    )
+    driver4 = discord.ui.TextInput(
+        label="Driver 4 Discord Tag (optional)",
+        placeholder="e.g. username or leave blank",
+        max_length=50,
+        required=False,
+    )
+    looking = discord.ui.TextInput(
+        label="Looking for drivers? (YES / NO)",
+        placeholder="YES or NO",
+        max_length=3,
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        tname    = self.team_name.value.strip()
+        looking  = self.looking.value.strip().upper() == "YES"
+        owner_id = str(interaction.user.id)
+        owner_tag = str(interaction.user)
+
+        reg = load_reg()
+
+        # Duplicate team name
+        if get_team(tname):
+            await interaction.response.send_message(
+                f"❌ A team named **{tname}** already exists. Choose a different name.",
+                ephemeral=True)
+            return
+
+        # Owner must be a registered driver
+        owner_reg = get_driver_reg(owner_id)
+        owner_name = owner_reg["name"] if owner_reg else interaction.user.display_name
+
+        # Build member list — owner first, then optional slots
+        members = [{
+            "driver_name":  owner_name,
+            "discord_id":   owner_id,
+            "discord_tag":  owner_tag,
+            "joined_race":  load_data().get("race_number", 1),
+        }]
+        for slot in [self.driver2.value, self.driver3.value, self.driver4.value]:
+            tag = slot.strip()
+            if tag:
+                # Find the driver in reg by discord_tag match (best effort)
+                match = next((d for d in reg["drivers"]
+                              if d.get("discord_tag","").lower() == tag.lower()
+                              or tag.lower() in d.get("name","").lower()), None)
+                members.append({
+                    "driver_name":  match["name"] if match else tag,
+                    "discord_id":   match.get("discord_id","") if match else "",
+                    "discord_tag":  tag,
+                    "joined_race":  load_data().get("race_number", 1),
+                })
+
+        team = {
+            "name":       tname,
+            "owner_id":   owner_id,
+            "owner_tag":  owner_tag,
+            "members":    members,
+            "points":     0,
+            "looking":    looking,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        reg["teams"].append(team)
+        save_reg(reg)
+
+        # Create Discord role for the team
+        guild = interaction.guild
+        try:
+            role = await guild.create_role(name=f"Team: {tname}", mentionable=True)
+            # Add role to owner
+            await interaction.user.add_roles(role)
+            team["discord_role_id"] = str(role.id)
+            save_reg(reg)
+        except Exception:
+            pass
+
+        await interaction.response.send_message(
+            f"✅ **{tname}** is officially registered!\n"
+            f"Owner: {interaction.user.mention}\n"
+            f"Members: {len(members)}/4\n"
+            f"{'🔍 Posted in #team-forming — looking for drivers!' if looking else ''}\n"
+            f"Points: 0 (accumulate from current race forward) 🏁",
+            ephemeral=True)
+
+        # Post to #team-forming if looking
+        if looking:
+            tf_ch = discord.utils.get(guild.text_channels, name="team-forming")
+            if tf_ch:
+                embed = discord.Embed(
+                    title=f"🏎️ {tname} — Looking for Drivers!",
+                    description=(
+                        f"**Owner:** {interaction.user.mention}\n"
+                        f"**Current Roster:** {', '.join(m['driver_name'] for m in members)}\n"
+                        f"**Spots Available:** {4 - len(members)}\n\n"
+                        f"DM {interaction.user.mention} or use `!jointeam {tname}` to join!"
+                    ),
+                    color=0xE8272A,
+                )
+                embed.set_footer(text="QSR Full Throttle Series — Team Registration")
+                await tf_ch.send(embed=embed)
+
+        # Staff ping
+        staff_ch = discord.utils.get(guild.text_channels, name=STAFF_CH)
+        if staff_ch:
+            await staff_ch.send(
+                f"🏎️ New team registered: **{tname}** | Owner: {interaction.user.mention} | {len(members)} member(s)")
+
+
+class RegistrationView(discord.ui.View):
+    """Persistent registration embed — two buttons: Driver + Team."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Register as Driver",
+        style=discord.ButtonStyle.danger,
+        custom_id="reg_driver",
+        emoji="🏁",
+        row=0,
+    )
+    async def driver_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(DriverRegModal())
+
+    @discord.ui.button(
+        label="Register a Team",
+        style=discord.ButtonStyle.secondary,
+        custom_id="reg_team",
+        emoji="🏎️",
+        row=0,
+    )
+    async def team_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(TeamRegModal())
+
+
+@bot.command(name="setupregistration")
+@is_owner()
+async def setup_registration_cmd(ctx):
+    """Post persistent registration embed in #registration. Run once."""
+    guild = ctx.guild
+    ch    = discord.utils.get(guild.text_channels, name="registration")
+    if not ch:
+        await ctx.send("❌ #registration channel not found. Create it first.")
+        return
+    reg = load_reg()
+    embed = discord.Embed(
+        title="🏁 QSR Full Throttle Series — Season 1 Registration",
+        description=(
+            "**Welcome to the QSR Full Throttle Series.**\n\n"
+            "Click **Register as Driver** to claim your spot and car number.\n"
+            "Click **Register a Team** to create a team and start earning team points.\n\n"
+            f"💰 **Entry Fee:** ${reg['entry_fee']} per driver\n"
+            f"🏎️ **Max Field:** {reg['max_field']} drivers\n"
+            f"📅 **Season Start:** July 20, 2026 — Daytona\n\n"
+            "Read the rulebook in `#league-rules` before registering.\n"
+            "Questions? Ask Dale in `#ask-dale`. 🏁"
+        ),
+        color=0xC0392B,
+    )
+    embed.set_footer(text="QSR Simulations | Full Throttle Series Season 1")
+    await ch.send(embed=embed, view=RegistrationView())
+    await ctx.send("✅ Registration embed posted in #registration!")
+
+
+@bot.command(name="jointeam")
+async def join_team_cmd(ctx, *, team_name: str = ""):
+    """Join an existing team mid-season. Points prior to joining don't carry over."""
+    if not team_name:
+        await ctx.send("Usage: `!jointeam <Team Name>`")
+        return
+
+    reg      = load_reg()
+    data     = load_data()
+    discord_id = str(ctx.author.id)
+
+    driver = get_driver_reg(discord_id)
+    if not driver:
+        await ctx.send("❌ You're not registered as a driver yet. Head to `#registration` first.")
+        return
+
+    team = get_team(team_name)
+    if not team:
+        await ctx.send(f"❌ No team named **{team_name}** found. Check spelling or use `!teams` to see all teams.")
+        return
+
+    # Already on a team?
+    if driver.get("team"):
+        await ctx.send(f"⚠️ You're already on **{driver['team']}**. Contact an admin to switch teams.")
+        return
+
+    # Team full?
+    if len(team.get("members", [])) >= 4:
+        await ctx.send(f"❌ **{team_name}** is full (4/4 drivers).")
+        return
+
+    # Add to team
+    join_race = data.get("race_number", 1)
+    team["members"].append({
+        "driver_name": driver["name"],
+        "discord_id":  discord_id,
+        "discord_tag": str(ctx.author),
+        "joined_race": join_race,
+    })
+    driver["team"] = team["name"]
+
+    # Assign team role if it exists
+    if team.get("discord_role_id"):
+        guild = ctx.guild
+        role  = guild.get_role(int(team["discord_role_id"]))
+        if role:
+            try:
+                await ctx.author.add_roles(role)
+            except Exception:
+                pass
+
+    save_reg(reg)
+    await ctx.send(
+        f"✅ **{driver['name']}** has joined **{team_name}**!\n"
+        f"Team points will count from Race {join_race} forward. "
+        f"Previous points are yours individually — they don't carry over to the team. 🏁"
+    )
+
+
+@bot.command(name="teams")
+async def teams_cmd(ctx):
+    """List all registered teams and their points."""
+    reg = load_reg()
+    recalc_team_points()
+    reg = load_reg()
+    teams = sorted(reg["teams"], key=lambda t: t.get("points", 0), reverse=True)
+    if not teams:
+        await ctx.send("No teams registered yet. Be the first — hit **Register a Team** in `#registration`! 🏁")
+        return
+    embed = discord.Embed(
+        title="🏎️ QSR Full Throttle Series — Team Standings",
+        color=0xE8272A,
+        timestamp=datetime.utcnow(),
+    )
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines  = []
+    for i, team in enumerate(teams, 1):
+        icon    = medals.get(i, f"`{i:>2}.`")
+        members = ", ".join(m["driver_name"] for m in team.get("members", []))
+        lines.append(f"{icon} **{team['name']}** — {team.get('points',0)} pts\n"
+                     f"    👥 {members}")
+    embed.description = "\n".join(lines)
+    embed.set_footer(text="Points accumulate from the race each driver joined their team")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="numbers")
+async def numbers_cmd(ctx):
+    """Show available and taken car numbers."""
+    taken = taken_numbers()
+    avail = [n for n in VALID_NUMBERS if n not in taken]
+
+    embed = discord.Embed(
+        title="🔢 QSR Car Numbers — Season 1",
+        color=0xE8272A,
+    )
+    taken_str = " · ".join(f"~~{n}~~" for n in sorted(taken, key=lambda x: (len(x), x))) if taken else "None taken yet!"
+    avail_str = " · ".join(avail[:40])
+    if len(avail) > 40:
+        avail_str += f" _...and {len(avail)-40} more_"
+
+    embed.add_field(name=f"✅ Available ({len(avail)})", value=avail_str or "—", inline=False)
+    embed.add_field(name=f"🔴 Taken ({len(taken)})",    value=taken_str,         inline=False)
+    embed.set_footer(text="Register in #registration to claim your number")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="mystats")
+async def mystats_cmd(ctx):
+    """Check your own registration status and team."""
+    discord_id = str(ctx.author.id)
+    driver = get_driver_reg(discord_id)
+    if not driver:
+        await ctx.send(
+            "You're not registered yet! Head to `#registration` and click **Register as Driver**. 🏁")
+        return
+    embed = discord.Embed(
+        title=f"🏁 {driver['name']} — Registration Profile",
+        color=0xE8272A,
+    )
+    embed.add_field(name="Car Number", value=f"#{driver['number']}",   inline=True)
+    embed.add_field(name="Status",     value=driver["status"],          inline=True)
+    embed.add_field(name="Payment",    value="✅ Paid" if driver.get("paid") else "⏳ Pending", inline=True)
+    embed.add_field(name="iRacing ID", value=driver.get("iracing_id","—"), inline=True)
+    embed.add_field(name="Team",       value=driver.get("team") or "No team", inline=True)
+    embed.set_footer(text="QSR Full Throttle Series Season 1")
+    await ctx.send(embed=embed, ephemeral=False)
+
+
+# ─────────────────────────────────────────────────────────────────
 #  ROLE SELECTION — #get-roles dropdown
 # ─────────────────────────────────────────────────────────────────
 
@@ -1465,6 +1982,125 @@ async def restructure(ctx):
         await asyncio.sleep(1)
     await ctx.send("✅ Server restructured! Manually delete any old channels you no longer need.")
 
+@bot.command(name="career")
+async def career_cmd(ctx, *, driver_name: str = ""):
+    """
+    !career <Driver Name>
+    Shows a driver's career summary + race-by-race history.
+    Available to everyone.
+
+    NOTE: bot.py reads its own local data.json on Railway.
+    This command works once data.json is synced from Race Control
+    (via git push, shared DB, or manual upload). Until then it reads
+    whatever data Railway has available.
+    """
+    data            = load_data()
+    standings       = data.get("standings", {})
+    race_results    = data.get("race_results", {})
+    driver_profiles = data.get("driver_profiles", {})
+
+    if not driver_name:
+        await ctx.send("Usage: `!career <Driver Name>`\nExample: `!career Norman King`")
+        return
+
+    # Fuzzy match
+    matched = next((n for n in standings if driver_name.lower() in n.lower()), None)
+    if not matched:
+        await ctx.send(f"❌ Driver `{driver_name}` not found in standings.")
+        return
+
+    info    = standings[matched]
+    history = race_results.get(matched, [])
+    profile = driver_profiles.get(matched, {})
+
+    # ── Derived stats ──────────────────────────────────────────────
+    races       = info.get("races", 0)
+    wins        = info.get("wins", 0)
+    total_pts   = info.get("points", 0)
+    total_inc   = info.get("incidents", 0)
+    top5s       = sum(1 for r in history if r["finish"] <= 5)
+    top10s      = sum(1 for r in history if r["finish"] <= 10)
+    avg_finish  = round(sum(r["finish"] for r in history) / len(history), 1) if history else "—"
+    best_finish = min((r["finish"] for r in history), default=None)
+    avg_inc     = round(total_inc / races, 1) if races else "—"
+    clean_runs  = sum(1 for r in history if r["incidents"] == 0)
+
+    # Championship position
+    sorted_s    = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    champ_pos   = next((i + 1 for i, (n, _) in enumerate(sorted_s) if n == matched), "?")
+    leader_pts  = sorted_s[0][1]["points"] if sorted_s else 0
+    gap         = leader_pts - total_pts
+    races_run   = data.get("race_number", 1) - 1
+
+    medals   = {1: "🏆", 2: "🥈", 3: "🥉"}
+    pos_icon = medals.get(champ_pos, f"P{champ_pos}")
+
+    # ── Embed 1: Career Summary ────────────────────────────────────
+    summary_embed = discord.Embed(
+        title=f"🏁 {matched} — Career Profile",
+        color=0xE8272A,
+        timestamp=datetime.utcnow()
+    )
+    summary_embed.add_field(
+        name="📊 Championship",
+        value=(
+            f"**{pos_icon} Position:** P{champ_pos}\n"
+            f"**Points:** {total_pts}\n"
+            f"**Gap to Leader:** {'LEADER' if gap == 0 else f'-{gap} pts'}"
+        ),
+        inline=True
+    )
+    summary_embed.add_field(
+        name="🏎️ Season Stats",
+        value=(
+            f"**Races:** {races} of {races_run}\n"
+            f"**Wins:** {wins}\n"
+            f"**Top 5s:** {top5s}\n"
+            f"**Top 10s:** {top10s}"
+        ),
+        inline=True
+    )
+    summary_embed.add_field(
+        name="📈 Averages",
+        value=(
+            f"**Avg Finish:** {avg_finish}\n"
+            f"**Best Finish:** P{best_finish if best_finish else '—'}\n"
+            f"**Avg Incidents:** {avg_inc}x\n"
+            f"**Clean Runs:** {clean_runs}"
+        ),
+        inline=True
+    )
+    srh_url     = profile.get("sim_racer_hub_url", "")
+    footer_text = "QSR Full Throttle Series — Season 1"
+    if srh_url:
+        footer_text += f" | SRH: {srh_url}"
+    summary_embed.set_footer(text=footer_text)
+
+    # ── Embed 2: Race-by-Race History ─────────────────────────────
+    history_embed = discord.Embed(
+        title=f"📋 {matched} — Race History",
+        color=0x1A1A2E,
+        timestamp=datetime.utcnow()
+    )
+    if not history:
+        history_embed.description = "No race history yet — check back after Race 1! 🏁"
+    else:
+        lines = []
+        for r in history:
+            finish_icon = medals.get(r["finish"], f"P{r['finish']:>2}")
+            inc_str     = f" ⚠️{r['incidents']}x" if r["incidents"] > 0 else " ✅"
+            stage_str   = f" +{r['stage_pts']}S" if r.get("stage_pts") else ""
+            lines.append(
+                f"**R{r['race']}** {finish_icon} · {r['track'][:22]} · "
+                f"{r['points']}{stage_str} pts{inc_str}"
+            )
+        history_embed.description = "\n".join(lines)
+        history_embed.set_footer(text=f"{len(history)} race(s) | Season 1 · QSR Full Throttle Series")
+
+    await ctx.send(embed=summary_embed)
+    await ctx.send(embed=history_embed)
+
+
 @bot.command(name="help")
 async def help_cmd(ctx):
     ai_status = "✅ AI Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ Mode"
@@ -1474,12 +2110,18 @@ async def help_cmd(ctx):
     )
     embed.add_field(name="!ask <anything>", value="Ask Dale anything — rules, iRacing, NASCAR history, racing tips, standings, and more", inline=False)
     embed.add_field(name="!dale <question>", value="Same as !ask", inline=False)
-    embed.add_field(name="!standings",       value="Current championship standings", inline=False)
-    embed.add_field(name="!schedule",        value="Season race schedule", inline=False)
-    embed.add_field(name="!rules",           value="Quick rules summary", inline=False)
-    embed.add_field(name="── Admin ──",      value="\u200b", inline=False)
-    embed.add_field(name="!loadschedule",    value="Load schedule from CSV (Track,Date)", inline=False)
-    embed.add_field(name="!restructure",     value="Rebuild Discord channel layout", inline=False)
+    embed.add_field(name="!standings",         value="Current championship standings", inline=False)
+    embed.add_field(name="!schedule",          value="Season race schedule", inline=False)
+    embed.add_field(name="!rules",             value="Quick rules summary", inline=False)
+    embed.add_field(name="!career <Name>",     value="Driver career summary + race-by-race history", inline=False)
+    embed.add_field(name="!numbers",           value="Show available and taken car numbers", inline=False)
+    embed.add_field(name="!teams",             value="Team standings and rosters", inline=False)
+    embed.add_field(name="!jointeam <Name>",   value="Join an existing team mid-season", inline=False)
+    embed.add_field(name="!mystats",           value="Your registration profile and team", inline=False)
+    embed.add_field(name="── Admin ──",        value="\u200b", inline=False)
+    embed.add_field(name="!setupregistration", value="Post registration embed in #registration (owner)", inline=False)
+    embed.add_field(name="!loadschedule",      value="Load schedule from CSV (Track,Date)", inline=False)
+    embed.add_field(name="!restructure",       value="Rebuild Discord channel layout", inline=False)
     await ctx.send(embed=embed)
 
 @bot.command(name="dalemem")
