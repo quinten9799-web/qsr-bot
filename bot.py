@@ -8,6 +8,8 @@ import shutil
 import aiohttp
 from datetime import datetime, timedelta
 import asyncio
+import threading
+from flask import Flask, request, jsonify
 
 # ═══════════════════════════════════════════════════════════════════
 #  CONFIG — Railway Environment Variables
@@ -20,6 +22,8 @@ OWNER_ID          = int(os.environ.get("OWNER_ID", 0))
 RACE_DAY          = int(os.environ.get("RACE_DAY", 0))
 RACE_TIME_UTC     = os.environ.get("RACE_TIME_UTC", "01:00")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+SYNC_TOKEN        = os.environ.get("SYNC_TOKEN", "")
+PORT              = int(os.environ.get("PORT", 2424))
 
 # ── Startup guards — fail loudly if critical env vars are missing ──
 if not BOT_TOKEN:
@@ -2194,6 +2198,86 @@ async def on_command_error(ctx, error):
         pass
     else:
         await ctx.send(f"⚠️ Error: {error}")
+
+# ─────────────────────────────────────────────────────────────────
+#  SYNC SERVER — Flask HTTP endpoints for Windows app sync
+#  Runs in a background thread on PORT (default 2424)
+#  Protected by SYNC_TOKEN env var
+# ─────────────────────────────────────────────────────────────────
+
+sync_app = Flask(__name__)
+
+def check_token(req):
+    """Returns True if the request carries the correct sync token."""
+    token = req.headers.get("X-Sync-Token", "")
+    if not SYNC_TOKEN:
+        return False  # No token configured — reject everything
+    return token == SYNC_TOKEN
+
+@sync_app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "bot": "QSR Ask Dale"}), 200
+
+@sync_app.route("/sync/data", methods=["GET"])
+def get_data():
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    if not os.path.exists(DATA_FILE):
+        return jsonify({}), 200
+    with open(DATA_FILE) as f:
+        return jsonify(json.load(f)), 200
+
+@sync_app.route("/sync/data", methods=["POST"])
+def post_data():
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        payload = request.get_json(force=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Invalid payload"}), 400
+        # Backup before overwrite
+        if os.path.exists(DATA_FILE):
+            backup_dir = "backups"
+            os.makedirs(backup_dir, exist_ok=True)
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            shutil.copy2(DATA_FILE, os.path.join(backup_dir, f"data_{ts}.json"))
+        with open(DATA_FILE, "w") as f:
+            json.dump(payload, f, indent=2)
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@sync_app.route("/sync/registration", methods=["GET"])
+def get_registration():
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    if not os.path.exists(REG_FILE):
+        return jsonify({"drivers": [], "teams": [], "max_field": 40, "entry_fee": 20}), 200
+    with open(REG_FILE) as f:
+        return jsonify(json.load(f)), 200
+
+@sync_app.route("/sync/registration", methods=["POST"])
+def post_registration():
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        payload = request.get_json(force=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Invalid payload"}), 400
+        with open(REG_FILE, "w") as f:
+            json.dump(payload, f, indent=2)
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def run_sync_server():
+    """Run Flask in a daemon thread — dies when the bot dies."""
+    sync_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+
+# Start sync server in background before bot connects
+_sync_thread = threading.Thread(target=run_sync_server, daemon=True)
+_sync_thread.start()
+print(f"✅  Sync server started on port {PORT}")
 
 # ─────────────────────────────────────────────────────────────────
 bot.run(BOT_TOKEN)
