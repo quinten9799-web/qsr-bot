@@ -43,8 +43,17 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-DATA_FILE = "data.json"
-REG_FILE  = "registration.json"
+# ─────────────────────────────────────────────────────────────────
+#  PERSISTENT STORAGE — Railway Volume mounted at /data
+#  All JSON files live here so they survive container restarts.
+#  If the volume isn't mounted (local dev), falls back to ./data/
+# ─────────────────────────────────────────────────────────────────
+DATA_DIR = "/data" if os.path.isdir("/data") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(os.path.join(DATA_DIR, "backups"), exist_ok=True)
+
+DATA_FILE = os.path.join(DATA_DIR, "data.json")
+REG_FILE  = os.path.join(DATA_DIR, "registration.json")
 
 # ─────────────────────────────────────────────────────────────────
 #  REGISTRATION DATA HELPERS
@@ -125,7 +134,7 @@ def save_data(data: dict):
     Keeps the 20 most recent backups in the /backups directory.
     """
     if os.path.exists(DATA_FILE):
-        backup_dir = "backups"
+        backup_dir = os.path.join(DATA_DIR, "backups")
         os.makedirs(backup_dir, exist_ok=True)
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         backup_path = os.path.join(backup_dir, f"data_{ts}.json")
@@ -374,7 +383,7 @@ You know everything about:
 CONVERSATION_HISTORY = {}
 MAX_HISTORY = 10
 
-USER_MEMORY_FILE = "user_memory.json"
+USER_MEMORY_FILE = os.path.join(DATA_DIR, "user_memory.json")
 
 def load_user_memory() -> dict:
     if not os.path.exists(USER_MEMORY_FILE):
@@ -436,7 +445,7 @@ def update_user_memory(user_id: int, display_name: str, message_content: str, da
 #  DALE'S MOOD SYSTEM
 # ─────────────────────────────────────────────────────────────────
 
-MOOD_FILE = "dale_mood.json"
+MOOD_FILE = os.path.join(DATA_DIR, "dale_mood.json")
 
 def get_dale_mood() -> str:
     if not os.path.exists(MOOD_FILE):
@@ -464,7 +473,7 @@ def mood_context() -> str:
 #  WIN STREAK & NEWCOMER TRACKER
 # ─────────────────────────────────────────────────────────────────
 
-STREAKS_FILE = "streaks.json"
+STREAKS_FILE = os.path.join(DATA_DIR, "streaks.json")
 
 def load_streaks() -> dict:
     if not os.path.exists(STREAKS_FILE):
@@ -594,7 +603,7 @@ FAQ = {
 
 ANNOUNCEMENT_CHANNEL_ID = 1173977366117232731
 ARCA_ROLE_ID            = 1173980377279377538
-POSTED_FILE             = "posted_announcements.json"
+POSTED_FILE             = os.path.join(DATA_DIR, "posted_announcements.json")
 
 RACE_ANNOUNCEMENTS = [
     {
@@ -1067,7 +1076,7 @@ async def newcomer_callout(guild: discord.Guild, driver_name: str):
 #  DALE'S PREDICTION
 # ─────────────────────────────────────────────────────────────────
 
-PREDICTION_FILE = "dale_prediction.json"
+PREDICTION_FILE = os.path.join(DATA_DIR, "dale_prediction.json")
 
 @tasks.loop(minutes=1)
 async def race_prediction():
@@ -2237,7 +2246,7 @@ def post_data():
             return jsonify({"error": "Invalid payload"}), 400
         # Backup before overwrite
         if os.path.exists(DATA_FILE):
-            backup_dir = "backups"
+            backup_dir = os.path.join(DATA_DIR, "backups")
             os.makedirs(backup_dir, exist_ok=True)
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             shutil.copy2(DATA_FILE, os.path.join(backup_dir, f"data_{ts}.json"))
