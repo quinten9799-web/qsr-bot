@@ -43,6 +43,37 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
+# ─────────────────────────────────────────────────────────────────
+#  PERMISSION CHECKS — defined here so all commands can use them
+# ─────────────────────────────────────────────────────────────────
+def is_owner():
+    async def predicate(ctx):
+        return ctx.author.id == OWNER_ID
+    return commands.check(predicate)
+
+def is_admin():
+    async def predicate(ctx):
+        if ctx.author.id == OWNER_ID:
+            return True
+        return ctx.author.guild_permissions.administrator
+    return commands.check(predicate)
+
+def has_arca():
+    async def predicate(ctx):
+        if ctx.author.id == OWNER_ID:
+            return True
+        if ctx.author.guild_permissions.administrator:
+            return True
+        arca_role = ctx.guild.get_role(ARCA_ROLE_ID)
+        if arca_role and arca_role in ctx.author.roles:
+            return True
+        await ctx.send(
+            'You need the **@arca** role to use that command. '
+            'Head to **#get-roles** to sign up!')
+        return False
+    return commands.check(predicate)
+
+
 DATA_FILE = "data.json"
 REG_FILE  = "registration.json"
 
@@ -1283,32 +1314,7 @@ async def rules_cmd(ctx):
 #  ADMIN COMMANDS
 # ─────────────────────────────────────────────────────────────────
 
-def is_owner():
-    async def predicate(ctx):
-        return ctx.author.id == OWNER_ID
-    return commands.check(predicate)
 
-def is_admin():
-    async def predicate(ctx):
-        if ctx.author.id == OWNER_ID:
-            return True
-        return ctx.author.guild_permissions.administrator
-    return commands.check(predicate)
-
-def has_arca():
-    async def predicate(ctx):
-        if ctx.author.id == OWNER_ID:
-            return True
-        if ctx.author.guild_permissions.administrator:
-            return True
-        arca_role = ctx.guild.get_role(ARCA_ROLE_ID)
-        if arca_role and arca_role in ctx.author.roles:
-            return True
-        await ctx.send(
-            'You need the **@arca** role to use that command. '
-            'Head to **#get-roles** to sign up!')
-        return False
-    return commands.check(predicate)
 
 # ─────────────────────────────────────────────────────────────────
 #  REGISTRATION — Driver & Team modals + persistent view
