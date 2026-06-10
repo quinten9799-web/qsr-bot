@@ -1262,11 +1262,10 @@ async def on_ready():
     race_prediction.start()
     race_announcement_scheduler.start()
     await bot.change_presence(activity=discord.Game("QSR Full Throttle Series 🏁"))
-    # Sync guild-scoped slash commands on startup
+    # Sync slash commands globally (propagates within ~1hr, bypasses guild permission issues)
     try:
-        guild_obj = discord.Object(id=GUILD_ID)
-        synced = await bot.tree.sync(guild=guild_obj)
-        print(f"✅  Slash commands synced — {len(synced)} commands registered to guild {GUILD_ID}")
+        synced = await bot.tree.sync()
+        print(f"✅  Slash commands synced globally — {len(synced)} commands")
     except Exception as e:
         print(f"⚠️  Slash command sync failed: {e}")
     if ANTHROPIC_API_KEY:
@@ -2915,7 +2914,7 @@ async def _admin_guard(interaction: discord.Interaction) -> bool:
 
 # ── Driver-facing commands ───────────────────────────────────────
 
-@bot.tree.command(name="ask", description="Ask Dale anything — rules, iRacing tips, NASCAR history, standings", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="ask", description="Ask Dale anything — rules, iRacing tips, NASCAR history, standings")
 @app_commands.describe(question="What do you want to ask Dale?")
 async def slash_ask(interaction: discord.Interaction, question: str):
     if not await _arca_guard(interaction):
@@ -2949,7 +2948,7 @@ async def slash_ask(interaction: discord.Interaction, question: str):
         "Head on over to `#help-desk` or tag an @Admin. Ask me somethin' about racin' though — that I can handle. 🏁")
 
 
-@bot.tree.command(name="standings", description="Current QSR Full Throttle Series championship standings", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="standings", description="Current QSR Full Throttle Series championship standings")
 async def slash_standings(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -2974,7 +2973,7 @@ async def slash_standings(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="schedule", description="Full QSR Full Throttle Series season schedule", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="schedule", description="Full QSR Full Throttle Series season schedule")
 async def slash_schedule(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -2992,7 +2991,7 @@ async def slash_schedule(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="rules", description="Quick QSR Full Throttle Series rules summary", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="rules", description="Quick QSR Full Throttle Series rules summary")
 async def slash_rules(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -3009,7 +3008,7 @@ async def slash_rules(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="numbers", description="Show available and taken car numbers for Season 1", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="numbers", description="Show available and taken car numbers for Season 1")
 async def slash_numbers(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -3026,7 +3025,7 @@ async def slash_numbers(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="teams", description="Team standings and rosters for QSR Full Throttle Series", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="teams", description="Team standings and rosters for QSR Full Throttle Series")
 async def slash_teams(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -3052,7 +3051,7 @@ async def slash_teams(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="mystats", description="Check your own registration status, car number, and team", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="mystats", description="Check your own registration status, car number, and team")
 async def slash_mystats(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -3074,7 +3073,7 @@ async def slash_mystats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="career", description="View a driver's career summary and race-by-race history", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="career", description="View a driver's career summary and race-by-race history")
 @app_commands.describe(driver_name="Driver's full name (partial match works)")
 async def slash_career(interaction: discord.Interaction, driver_name: str):
     if not await _arca_guard(interaction):
@@ -3144,7 +3143,7 @@ async def slash_career(interaction: discord.Interaction, driver_name: str):
     await interaction.followup.send(embed=history_embed)
 
 
-@bot.tree.command(name="statscard", description="Generate a driver stats graphic card", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="statscard", description="Generate a driver stats graphic card")
 @app_commands.describe(driver_name="Driver name (leave blank for your own card)")
 async def slash_statscard(interaction: discord.Interaction, driver_name: str = ""):
     if not await _arca_guard(interaction):
@@ -3232,7 +3231,7 @@ async def slash_statscard(interaction: discord.Interaction, driver_name: str = "
     await interaction.followup.send(file=discord.File(fp=io.BytesIO(img_bytes), filename=filename))
 
 
-@bot.tree.command(name="rivalries", description="See the hottest head-to-head rivalries this season", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="rivalries", description="See the hottest head-to-head rivalries this season")
 async def slash_rivalries(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -3268,7 +3267,7 @@ async def slash_rivalries(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="archetypes", description="See every driver's current archetype label", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="archetypes", description="See every driver's current archetype label")
 async def slash_archetypes(interaction: discord.Interaction):
     if not await _arca_guard(interaction):
         return
@@ -3297,7 +3296,7 @@ async def slash_archetypes(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="jointeam", description="Join an existing team mid-season", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="jointeam", description="Join an existing team mid-season")
 @app_commands.describe(team_name="Exact team name to join")
 async def slash_jointeam(interaction: discord.Interaction, team_name: str):
     if not await _arca_guard(interaction):
@@ -3342,7 +3341,7 @@ async def slash_jointeam(interaction: discord.Interaction, team_name: str):
         f"Team points will count from Race {join_race} forward. 🏁")
 
 
-@bot.tree.command(name="help", description="Show all available Ask Dale bot commands", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="help", description="Show all available Ask Dale bot commands")
 async def slash_help(interaction: discord.Interaction):
     ai_status = "✅ AI Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ Mode"
     embed = discord.Embed(
@@ -3371,7 +3370,7 @@ async def slash_help(interaction: discord.Interaction):
 
 # ── Admin-only slash commands ────────────────────────────────────
 
-@bot.tree.command(name="dalemood", description="Set Dale's current mood (admin only)", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="dalemood", description="Set Dale's current mood (admin only)")
 @app_commands.describe(mood="Choose Dale's mood")
 @app_commands.choices(mood=[
     app_commands.Choice(name="Neutral",   value="neutral"),
@@ -3386,7 +3385,7 @@ async def slash_dalemood(interaction: discord.Interaction, mood: str):
     await interaction.response.send_message(f"✅ Dale's mood set to `{mood}`", ephemeral=True)
 
 
-@bot.tree.command(name="dalerecap", description="Trigger Dale's post-race reaction (admin only)", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="dalerecap", description="Trigger Dale's post-race reaction (admin only)")
 async def slash_dalerecap(interaction: discord.Interaction):
     if not await _admin_guard(interaction):
         return
@@ -3404,9 +3403,9 @@ async def slash_dalerecap(interaction: discord.Interaction):
     await interaction.followup.send("✅ Dale's reaction posted!", ephemeral=True)
 
 
-@bot.tree.command(name="newcomer", description="Welcome a new driver to the QSR garage (admin only)", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="newcomer", description="Welcome a new driver to the QSR garage (admin only)")
 @app_commands.describe(driver_name="Driver's name to welcome")
-async def slash_newcomer(interaction:discord.Interaction, driver_name: str):
+async def slash_newcomer(interaction: discord.Interaction, driver_name: str):
     if not await _admin_guard(interaction):
         return
     guild = bot.get_guild(GUILD_ID)
