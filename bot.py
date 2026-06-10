@@ -533,6 +533,183 @@ def update_streaks(results: list) -> list:
     return callouts
 
 
+# ─────────────────────────────────────────────────────────────────
+#  RIVALRY TRACKING & DRIVER ARCHETYPES
+# ─────────────────────────────────────────────────────────────────
+
+RIVALRIES_FILE = os.path.join(_DATA_DIR, "rivalries.json")
+
+def load_rivalries() -> dict:
+    if not os.path.exists(RIVALRIES_FILE):
+        return {}
+    with open(RIVALRIES_FILE) as f:
+        return json.load(f)
+
+def save_rivalries(r: dict):
+    with open(RIVALRIES_FILE, "w") as f:
+        json.dump(r, f, indent=2)
+
+def rivalry_key(a: str, b: str) -> str:
+    """Canonical key — alphabetical so A-vs-B == B-vs-A."""
+    return "|||".join(sorted([a, b]))
+
+def update_rivalries(results: list) -> list:
+    """
+    Called after every race. Updates head-to-head records and returns
+    a list of callout strings for Dale to use.
+    results: list of {pos, name, ...} sorted by finish position.
+    """
+    if not results:
+        return []
+    rivalries = load_rivalries()
+    callouts   = []
+
+    # Build finish map
+    finish = {r["name"]: r["pos"] for r in results}
+    names  = list(finish.keys())
+
+    # Update every pair that finished within 5 positions of each other
+    for i, a in enumerate(names):
+        for b in names[i+1:]:
+            if abs(finish[a] - finish[b]) > 5:
+                continue
+            key = rivalry_key(a, b)
+            if key not in rivalries:
+                rivalries[key] = {
+                    "drivers": sorted([a, b]),
+                    "races_together": 0,
+                    "wins": {a: 0, b: 0},
+                    "closer_finishes": 0,   # finished within 3 of each other
+                    "heat": 0,              # running intensity score
+                }
+            rv = rivalries[key]
+            rv["races_together"] = rv.get("races_together", 0) + 1
+            winner = a if finish[a] < finish[b] else b
+            rv["wins"][winner] = rv["wins"].get(winner, 0) + 1
+            gap = abs(finish[a] - finish[b])
+            if gap <= 3:
+                rv["closer_finishes"] = rv.get("closer_finishes", 0) + 1
+                rv["heat"] = min(100, rv.get("heat", 0) + 15)
+            else:
+                rv["heat"] = max(0, rv.get("heat", 0) - 5)
+
+    # Surface the hottest rivalry for callouts
+    hot = sorted(
+        [(k, v) for k, v in rivalries.items() if v.get("races_together", 0) >= 2],
+        key=lambda x: x[1].get("heat", 0),
+        reverse=True
+    )
+    if hot:
+        key, rv = hot[0]
+        a, b    = rv["drivers"]
+        wa, wb  = rv["wins"].get(a, 0), rv["wins"].get(b, 0)
+        if rv["heat"] >= 30:
+            callouts.append(
+                f"⚔️ **{a}** vs **{b}** — {wa}-{wb} head-to-head, "
+                f"{rv['closer_finishes']} close battles this season"
+            )
+
+    save_rivalries(rivalries)
+    return callouts
+
+
+def get_rivalry_context() -> str:
+    """
+    Returns a short narrative string injected into Dale's prompts.
+    Covers: hottest rivalry, biggest point gap battles, trending drivers.
+    """
+    data         = load_data()
+    standings    = data.get("standings", {})
+    race_results = data.get("race_results", {})
+    rivalries    = load_rivalries()
+
+    if not standings:
+        return ""
+
+    lines = []
+    sorted_s = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+
+    # Points battle — top 3 gap
+    if len(sorted_s) >= 2:
+        leader     = sorted_s[0]
+        gap_to_2nd = leader[1]["points"] - sorted_s[1][1]["points"]
+        lines.append(
+            f"POINTS BATTLE: {leader[0]} leads by {gap_to_2nd} pts over {sorted_s[1][0]}."
+        )
+
+    # Hottest rivalry
+    hot = sorted(
+        [(k, v) for k, v in rivalries.items() if v.get("races_together", 0) >= 2],
+        key=lambda x: x[1].get("heat", 0),
+        reverse=True
+    )[:2]
+    for _, rv in hot:
+        a, b  = rv["drivers"]
+        wa, wb = rv["wins"].get(a, 0), rv["wins"].get(b, 0)
+        lines.append(
+            f"RIVALRY: {a} vs {b} — {wa}-{wb}, "
+            f"{rv.get('closer_finishes', 0)} close battles, "
+            f"heat score {rv.get('heat', 0)}"
+        )
+
+    # Driver archetypes
+    archetypes = get_driver_archetypes(race_results, standings)
+    if archetypes:
+        arch_str = ", ".join(f"{n} ({t})" for n, t in list(archetypes.items())[:6])
+        lines.append(f"DRIVER ARCHETYPES: {arch_str}")
+
+    # Hot/cold streaks from recent 3 races
+    for driver, hist in race_results.items():
+        if len(hist) < 3:
+            continue
+        recent = [r["finish"] for r in sorted(hist, key=lambda r: r["race"])[-3:]]
+        avg    = sum(recent) / 3
+        if all(p <= 5 for p in recent):
+            lines.append(f"HOT: {driver} has finished top 5 three races running.")
+        elif all(p >= 15 for p in recent):
+            lines.append(f"COLD: {driver} has struggled — finishes {recent} last 3 races.")
+
+    return "\nRIVALRY & NARRATIVE CONTEXT:\n" + "\n".join(lines) if lines else ""
+
+
+def get_driver_archetypes(race_results: dict, standings: dict) -> dict:
+    """
+    Assign each driver a single archetype label based on their stats.
+    Returns {driver_name: archetype_label}
+    """
+    archetypes = {}
+    for driver, hist in race_results.items():
+        if len(hist) < 2:
+            continue
+        info       = standings.get(driver, {})
+        wins       = info.get("wins", 0)
+        races      = info.get("races", 0)
+        incidents  = info.get("incidents", 0)
+        finishes   = [r["finish"] for r in hist]
+        avg_finish = sum(finishes) / len(finishes)
+        avg_inc    = incidents / races if races else 0
+        top5s      = sum(1 for f in finishes if f <= 5)
+        top5_rate  = top5s / races if races else 0
+        # Variance — consistent vs. streaky
+        mean = avg_finish
+        variance = sum((f - mean)**2 for f in finishes) / len(finishes)
+
+        if wins >= 2:
+            archetypes[driver] = "The Hotshot"
+        elif avg_inc >= 6:
+            archetypes[driver] = "The Wrecker"
+        elif avg_inc <= 1.5 and races >= 4:
+            archetypes[driver] = "The Ironman"
+        elif top5_rate >= 0.5:
+            archetypes[driver] = "The Closer"
+        elif variance >= 25:
+            archetypes[driver] = "The Wildcard"
+        else:
+            archetypes[driver] = "The Grinder"
+
+    return archetypes
+
+
 async def ask_claude(question: str, channel_id: int = 0, history: list = None, user_context: str = "") -> str:
     if not ANTHROPIC_API_KEY:
         return None
@@ -551,6 +728,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
         upcoming = [r for r in schedule if not r.get("complete")]
         if upcoming:
             live_context += f"\nNEXT RACE: {upcoming[0]['track']} on {upcoming[0]['date']}"
+    live_context += get_rivalry_context()
     system_prompt = QSR_KNOWLEDGE + live_context + user_context + mood_context()
     messages = []
     if history:
@@ -866,10 +1044,12 @@ async def pre_race_trash_talk():
         return
     sorted_s   = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
     top5_names = [name for name, _ in sorted_s[:5]]
+    rivalry_ctx = get_rivalry_context()
     prompt = (
         f"It's 30 minutes before the QSR Full Throttle Series race tonight. "
         f"You're Dale Earnhardt Sr. Look at these top standings: {top5_names}. "
-        f"Pick two drivers who are close in points or have a natural rivalry and call it out. "
+        f"{rivalry_ctx} "
+        f"Pick two drivers who are close in points or have a heated rivalry and call it out. "
         f"Make a bold prediction or stir the pot a little. "
         f"2-3 sentences max. Sound like pre-race Dale — confident, a little ornery. "
         f"Start with something like 'I tell you what...' or 'Y'all better watch...' or similar."
@@ -908,13 +1088,17 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
         results_summary += f"High incidents: {', '.join(f'{n} ({i}x)' for n, i in incidents)}. "
     if clean:
         results_summary += f"Ran clean: {', '.join(clean[:3])}."
-    streak_callouts = update_streaks(results)
+    streak_callouts  = update_streaks(results)
+    rivalry_callouts = update_rivalries(results)
+    rivalry_ctx      = get_rivalry_context()
     prompt = (
         f"You just watched Race {race_num} of the QSR Full Throttle Series. "
         f"Here's what happened: {results_summary} "
+        f"{rivalry_ctx} "
         f"Give a post-race reaction in Dale's voice. "
         f"Comment on the winner, maybe someone who impressed or disappointed you, "
         f"and if there were wreckers, give your honest opinion. "
+        f"If there's a hot rivalry brewing, call it out. "
         f"3-5 sentences. Sound like Dale in victory lane or the garage after a race. "
         f"Current mood: {get_dale_mood()}."
     )
@@ -928,6 +1112,8 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
         )
         if streak_callouts:
             embed.add_field(name="🔥 Streak Alert", value="\n".join(streak_callouts), inline=False)
+        if rivalry_callouts:
+            embed.add_field(name="⚔️ Rivalry Watch", value="\n".join(rivalry_callouts), inline=False)
         embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
         await ch.send(embed=embed)
     total_incidents = sum(r.get("incidents", 0) for r in results)
@@ -2060,7 +2246,8 @@ def _sc_auto_font(draw, text, max_w, start, bold=False, black=False):
 def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
                        total_pts: int, gap: int, wins: int, top5s: int,
                        top10s: int, races: int, avg_finish, best_finish,
-                       avg_inc, clean_runs: int, recent_finishes: list) -> bytes:
+                       avg_inc, clean_runs: int, recent_finishes: list,
+                       archetype: str = "") -> bytes:
     """
     Generate a 900x500 driver stats card. Returns PNG bytes.
     recent_finishes: list of up to 5 finish positions (most recent first)
@@ -2106,9 +2293,30 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     draw.rectangle([28, name_h + 6, 28 + 340, name_h + 9], fill=_ORANGE)
 
     # Car number + series badge
-    badge_y = name_h + 18
+    badge_y    = name_h + 18
     badge_font = _sc_font(16, bold=True)
     badge_text = f"#{car_number}  ·  QSR HIGH HORSE POWER SERIES  ·  SEASON 1"
+
+    if archetype:
+        arch_icons = {
+            "The Hotshot":  "⚡",
+            "The Wrecker":  "💥",
+            "The Ironman":  "🛡",
+            "The Closer":   "🎯",
+            "The Wildcard": "🃏",
+            "The Grinder":  "⚙",
+        }
+        arch_label = f"{arch_icons.get(archetype, '🏎')}  {archetype.upper()}"
+        arch_font  = _sc_font(13, bold=True)
+        # Archetype pill background
+        arch_bb    = draw.textbbox((0, 0), arch_label, font=arch_font)
+        pill_w     = (arch_bb[2] - arch_bb[0]) + 20
+        pill_h     = 22
+        draw.rectangle([28, badge_y, 28 + pill_w, badge_y + pill_h],
+                       fill=_ORANGE_D, outline=_ORANGE, width=1)
+        draw.text((38, badge_y + 3), arch_label, font=arch_font, fill=_WHITE)
+        badge_y += pill_h + 10
+
     draw.text((28, badge_y), badge_text, font=badge_font, fill=_DIM)
 
     # ── Championship position block ──────────────────────────
@@ -2286,6 +2494,9 @@ async def statscard_cmd(ctx, *, driver_name: str = ""):
 
     await ctx.typing()
 
+    archetypes = get_driver_archetypes(race_results, standings)
+    archetype  = archetypes.get(matched, "")
+
     img_bytes = generate_statscard(
         driver_name=matched,
         car_number=car_num,
@@ -2301,6 +2512,7 @@ async def statscard_cmd(ctx, *, driver_name: str = ""):
         avg_inc=avg_inc,
         clean_runs=clean_runs,
         recent_finishes=recent,
+        archetype=archetype,
     )
 
     if not img_bytes:
@@ -2310,6 +2522,99 @@ async def statscard_cmd(ctx, *, driver_name: str = ""):
     filename = f"statscard_{matched.replace(' ', '_')}.png"
     await ctx.send(
         file=discord.File(fp=io.BytesIO(img_bytes), filename=filename))
+
+
+@bot.command(name="rivalries", aliases=["beef", "h2h"])
+@has_arca()
+async def rivalries_cmd(ctx):
+    """Show the hottest current rivalries in the series."""
+    data         = load_data()
+    standings    = data.get("standings", {})
+    race_results = data.get("race_results", {})
+    rivalries    = load_rivalries()
+
+    if not rivalries:
+        await ctx.send("No rivalry data yet — check back after a few races. 🏁")
+        return
+
+    # Sort by heat score, filter to pairs with 2+ races together
+    hot = sorted(
+        [(k, v) for k, v in rivalries.items() if v.get("races_together", 0) >= 2],
+        key=lambda x: x[1].get("heat", 0),
+        reverse=True
+    )[:5]
+
+    if not hot:
+        await ctx.send("Not enough head-to-head data yet. Race more. 🏁")
+        return
+
+    archetypes = get_driver_archetypes(race_results, standings)
+
+    embed = discord.Embed(
+        title="⚔️ QSR Rivalry Report",
+        color=0xE8520A,
+        timestamp=datetime.utcnow()
+    )
+
+    lines = []
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    for i, (key, rv) in enumerate(hot):
+        a, b   = rv["drivers"]
+        wa, wb = rv["wins"].get(a, 0), rv["wins"].get(b, 0)
+        arch_a = archetypes.get(a, "")
+        arch_b = archetypes.get(b, "")
+        arch_str = ""
+        if arch_a or arch_b:
+            arch_str = f" *({arch_a} vs {arch_b})*" if arch_a and arch_b else ""
+        heat_bar = "🔥" * min(5, max(1, rv.get("heat", 0) // 20))
+        lines.append(
+            f"{medals[i]} **{a}** {wa}–{wb} **{b}**{arch_str}\n"
+            f"  {heat_bar} · {rv.get('races_together', 0)} races · "
+            f"{rv.get('closer_finishes', 0)} close battles"
+        )
+
+    embed.description = "\n\n".join(lines)
+    embed.set_footer(text="Heat score rises when drivers battle close. QSR High Horse Power Series.")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="archetypes", aliases=["types", "drivers"])
+@has_arca()
+async def archetypes_cmd(ctx):
+    """Show every driver's current archetype label."""
+    data         = load_data()
+    standings    = data.get("standings", {})
+    race_results = data.get("race_results", {})
+
+    archetypes = get_driver_archetypes(race_results, standings)
+    if not archetypes:
+        await ctx.send("No archetype data yet — need at least 2 races per driver. 🏁")
+        return
+
+    sorted_s = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    icons = {
+        "The Hotshot":  "⚡",
+        "The Wrecker":  "💥",
+        "The Ironman":  "🛡️",
+        "The Closer":   "🎯",
+        "The Wildcard": "🃏",
+        "The Grinder":  "⚙️",
+    }
+    lines = []
+    for driver, info in sorted_s:
+        arch = archetypes.get(driver)
+        if arch:
+            icon = icons.get(arch, "🏎️")
+            lines.append(f"{icon} **{driver}** — *{arch}* · {info['points']} pts")
+
+    embed = discord.Embed(
+        title="🏎️ Driver Archetypes — Season 1",
+        description="\n".join(lines) or "No data yet.",
+        color=0xE8520A,
+        timestamp=datetime.utcnow()
+    )
+    embed.set_footer(text="Archetypes update after every race. QSR High Horse Power Series.")
+    await ctx.send(embed=embed)
 
 
 @bot.command(name="help")
@@ -2331,6 +2636,8 @@ async def help_cmd(ctx):
     embed.add_field(name="!jointeam <Name>",   value="Join an existing team mid-season", inline=False)
     embed.add_field(name="!mystats",           value="Your registration profile and team", inline=False)
     embed.add_field(name="!statscard [Name]",  value="Driver stats graphic — yours or any driver's", inline=False)
+    embed.add_field(name="!rivalries",          value="Hottest head-to-head rivalries this season", inline=False)
+    embed.add_field(name="!archetypes",         value="Every driver's current archetype label", inline=False)
     embed.add_field(name="── Admin ──",        value="\u200b", inline=False)
     embed.add_field(name="!setupregistration", value="Post registration embed in #registration (owner)", inline=False)
     embed.add_field(name="!loadschedule",      value="Load schedule from CSV (Track,Date)", inline=False)
