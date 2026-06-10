@@ -686,6 +686,21 @@ async def race_announcement_scheduler():
         print(f"⚠️ No race_config for Race {race_num} — skipping announcement")
         return
 
+    # Safety check: verify today's date matches this race's scheduled date
+    # Prevents wrong announcement if race_number wasn't updated after last race
+    race_date_str = cfg.get("date", "")
+    if race_date_str:
+        try:
+            from datetime import datetime as _dt
+            race_date = _dt.strptime(race_date_str.strip(), "%B %d, %Y")
+            today     = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+            race_day  = race_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            if today != race_day:
+                print(f"⚠️ Race {race_num} date mismatch: config says {race_date_str}, today is {now_utc.strftime('%B %d, %Y')} — skipping")
+                return
+        except Exception as e:
+            print(f"⚠️ Could not parse race date '{race_date_str}': {e} — proceeding anyway")
+
     channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
     if not channel:
         print(f"❌ Announcement channel not found")
