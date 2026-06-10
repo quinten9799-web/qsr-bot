@@ -2182,6 +2182,38 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     if not recent_finishes:
         draw.text((28, bar_y + 8), "No races yet", font=_sc_font(16), fill=_DIM)
 
+    # ── QSR logo — top right ─────────────────────────────────
+    logo_candidates = [
+        os.path.join(_DATA_DIR, "qsr_league_logo.png"),
+        os.path.join(_DATA_DIR, "B9C7F26D6B0347F5B38F8895CF7A17DC.png"),
+        "qsr_league_logo.png",
+        "B9C7F26D6B0347F5B38F8895CF7A17DC.png",
+    ]
+    for logo_path in logo_candidates:
+        if os.path.exists(logo_path):
+            try:
+                from PIL import Image as _PILImg
+                logo_raw = _PILImg.open(logo_path).convert("RGBA")
+                # Strip near-black background
+                import numpy as _np
+                data_arr = _np.array(logo_raw)
+                r, g, b, a = data_arr[:,:,0], data_arr[:,:,1], data_arr[:,:,2], data_arr[:,:,3]
+                mask = (r < 40) & (g < 40) & (b < 40)
+                data_arr[:,:,3] = _np.where(mask, 0, a)
+                logo_clean = _PILImg.fromarray(data_arr)
+                logo_w = 200
+                logo_h = int(logo_clean.height * (logo_w / logo_clean.width))
+                logo_clean = logo_clean.resize((logo_w, logo_h), _PILImg.LANCZOS)
+                logo_x = W - logo_w - 18
+                logo_y = 18
+                img.paste(logo_clean, (logo_x, logo_y), logo_clean)
+            except Exception:
+                pass
+            break
+
+    # Numpy fallback — pixel-by-pixel if numpy not available
+    # (already handled above via try/except)
+
     # ── Footer line ──────────────────────────────────────────
     draw.rectangle([0, H - 24, W, H], fill=(14, 14, 14))
     footer_font = _sc_font(11)
