@@ -1378,18 +1378,34 @@ async def on_member_join(member: discord.Member):
                 "**QSR Full Throttle Series** — We run the ARCA car at full 110% horsepower. "
                 "No restrictions. Real power. Real racin'.\n\n"
                 "**Here's what you need to do:**\n"
-                "1️⃣  Grab your roles → `#get-roles`\n"
-                "2️⃣  Read the rules → `#league-rules`\n"
-                "3️⃣  Claim your number → `#number-request`\n"
-                "4️⃣  Sign up for the next race → `#registration`\n\n"
-                "Any questions, you ask Dale in `#ask-dale`. "
-                "I'll tell you straight. See you on the track, son. 🏁"
+                f"1️⃣  Grab your roles → {ch_link(member.guild, 'get-roles')}\n"
+                f"2️⃣  Read the rules → {ch_link(member.guild, 'league-rules')}\n"
+                f"3️⃣  Sign up for the race → {ch_link(member.guild, 'registration')}\n"
+                f"4️⃣  Claim your number → {ch_link(member.guild, 'number-request')}\n\n"
+                f"Any questions, you ask Dale in {ch_link(member.guild, 'ask-dale')}. "
+                "I'll tell you straight. See you at Michigan, son. 🏁"
             ),
             color=0xE8272A
         )
         embed.set_footer(text="QSR Simulations | Full Throttle Series")
         await ch.send(embed=embed)
 
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    """Notify staff-chat when someone leaves the server."""
+    staff_ch = discord.utils.get(member.guild.text_channels, name=STAFF_CH)
+    if staff_ch:
+        embed = discord.Embed(
+            title="🚪 Member Left the Server",
+            description=f"**{member.name}** (`{member}`) has left QSR Simulations.",
+            color=0x95a5a6,
+            timestamp=datetime.utcnow(),
+        )
+        embed.add_field(name="Discord ID", value=str(member.id), inline=True)
+        embed.add_field(name="Account Created", value=member.created_at.strftime("%b %d, %Y"), inline=True)
+        embed.set_footer(text="QSR Race Control")
+        await staff_ch.send(embed=embed)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1518,6 +1534,12 @@ async def rules_cmd(ctx):
 
 STAFF_CH = "staff-chat"
 
+def ch_link(guild: discord.Guild, name: str) -> str:
+    """Return a clickable channel mention or fallback to #name."""
+    ch = discord.utils.get(guild.text_channels, name=name)
+    return f"<#{ch.id}>" if ch else f"`#{name}`"
+
+
 class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
     full_name = discord.ui.TextInput(
         label="Full Name",
@@ -1621,7 +1643,7 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
                    f"Car **#{num_final}** is yours.\n"
                    f"Status: **Confirmed** — pending payment verification.\n"
                    f"Entry fee: **${reg['entry_fee']}** — payment details in `#registration`.\n"
-                   f"See you at Daytona. 🏁")
+                   f"See you at Michigan. 🏁")
         else:
             pos = sum(1 for d in reg["drivers"] if d["status"] == "Waitlist")
             msg = (f"📋 **{name}, you're on the waitlist** (position {pos}).\n"
@@ -1811,17 +1833,20 @@ async def setup_registration_cmd(ctx):
         await ctx.send("❌ #registration channel not found. Create it first.")
         return
     reg = load_reg()
+    rules_link = ch_link(ctx.guild, "league-rules")
+    dale_link  = ch_link(ctx.guild, "ask-dale")
     embed = discord.Embed(
         title="🏁 QSR Full Throttle Series — Season 1 Registration",
         description=(
-            "**Welcome to the QSR Full Throttle Series.**\n\n"
-            "Click **Register as Driver** to claim your spot and car number.\n"
-            "Click **Register a Team** to create a team and start earning team points.\n\n"
+            f"**Welcome to the QSR Full Throttle Series.**\n\n"
+            f"Click **Register as Driver** to claim your spot and car number.\n"
+            f"Click **Register a Team** to create a team and start earning team points.\n\n"
             f"💰 **Entry Fee:** ${reg['entry_fee']} per driver\n"
             f"🏎️ **Max Field:** {reg['max_field']} drivers\n"
-            f"📅 **Season Start:** July 20, 2026 — Daytona\n\n"
-            "Read the rulebook in `#league-rules` before registering.\n"
-            "Questions? Ask Dale in `#ask-dale`. 🏁"
+            f"📅 **Season Start:** July 20, 2026 — Michigan International Speedway\n\n"
+            f"Read the rulebook in {rules_link} before registering.\n"
+            f"Questions? Ask Dale in {dale_link}. 🏁\n"
+            f"💡 Use `/numbers` to see available car numbers before registering."
         ),
         color=0xC0392B,
     )
