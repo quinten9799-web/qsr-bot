@@ -2283,18 +2283,18 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     draw.text((W - nw - 20, H // 2 - 170), num_str,
               font=num_font, fill=(28, 28, 28))
 
-    # ── Driver name ─────────────────────────────────────────
-    name_font = _sc_auto_font(draw, driver_name, 480, 56, black=True)
+    # ── Driver name — constrained to left column ────────────
+    name_font = _sc_auto_font(draw, driver_name, 300, 56, black=True)
     draw.text((28, 28), driver_name, font=name_font, fill=_WHITE)
 
     # Orange underline
     nb2   = draw.textbbox((28, 28), driver_name, font=name_font)
     name_h = nb2[3]
-    draw.rectangle([28, name_h + 6, 28 + 340, name_h + 9], fill=_ORANGE)
+    draw.rectangle([28, name_h + 6, 320, name_h + 9], fill=_ORANGE)
 
     # Car number + series badge
     badge_y    = name_h + 18
-    badge_font = _sc_font(16, bold=True)
+    badge_font = _sc_font(11, bold=True)
     badge_text = f"#{car_number}  ·  QSR HIGH HORSE POWER SERIES  ·  SEASON 1"
 
     if archetype:
@@ -2308,7 +2308,6 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         }
         arch_label = f"{arch_icons.get(archetype, '🏎')}  {archetype.upper()}"
         arch_font  = _sc_font(13, bold=True)
-        # Archetype pill background
         arch_bb    = draw.textbbox((0, 0), arch_label, font=arch_font)
         pill_w     = (arch_bb[2] - arch_bb[0]) + 20
         pill_h     = 22
@@ -2320,22 +2319,22 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     draw.text((28, badge_y), badge_text, font=badge_font, fill=_DIM)
 
     # ── Championship position block ──────────────────────────
-    pos_y   = badge_y + 40
-    pos_font = _sc_font(80, black=True)
+    pos_y    = badge_y + 36
+    pos_font = _sc_font(72, black=True)
     pos_str  = f"P{champ_pos}"
     draw.text((28, pos_y), pos_str, font=pos_font, fill=_ORANGE)
-    pb       = draw.textbbox((28, pos_y), pos_str, font=pos_font)
-    pts_font = _sc_font(18, bold=True)
-    draw.text((28, pb[3] + 4), f"{total_pts} PTS", font=pts_font, fill=_WHITE)
+    pb        = draw.textbbox((28, pos_y), pos_str, font=pos_font)
+    pts_font  = _sc_font(16, bold=True)
+    draw.text((28, pb[3] + 4),  f"{total_pts} PTS", font=pts_font, fill=_WHITE)
     gap_text  = "CHAMPIONSHIP LEADER" if gap == 0 else f"-{gap} PTS TO LEADER"
     gap_color = _GOLD if gap == 0 else _DIM
-    draw.text((28, pb[3] + 28), gap_text, font=_sc_font(13), fill=gap_color)
+    draw.text((28, pb[3] + 24), gap_text, font=_sc_font(12), fill=gap_color)
 
-    # ── Stat grid (2 columns × 3 rows) ──────────────────────
-    GRID_X  = 340
-    GRID_Y  = 80
-    COL_W   = 180
-    ROW_H   = 88
+    # ── Stat grid — right column, top-aligned ────────────────
+    GRID_X  = 360
+    GRID_Y  = 20
+    COL_W   = 162
+    ROW_H   = 82
 
     stats = [
         ("WINS",         str(wins),                    _GOLD if wins > 0 else _WHITE),
@@ -2348,8 +2347,7 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         ("CLEAN RUNS",   str(clean_runs),              _GREEN if clean_runs > 0 else _WHITE),
     ]
 
-    lbl_font = _sc_font(12, bold=True)
-    val_font = _sc_font(34, black=True)
+    lbl_font = _sc_font(11, bold=True)
 
     for idx, (label, value, color) in enumerate(stats):
         col = idx % 2
@@ -2357,12 +2355,10 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         x   = GRID_X + col * COL_W
         y   = GRID_Y + row * ROW_H
 
-        # Card background
         draw.rectangle([x + 4, y + 4, x + COL_W - 8, y + ROW_H - 6],
                         fill=(22, 22, 22), outline=_BORDER, width=1)
         draw.text((x + 14, y + 10), label, font=lbl_font, fill=_DIM)
-        # Auto-scale value if needed
-        vf = _sc_auto_font(draw, value, COL_W - 28, 34, black=True)
+        vf = _sc_auto_font(draw, value, COL_W - 28, 30, black=True)
         draw.text((x + 14, y + 26), value, font=vf, fill=color)
 
     # ── Recent form bar ──────────────────────────────────────
@@ -2401,26 +2397,24 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         if os.path.exists(logo_path):
             try:
                 from PIL import Image as _PILImg
-                logo_raw = _PILImg.open(logo_path).convert("RGBA")
-                # Strip near-black background
                 import numpy as _np
+                logo_raw = _PILImg.open(logo_path).convert("RGBA")
+                logo_w   = 190
+                logo_h   = int(logo_raw.height * (logo_w / logo_raw.width))
+                logo_raw = logo_raw.resize((logo_w, logo_h), _PILImg.LANCZOS)
+                lx, ly   = W - logo_w - 14, 14
+                # Subtle backing panel so logo reads against the dark card bg
+                draw.rectangle([lx - 8, ly - 6, lx + logo_w + 8, ly + logo_h + 6],
+                               fill=(22, 22, 22), outline=(50, 50, 50), width=1)
                 data_arr = _np.array(logo_raw)
                 r, g, b, a = data_arr[:,:,0], data_arr[:,:,1], data_arr[:,:,2], data_arr[:,:,3]
                 mask = (r < 40) & (g < 40) & (b < 40)
                 data_arr[:,:,3] = _np.where(mask, 0, a)
                 logo_clean = _PILImg.fromarray(data_arr)
-                logo_w = 200
-                logo_h = int(logo_clean.height * (logo_w / logo_clean.width))
-                logo_clean = logo_clean.resize((logo_w, logo_h), _PILImg.LANCZOS)
-                logo_x = W - logo_w - 18
-                logo_y = 18
-                img.paste(logo_clean, (logo_x, logo_y), logo_clean)
+                img.paste(logo_clean, (lx, ly), logo_clean)
             except Exception:
                 pass
             break
-
-    # Numpy fallback — pixel-by-pixel if numpy not available
-    # (already handled above via try/except)
 
     # ── Footer line ──────────────────────────────────────────
     draw.rectangle([0, H - 24, W, H], fill=(14, 14, 14))
