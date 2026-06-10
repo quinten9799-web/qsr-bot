@@ -3406,7 +3406,7 @@ async def slash_dalerecap(interaction: discord.Interaction):
 
 @bot.tree.command(name="newcomer", description="Welcome a new driver to the QSR garage (admin only)", guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(driver_name="Driver's name to welcome")
-async def slash_newcomer(interaction: discord.Interaction, driver_name: str):
+async def slash_newcomer(interaction:discord.Interaction, driver_name: str):
     if not await _admin_guard(interaction):
         return
     guild = bot.get_guild(GUILD_ID)
