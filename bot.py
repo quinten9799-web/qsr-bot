@@ -43,17 +43,8 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-# ─────────────────────────────────────────────────────────────────
-#  PERSISTENT STORAGE — Railway Volume mounted at /data
-#  All JSON files live here so they survive container restarts.
-#  If the volume isn't mounted (local dev), falls back to ./data/
-# ─────────────────────────────────────────────────────────────────
-DATA_DIR = "/data" if os.path.isdir("/data") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(os.path.join(DATA_DIR, "backups"), exist_ok=True)
-
-DATA_FILE = os.path.join(DATA_DIR, "data.json")
-REG_FILE  = os.path.join(DATA_DIR, "registration.json")
+DATA_FILE = "data.json"
+REG_FILE  = "registration.json"
 
 # ─────────────────────────────────────────────────────────────────
 #  REGISTRATION DATA HELPERS
@@ -134,7 +125,7 @@ def save_data(data: dict):
     Keeps the 20 most recent backups in the /backups directory.
     """
     if os.path.exists(DATA_FILE):
-        backup_dir = os.path.join(DATA_DIR, "backups")
+        backup_dir = "backups"
         os.makedirs(backup_dir, exist_ok=True)
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         backup_path = os.path.join(backup_dir, f"data_{ts}.json")
@@ -383,7 +374,7 @@ You know everything about:
 CONVERSATION_HISTORY = {}
 MAX_HISTORY = 10
 
-USER_MEMORY_FILE = os.path.join(DATA_DIR, "user_memory.json")
+USER_MEMORY_FILE = "user_memory.json"
 
 def load_user_memory() -> dict:
     if not os.path.exists(USER_MEMORY_FILE):
@@ -445,7 +436,7 @@ def update_user_memory(user_id: int, display_name: str, message_content: str, da
 #  DALE'S MOOD SYSTEM
 # ─────────────────────────────────────────────────────────────────
 
-MOOD_FILE = os.path.join(DATA_DIR, "dale_mood.json")
+MOOD_FILE = "dale_mood.json"
 
 def get_dale_mood() -> str:
     if not os.path.exists(MOOD_FILE):
@@ -473,7 +464,7 @@ def mood_context() -> str:
 #  WIN STREAK & NEWCOMER TRACKER
 # ─────────────────────────────────────────────────────────────────
 
-STREAKS_FILE = os.path.join(DATA_DIR, "streaks.json")
+STREAKS_FILE = "streaks.json"
 
 def load_streaks() -> dict:
     if not os.path.exists(STREAKS_FILE):
@@ -603,7 +594,7 @@ FAQ = {
 
 ANNOUNCEMENT_CHANNEL_ID = 1173977366117232731
 ARCA_ROLE_ID            = 1173980377279377538
-POSTED_FILE             = os.path.join(DATA_DIR, "posted_announcements.json")
+POSTED_FILE             = "posted_announcements.json"
 
 RACE_ANNOUNCEMENTS = [
     {
@@ -1076,7 +1067,7 @@ async def newcomer_callout(guild: discord.Guild, driver_name: str):
 #  DALE'S PREDICTION
 # ─────────────────────────────────────────────────────────────────
 
-PREDICTION_FILE = os.path.join(DATA_DIR, "dale_prediction.json")
+PREDICTION_FILE = "dale_prediction.json"
 
 @tasks.loop(minutes=1)
 async def race_prediction():
@@ -1306,6 +1297,7 @@ async def on_member_join(member: discord.Member):
 # ─────────────────────────────────────────────────────────────────
 
 @bot.command(name="ask")
+@has_arca()
 async def ask(ctx, *, question: str = ""):
     if not question:
         await ctx.send(
@@ -1353,10 +1345,12 @@ async def ask(ctx, *, question: str = ""):
         )
 
 @bot.command(name="dale")
+@has_arca()
 async def dale(ctx, *, question: str = ""):
     await ask(ctx, question=question)
 
 @bot.command(name="standings")
+@has_arca()
 async def standings(ctx):
     data = load_data()
     s    = data.get("standings", {})
@@ -1381,6 +1375,7 @@ async def standings(ctx):
     await ctx.send(embed=embed)
 
 @bot.command(name="schedule")
+@has_arca()
 async def schedule_cmd(ctx):
     data  = load_data()
     sched = data.get("schedule", [])
@@ -1396,6 +1391,7 @@ async def schedule_cmd(ctx):
     await ctx.send(embed=embed)
 
 @bot.command(name="rules")
+@has_arca()
 async def rules_cmd(ctx):
     embed = discord.Embed(title="📋 QSR Full Throttle Series — Quick Rules", color=0xE8272A)
     embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
@@ -1417,6 +1413,28 @@ async def rules_cmd(ctx):
 def is_owner():
     async def predicate(ctx):
         return ctx.author.id == OWNER_ID
+    return commands.check(predicate)
+
+def is_admin():
+    async def predicate(ctx):
+        if ctx.author.id == OWNER_ID:
+            return True
+        return ctx.author.guild_permissions.administrator
+    return commands.check(predicate)
+
+def has_arca():
+    async def predicate(ctx):
+        if ctx.author.id == OWNER_ID:
+            return True
+        if ctx.author.guild_permissions.administrator:
+            return True
+        arca_role = ctx.guild.get_role(ARCA_ROLE_ID)
+        if arca_role and arca_role in ctx.author.roles:
+            return True
+        await ctx.send(
+            'You need the **@arca** role to use that command. '
+            'Head to **#get-roles** to sign up!')
+        return False
     return commands.check(predicate)
 
 # ─────────────────────────────────────────────────────────────────
@@ -1709,7 +1727,7 @@ class RegistrationView(discord.ui.View):
 
 
 @bot.command(name="setupregistration")
-@is_owner()
+@is_admin()
 async def setup_registration_cmd(ctx):
     """Post persistent registration embed in #registration. Run once."""
     guild = ctx.guild
@@ -1738,6 +1756,7 @@ async def setup_registration_cmd(ctx):
 
 
 @bot.command(name="jointeam")
+@has_arca()
 async def join_team_cmd(ctx, *, team_name: str = ""):
     """Join an existing team mid-season. Points prior to joining don't carry over."""
     if not team_name:
@@ -1797,6 +1816,7 @@ async def join_team_cmd(ctx, *, team_name: str = ""):
 
 
 @bot.command(name="teams")
+@has_arca()
 async def teams_cmd(ctx):
     """List all registered teams and their points."""
     reg = load_reg()
@@ -1824,6 +1844,7 @@ async def teams_cmd(ctx):
 
 
 @bot.command(name="numbers")
+@has_arca()
 async def numbers_cmd(ctx):
     """Show available and taken car numbers."""
     taken = taken_numbers()
@@ -1845,6 +1866,7 @@ async def numbers_cmd(ctx):
 
 
 @bot.command(name="mystats")
+@has_arca()
 async def mystats_cmd(ctx):
     """Check your own registration status and team."""
     discord_id = str(ctx.author.id)
@@ -1925,7 +1947,7 @@ class RoleSelectView(discord.ui.View):
 
 
 @bot.command(name="setuproles")
-@is_owner()
+@is_admin()
 async def setup_roles_cmd(ctx):
     """Post the role selection dropdown in #get-roles. Run once."""
     guild = ctx.guild
@@ -1950,7 +1972,7 @@ async def setup_roles_cmd(ctx):
 
 
 @bot.command(name="loadschedule")
-@is_owner()
+@is_admin()
 async def load_schedule(ctx):
     if not ctx.message.attachments:
         await ctx.send("📎 Attach a CSV with columns: `Track,Date`")
@@ -1963,7 +1985,7 @@ async def load_schedule(ctx):
     await ctx.send(f"✅ Schedule loaded — {len(data['schedule'])} races.")
 
 @bot.command(name="restructure")
-@is_owner()
+@is_admin()
 async def restructure(ctx):
     NEW_STRUCTURE = {
         "📋 FRONT DESK": ["welcome", "get-roles", "announcements", "qsr-record-book"],
@@ -1996,6 +2018,7 @@ async def restructure(ctx):
     await ctx.send("✅ Server restructured! Manually delete any old channels you no longer need.")
 
 @bot.command(name="career")
+@has_arca()
 async def career_cmd(ctx, *, driver_name: str = ""):
     """
     !career <Driver Name>
@@ -2115,6 +2138,7 @@ async def career_cmd(ctx, *, driver_name: str = ""):
 
 
 @bot.command(name="help")
+@has_arca()
 async def help_cmd(ctx):
     ai_status = "✅ AI Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ Mode"
     embed = discord.Embed(
@@ -2138,7 +2162,7 @@ async def help_cmd(ctx):
     await ctx.send(embed=embed)
 
 @bot.command(name="dalemem")
-@is_owner()
+@is_admin()
 async def dale_memory_cmd(ctx, *, username: str = ""):
     memory = load_user_memory()
     if "reset" in username.lower() and ctx.message.mentions:
@@ -2167,14 +2191,14 @@ async def dale_memory_cmd(ctx, *, username: str = ""):
     await ctx.send(embed=embed)
 
 @bot.command(name="newcomer")
-@is_owner()
+@is_admin()
 async def newcomer_cmd(ctx, *, driver_name: str):
     guild = bot.get_guild(GUILD_ID)
     await newcomer_callout(guild, driver_name)
     await ctx.send(f"✅ Dale welcomed {driver_name} to the garage!")
 
 @bot.command(name="dalerecap")
-@is_owner()
+@is_admin()
 async def dale_recap_cmd(ctx):
     data     = load_data()
     history  = data.get("race_history", {})
@@ -2190,7 +2214,7 @@ async def dale_recap_cmd(ctx):
     await ctx.send("✅ Dale's reaction posted!")
 
 @bot.command(name="dalemood")
-@is_owner()
+@is_admin()
 async def dale_mood_cmd(ctx, mood: str = ""):
     if mood in ["neutral", "good", "grumpy", "fired_up"]:
         set_dale_mood(mood, "Manually set by admin")
@@ -2246,7 +2270,7 @@ def post_data():
             return jsonify({"error": "Invalid payload"}), 400
         # Backup before overwrite
         if os.path.exists(DATA_FILE):
-            backup_dir = os.path.join(DATA_DIR, "backups")
+            backup_dir = "backups"
             os.makedirs(backup_dir, exist_ok=True)
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             shutil.copy2(DATA_FILE, os.path.join(backup_dir, f"data_{ts}.json"))
