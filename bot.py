@@ -74,8 +74,10 @@ def has_arca():
     return commands.check(predicate)
 
 
-DATA_FILE = "data.json"
-REG_FILE  = "registration.json"
+# Persistent storage — Railway volume at /data, local fallback
+_DATA_DIR = "/data" if os.path.isdir("/data") else "."
+DATA_FILE = os.path.join(_DATA_DIR, "data.json")
+REG_FILE  = os.path.join(_DATA_DIR, "registration.json")
 
 # ─────────────────────────────────────────────────────────────────
 #  REGISTRATION DATA HELPERS
@@ -156,7 +158,7 @@ def save_data(data: dict):
     Keeps the 20 most recent backups in the /backups directory.
     """
     if os.path.exists(DATA_FILE):
-        backup_dir = "backups"
+        backup_dir = os.path.join(_DATA_DIR, "backups")
         os.makedirs(backup_dir, exist_ok=True)
         ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         backup_path = os.path.join(backup_dir, f"data_{ts}.json")
@@ -405,7 +407,7 @@ You know everything about:
 CONVERSATION_HISTORY = {}
 MAX_HISTORY = 10
 
-USER_MEMORY_FILE = "user_memory.json"
+USER_MEMORY_FILE = os.path.join(_DATA_DIR, "user_memory.json")
 
 def load_user_memory() -> dict:
     if not os.path.exists(USER_MEMORY_FILE):
@@ -467,7 +469,7 @@ def update_user_memory(user_id: int, display_name: str, message_content: str, da
 #  DALE'S MOOD SYSTEM
 # ─────────────────────────────────────────────────────────────────
 
-MOOD_FILE = "dale_mood.json"
+MOOD_FILE = os.path.join(_DATA_DIR, "dale_mood.json")
 
 def get_dale_mood() -> str:
     if not os.path.exists(MOOD_FILE):
@@ -495,7 +497,7 @@ def mood_context() -> str:
 #  WIN STREAK & NEWCOMER TRACKER
 # ─────────────────────────────────────────────────────────────────
 
-STREAKS_FILE = "streaks.json"
+STREAKS_FILE = os.path.join(_DATA_DIR, "streaks.json")
 
 def load_streaks() -> dict:
     if not os.path.exists(STREAKS_FILE):
@@ -642,7 +644,7 @@ SCHEDULE = [
     {"race":13, "date":"October 12, 2026",   "track":"Kansas Speedway"},
     {"race":14, "date":"October 19, 2026",   "track":"Homestead-Miami Speedway"},
 ]
-POSTED_FILE             = "posted_announcements.json"
+POSTED_FILE             = os.path.join(_DATA_DIR, "posted_announcements.json")
 
 # RACE_ANNOUNCEMENTS replaced — announcements now built dynamically
 # from race_config in data.json, set via the Race Setup table in qsr_app.py
@@ -970,7 +972,7 @@ async def newcomer_callout(guild: discord.Guild, driver_name: str):
 #  DALE'S PREDICTION
 # ─────────────────────────────────────────────────────────────────
 
-PREDICTION_FILE = "dale_prediction.json"
+PREDICTION_FILE = os.path.join(_DATA_DIR, "dale_prediction.json")
 
 @tasks.loop(minutes=1)
 async def race_prediction():
@@ -2149,7 +2151,7 @@ def post_data():
             return jsonify({"error": "Invalid payload"}), 400
         # Backup before overwrite
         if os.path.exists(DATA_FILE):
-            backup_dir = "backups"
+            backup_dir = os.path.join(_DATA_DIR, "backups")
             os.makedirs(backup_dir, exist_ok=True)
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             shutil.copy2(DATA_FILE, os.path.join(backup_dir, f"data_{ts}.json"))
