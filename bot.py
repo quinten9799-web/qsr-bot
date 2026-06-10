@@ -594,265 +594,63 @@ FAQ = {
 
 ANNOUNCEMENT_CHANNEL_ID = 1173977366117232731
 ARCA_ROLE_ID            = 1173980377279377538
+
+SCHEDULE = [
+    {"race":1,  "date":"July 20, 2026",      "track":"Michigan International Speedway"},
+    {"race":2,  "date":"July 27, 2026",      "track":"Las Vegas Motor Speedway"},
+    {"race":3,  "date":"August 3, 2026",     "track":"Chicagoland Speedway"},
+    {"race":4,  "date":"August 10, 2026",    "track":"Charlotte Motor Speedway"},
+    {"race":5,  "date":"August 17, 2026",    "track":"Darlington Raceway"},
+    {"race":6,  "date":"August 24, 2026",    "track":"Watkins Glen International"},
+    {"race":7,  "date":"August 31, 2026",    "track":"Iowa Speedway"},
+    {"race":8,  "date":"September 7, 2026",  "track":"Dover Motor Speedway"},
+    {"race":9,  "date":"September 14, 2026", "track":"Rockingham Speedway"},
+    {"race":10, "date":"September 21, 2026", "track":"Lime Rock Park"},
+    {"race":11, "date":"September 28, 2026", "track":"New Hampshire Motor Speedway"},
+    {"race":12, "date":"October 5, 2026",    "track":"Atlanta Motor Speedway"},
+    {"race":13, "date":"October 12, 2026",   "track":"Kansas Speedway"},
+    {"race":14, "date":"October 19, 2026",   "track":"Homestead-Miami Speedway"},
+]
 POSTED_FILE             = "posted_announcements.json"
 
-RACE_ANNOUNCEMENTS = [
-    {
-        "date": "2026-07-20",
-        "track": "Daytona International Speedway",
-        "race_num": 1,
-        "message": (
-            "🏁 **RACE 1 — DAYTONA INTERNATIONAL SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "The QSR Full Throttle Series fires up tonight at the Great American Speedway. "
-            "Daytona. Where legends are made and seasons are defined. "
-            "You want to set the tone for the whole year? Tonight's your shot.\n\n"
-            "🗓️ **Monday, July 20 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts on the line — Championship starts NOW\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Let's go racing. 🔥"
-        )
-    },
-    {
-        "date": "2026-07-27",
-        "track": "Bristol Motor Speedway",
-        "race_num": 2,
-        "message": (
-            "🏁 **RACE 2 — BRISTOL MOTOR SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "The Concrete Colosseum. Half-mile of pure chaos. "
-            "Bristol separates the racers from the crashers — and tonight we find out which one you are.\n\n"
-            "🗓️ **Monday, July 27 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 2 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Bristol doesn't lie. Neither does the scoreboard. 🔥"
-        )
-    },
-    {
-        "date": "2026-08-03",
-        "track": "Atlanta Motor Speedway",
-        "race_num": 3,
-        "message": (
-            "🏁 **RACE 3 — ATLANTA MOTOR SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "Wide open, mile-and-a-half, pack racing at its finest. "
-            "Atlanta rewards the brave and punishes the timid. "
-            "If you've got it — tonight's where you show it.\n\n"
-            "🗓️ **Monday, August 3 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 3 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Wide open throttle. Let's go. 🔥"
-        )
-    },
-    {
-        "date": "2026-08-10",
-        "track": "Richmond Raceway",
-        "race_num": 4,
-        "message": (
-            "🏁 **RACE 4 — RICHMOND RACEWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "The Action Track. Richmond's a chess match at 150mph — "
-            "you need track position, you need patience, and you need to know when to pounce. "
-            "The points battle heats up tonight.\n\n"
-            "🗓️ **Monday, August 10 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 4 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "No shortcuts at Richmond. Earn it. 🔥"
-        )
-    },
-    {
-        "date": "2026-08-17",
-        "track": "Michigan International Speedway",
-        "race_num": 5,
-        "message": (
-            "🏁 **RACE 5 — MICHIGAN INTERNATIONAL SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "Two miles of pure speed. Michigan is where horsepower talks and everything else walks. "
-            "ARCA at 110% HP on a two-mile oval — tonight's going to be fast, loud, and dangerous. Perfect.\n\n"
-            "🗓️ **Monday, August 17 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 5 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Top speed. No mercy. 🔥"
-        )
-    },
-    {
-        "date": "2026-08-24",
-        "track": "Pocono Raceway",
-        "race_num": 6,
-        "message": (
-            "🏁 **RACE 6 — POCONO RACEWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "The Tricky Triangle. Three completely different corners, three different styles — "
-            "Pocono exposes weaknesses in your setup and your nerve. "
-            "Adapt fast or get left behind.\n\n"
-            "🗓️ **Monday, August 24 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 6 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Three corners. One winner. 🔥"
-        )
-    },
-    {
-        "date": "2026-08-31",
-        "track": "Talladega Superspeedway",
-        "race_num": 7,
-        "message": (
-            "🏁 **RACE 7 — TALLADEGA SUPERSPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "The Big One is coming.\n\n"
-            "Talladega. 2.66 miles. 200mph pack racing. "
-            "Nobody goes to Talladega expecting a quiet night — "
-            "and nobody leaves the same. The most dangerous race on the calendar. "
-            "The most legendary too.\n\n"
-            "🗓️ **Monday, August 31 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 7 of 14 — HALFWAY\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Survive Talladega. Change the season. 🔥"
-        )
-    },
-    {
-        "date": "2026-09-07",
-        "track": "Darlington Raceway",
-        "race_num": 8,
-        "message": (
-            "🏁 **RACE 8 — DARLINGTON RACEWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "Too Tough To Tame. Darlington's got an egg-shaped personality and "
-            "she will put a stripe on your car if you disrespect her. "
-            "Come find out if that's true.\n\n"
-            "🗓️ **Monday, September 7 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 8 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "She bites. Race smart. 🔥"
-        )
-    },
-    {
-        "date": "2026-09-14",
-        "track": "Kansas Speedway",
-        "race_num": 9,
-        "message": (
-            "🏁 **RACE 9 — KANSAS SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "Smooth, fast, and unforgiving. Kansas rewards the drivers who've been building "
-            "all season — consistent, calculated, and ready to make a move. "
-            "Championship picture is getting real clear right now.\n\n"
-            "🗓️ **Monday, September 14 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 9 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Six races left. Every point matters. 🔥"
-        )
-    },
-    {
-        "date": "2026-09-21",
-        "track": "Charlotte Motor Speedway",
-        "race_num": 10,
-        "message": (
-            "🏁 **RACE 10 — CHARLOTTE MOTOR SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "The home of speed. The Queen City's track. "
-            "Charlotte is where careers are made, rivalries ignite, and champions announce themselves. "
-            "This is the one everyone circles on the calendar.\n\n"
-            "🗓️ **Monday, September 21 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 10 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Charlotte doesn't forget who showed up. 🔥"
-        )
-    },
-    {
-        "date": "2026-09-28",
-        "track": "Texas Motor Speedway",
-        "race_num": 11,
-        "message": (
-            "🏁 **RACE 11 — TEXAS MOTOR SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "Everything's bigger in Texas — including the battles. "
-            "Fast 1.5-mile oval with banking that lets you run wide open if you've got the nerve. "
-            "Four races from the title. Desperation and ambition collide tonight.\n\n"
-            "🗓️ **Monday, September 28 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 11 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "Big track. Big points. Big night. 🔥"
-        )
-    },
-    {
-        "date": "2026-10-05",
-        "track": "Las Vegas Motor Speedway",
-        "race_num": 12,
-        "message": (
-            "🏁 **RACE 12 — LAS VEGAS MOTOR SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "Place your bets. Vegas is a gamblers track — "
-            "do you pit early, go long, push the tires, or play it safe? "
-            "Three races left and the championship math is getting brutal. No safe plays from here.\n\n"
-            "🗓️ **Monday, October 5 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 12 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "All in. 🔥"
-        )
-    },
-    {
-        "date": "2026-10-12",
-        "track": "Homestead-Miami Speedway",
-        "race_num": 13,
-        "message": (
-            "🏁 **RACE 13 — HOMESTEAD-MIAMI SPEEDWAY**\n"
-            "<@&1173980377279377538>\n\n"
-            "The penultimate race. One week from the title. "
-            "Homestead is hot, fast, and merciless — "
-            "tonight someone's either punching their ticket or watching their season slip away. "
-            "Last chance to swing the standings your way.\n\n"
-            "🗓️ **Monday, October 12 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 40 pts | Race 13 of 14 — PENULTIMATE\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "One race after this. Make it count. 🔥"
-        )
-    },
-    {
-        "date": "2026-10-19",
-        "track": "Phoenix Raceway",
-        "race_num": 14,
-        "message": (
-            "🏁 **RACE 14 — PHOENIX RACEWAY | SEASON FINALE**\n"
-            "<@&1173980377279377538>\n\n"
-            "This is it. The end of the road.\n\n"
-            "14 races. 14 weeks. One champion crowned tonight at Phoenix. "
-            "Every lap you've turned, every point you've scraped, every battle you've fought "
-            "— it all comes down to this. "
-            "The QSR Full Throttle Series Season 1 champion will be decided TONIGHT.\n\n"
-            "🗓️ **Monday, October 19 | 8:00 PM ET**\n"
-            "🚗 ARCA Menards | 110% HP | No Restrictions\n"
-            "🏆 CHAMPIONSHIP ON THE LINE | Race 14 of 14\n\n"
-            "Register in `#registration` | Questions? Ask Dale in `#ask-dale`\n"
-            "📺 Stream: `#how-to-watch`\n\n"
-            "14 races. One crown. Who wants it? 🔥"
-        )
-    },
+# RACE_ANNOUNCEMENTS replaced — announcements now built dynamically
+# from race_config in data.json, set via the Race Setup table in qsr_app.py
+
+DALE_HYPE = [
+    "Let's go racing. 🔥",
+    "Strap in. Tonight counts. 🔥",
+    "Show up ready or don't show up at all. 🔥",
+    "The scoreboard doesn't lie. 🔥",
+    "One night. 40 points. Make 'em yours. 🔥",
+    "Championship is built on nights like this. 🔥",
+    "No excuses on race night. 🔥",
+    "The Intimidator's watching. Make it worth watching. 🔥",
 ]
+
+class RSVPView(discord.ui.View):
+    """Persistent RSVP dropdown for race night attendance."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        custom_id="rsvp_select",
+        placeholder="Are you racing tonight?",
+        min_values=1,
+        max_values=1,
+        options=[
+            discord.SelectOption(label="I'm in",       value="in",    emoji="✅", description="See you on track"),
+            discord.SelectOption(label="Maybe",        value="maybe", emoji="⚠️", description="Trying to make it"),
+            discord.SelectOption(label="Can't make it",value="out",   emoji="❌", description="Miss you this week"),
+        ]
+    )
+    async def rsvp_callback(self, interaction: discord.Interaction,
+                            select: discord.ui.Select):
+        responses = {"in": "✅ You're locked in. See you on track tonight!",
+                     "maybe": "⚠️ Got it — hope you make it. Keep an eye on #series-announcements.",
+                     "out": "❌ Noted. You'll be missed — see you next week."}
+        await interaction.response.send_message(
+            responses.get(select.values[0], "Got it!"), ephemeral=True)
+
 
 def load_posted_announcements() -> set:
     if not os.path.exists(POSTED_FILE):
@@ -868,24 +666,83 @@ def save_posted_announcement(race_num: int):
 
 @tasks.loop(minutes=1)
 async def race_announcement_scheduler():
-    """Every Monday at 12PM ET (16:00 UTC/EDT), post the week's race announcement."""
+    """Every Monday at 12PM ET (16:00 UTC), build and post the week's race announcement."""
     now_utc = datetime.utcnow()
     if now_utc.weekday() != 0:
         return
     if not (now_utc.hour == 16 and now_utc.minute == 0):
         return
-    today_str = now_utc.strftime("%Y-%m-%d")
+
+    data      = load_data()
+    race_num  = data.get("race_number", 1)
+    race_cfg  = data.get("race_config", {})
     posted    = load_posted_announcements()
-    for race in RACE_ANNOUNCEMENTS:
-        if race["date"] == today_str and race["race_num"] not in posted:
-            channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
-            if not channel:
-                print(f"❌ Announcement channel {ANNOUNCEMENT_CHANNEL_ID} not found")
-                return
-            await channel.send(race["message"])
-            save_posted_announcement(race["race_num"])
-            print(f"✅ Race {race['race_num']} announcement posted — {race['track']}")
-            return
+
+    if race_num in posted:
+        return
+
+    cfg = race_cfg.get(str(race_num), {})
+    if not cfg:
+        print(f"⚠️ No race_config for Race {race_num} — skipping announcement")
+        return
+
+    channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+    if not channel:
+        print(f"❌ Announcement channel not found")
+        return
+
+    track      = cfg.get("track", SCHEDULE[race_num-1]["track"] if race_num <= len(SCHEDULE) else "TBD")
+    date_str   = cfg.get("date",  SCHEDULE[race_num-1]["date"]  if race_num <= len(SCHEDULE) else "TBD")
+    laps       = cfg.get("laps", 0)
+    stage_lap  = cfg.get("stage_lap", 0)
+    track_clean = track.replace(" — SEASON FINALE", "").strip()
+
+    # Pull standings for points leader
+    standings  = data.get("standings", {})
+    leader_line = ""
+    if standings:
+        leader = max(standings.items(), key=lambda x: x[1]["points"])
+        leader_line = f"🏆 **Points Leader:** {leader[0]} — {leader[1]['points']} pts\n"
+
+    # Pull confirmed driver count from registration
+    reg = load_reg()
+    confirmed = sum(1 for d in reg.get("drivers", []) if d.get("status") == "Confirmed")
+    field_line = f"🚗 **Field:** {confirmed}/{reg.get('max_field', 40)} confirmed"
+
+    import random
+    hype = random.choice(DALE_HYPE)
+
+    # Penalties note
+    penalties = data.get("penalties", [])
+    recent = [p for p in penalties if p.get("race_num") == race_num]
+    penalty_line = ""
+    if recent:
+        lines = [f"  • {p['driver']} — {p['tier']} ({p['points']} pts): {p['reason']}"
+                 for p in recent]
+        penalty_line = "\n⚖️ **Pending Penalties:**\n" + "\n".join(lines)
+
+    laps_line   = f"🔢 **Laps:** {laps}" if laps else ""
+    stage_line  = f"🏁 **Stage:** Lap {stage_lap}" if stage_lap else ""
+
+    msg = (
+        f"🏁 **RACE {race_num} — {track_clean.upper()}**\n"
+        f"<@&{ARCA_ROLE_ID}>\n\n"
+        f"🗓️ **{date_str}**\n"
+        f"🕖 7:00 PM ET — Practice\n"
+        f"🕖 7:50 PM ET — Qualifying\n"
+        f"🕗 8:00 PM ET — Race\n"
+    )
+    if laps_line:   msg += f"{laps_line}\n"
+    if stage_line:  msg += f"{stage_line}\n"
+    msg += f"{field_line}\n"
+    if leader_line: msg += leader_line
+    if penalty_line: msg += penalty_line
+    msg += f"\n{hype}"
+
+    view = RSVPView()
+    await channel.send(msg, view=view)
+    save_posted_announcement(race_num)
+    print(f"✅ Race {race_num} announcement posted — {track_clean}")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1161,6 +1018,7 @@ async def race_reminder():
 async def on_ready():
     bot.add_view(RoleSelectView())      # Re-register persistent views on restart
     bot.add_view(RegistrationView())
+    bot.add_view(RSVPView())
     print(f"✅  Ask Dale Bot online as {bot.user}")
     race_reminder.start()
     dales_weekly_take.start()
