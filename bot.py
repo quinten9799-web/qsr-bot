@@ -2018,6 +2018,268 @@ async def career_cmd(ctx, *, driver_name: str = ""):
     await ctx.send(embed=history_embed)
 
 
+
+# ─────────────────────────────────────────────────────────────────
+#  STATS CARD — Pillow-generated driver graphic
+# ─────────────────────────────────────────────────────────────────
+
+def _sc_font(size, bold=False, black=False):
+    """Load best available font with fallback."""
+    try:
+        from PIL import ImageFont
+    except ImportError:
+        return None
+    if black:
+        paths = ["C:/Windows/Fonts/ariblk.ttf",
+                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+    elif bold:
+        paths = ["C:/Windows/Fonts/arialbd.ttf",
+                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+    else:
+        paths = ["C:/Windows/Fonts/arial.ttf",
+                 "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+    for p in paths:
+        if os.path.exists(p):
+            return ImageFont.truetype(p, size)
+    return ImageFont.load_default()
+
+def _sc_auto_font(draw, text, max_w, start, bold=False, black=False):
+    from PIL import ImageFont
+    size = start
+    while size > 14:
+        f  = _sc_font(size, bold=bold, black=black)
+        bb = draw.textbbox((0, 0), text, font=f)
+        if (bb[2] - bb[0]) <= max_w:
+            return f
+        size -= 3
+    return _sc_font(14, bold=bold)
+
+def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
+                       total_pts: int, gap: int, wins: int, top5s: int,
+                       top10s: int, races: int, avg_finish, best_finish,
+                       avg_inc, clean_runs: int, recent_finishes: list) -> bytes:
+    """
+    Generate a 900x500 driver stats card. Returns PNG bytes.
+    recent_finishes: list of up to 5 finish positions (most recent first)
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return b""
+
+    W, H = 900, 500
+    _BG      = (10,  10,  10)
+    _PANEL   = (18,  18,  18)
+    _ORANGE  = (232, 82,  10)
+    _ORANGE_D= (180, 60,   5)
+    _GOLD    = (255, 215,  0)
+    _WHITE   = (255, 255, 255)
+    _DIM     = (120, 120, 120)
+    _BORDER  = (40,  40,  40)
+    _GREEN   = (46,  204, 113)
+    _RED     = (231, 76,  60)
+
+    img  = Image.new("RGB", (W, H), _BG)
+    draw = ImageDraw.Draw(img)
+
+    # ── Left orange accent bar ──────────────────────────────
+    draw.rectangle([0, 0, 8, H], fill=_ORANGE)
+
+    # ── Ghost car number watermark ──────────────────────────
+    num_font = _sc_font(320, black=True)
+    num_str  = str(car_number)
+    nb       = draw.textbbox((0, 0), num_str, font=num_font)
+    nw       = nb[2] - nb[0]
+    draw.text((W - nw - 20, H // 2 - 170), num_str,
+              font=num_font, fill=(28, 28, 28))
+
+    # ── Driver name ─────────────────────────────────────────
+    name_font = _sc_auto_font(draw, driver_name, 480, 56, black=True)
+    draw.text((28, 28), driver_name, font=name_font, fill=_WHITE)
+
+    # Orange underline
+    nb2   = draw.textbbox((28, 28), driver_name, font=name_font)
+    name_h = nb2[3]
+    draw.rectangle([28, name_h + 6, 28 + 340, name_h + 9], fill=_ORANGE)
+
+    # Car number + series badge
+    badge_y = name_h + 18
+    badge_font = _sc_font(16, bold=True)
+    badge_text = f"#{car_number}  ·  QSR HIGH HORSE POWER SERIES  ·  SEASON 1"
+    draw.text((28, badge_y), badge_text, font=badge_font, fill=_DIM)
+
+    # ── Championship position block ──────────────────────────
+    pos_y   = badge_y + 40
+    pos_font = _sc_font(80, black=True)
+    pos_str  = f"P{champ_pos}"
+    draw.text((28, pos_y), pos_str, font=pos_font, fill=_ORANGE)
+    pb       = draw.textbbox((28, pos_y), pos_str, font=pos_font)
+    pts_font = _sc_font(18, bold=True)
+    draw.text((28, pb[3] + 4), f"{total_pts} PTS", font=pts_font, fill=_WHITE)
+    gap_text  = "CHAMPIONSHIP LEADER" if gap == 0 else f"-{gap} PTS TO LEADER"
+    gap_color = _GOLD if gap == 0 else _DIM
+    draw.text((28, pb[3] + 28), gap_text, font=_sc_font(13), fill=gap_color)
+
+    # ── Stat grid (2 columns × 3 rows) ──────────────────────
+    GRID_X  = 340
+    GRID_Y  = 80
+    COL_W   = 180
+    ROW_H   = 88
+
+    stats = [
+        ("WINS",         str(wins),                    _GOLD if wins > 0 else _WHITE),
+        ("TOP 5s",       str(top5s),                   _WHITE),
+        ("TOP 10s",      str(top10s),                  _WHITE),
+        ("RACES",        str(races),                   _WHITE),
+        ("AVG FINISH",   str(avg_finish),              _WHITE),
+        ("BEST FINISH",  f"P{best_finish}" if best_finish else "—", _ORANGE if best_finish == 1 else _WHITE),
+        ("AVG INC",      f"{avg_inc}x",                _GREEN if str(avg_inc) != "—" and float(str(avg_inc).replace("—","0") or 0) < 3 else _RED),
+        ("CLEAN RUNS",   str(clean_runs),              _GREEN if clean_runs > 0 else _WHITE),
+    ]
+
+    lbl_font = _sc_font(12, bold=True)
+    val_font = _sc_font(34, black=True)
+
+    for idx, (label, value, color) in enumerate(stats):
+        col = idx % 2
+        row = idx // 2
+        x   = GRID_X + col * COL_W
+        y   = GRID_Y + row * ROW_H
+
+        # Card background
+        draw.rectangle([x + 4, y + 4, x + COL_W - 8, y + ROW_H - 6],
+                        fill=(22, 22, 22), outline=_BORDER, width=1)
+        draw.text((x + 14, y + 10), label, font=lbl_font, fill=_DIM)
+        # Auto-scale value if needed
+        vf = _sc_auto_font(draw, value, COL_W - 28, 34, black=True)
+        draw.text((x + 14, y + 26), value, font=vf, fill=color)
+
+    # ── Recent form bar ──────────────────────────────────────
+    form_y    = H - 90
+    form_label_font = _sc_font(12, bold=True)
+    draw.text((28, form_y), "RECENT FORM", font=form_label_font, fill=_DIM)
+
+    bar_y   = form_y + 20
+    bar_w   = 54
+    bar_gap = 10
+    for i, pos in enumerate(recent_finishes[:5]):
+        x = 28 + i * (bar_w + bar_gap)
+        if pos == 1:       c = _GOLD
+        elif pos <= 3:     c = _ORANGE
+        elif pos <= 5:     c = (139, 69, 19)
+        elif pos <= 10:    c = (26, 74, 58)
+        else:              c = (40, 40, 40)
+        draw.rectangle([x, bar_y, x + bar_w, bar_y + 36], fill=c, outline=_BORDER, width=1)
+        pos_font_s = _sc_font(18, bold=True)
+        pb_s = draw.textbbox((0, 0), str(pos), font=pos_font_s)
+        pw   = pb_s[2] - pb_s[0]
+        draw.text((x + (bar_w - pw) // 2, bar_y + 8), str(pos),
+                  font=pos_font_s, fill=_WHITE if pos > 1 else (0, 0, 0))
+
+    if not recent_finishes:
+        draw.text((28, bar_y + 8), "No races yet", font=_sc_font(16), fill=_DIM)
+
+    # ── Footer line ──────────────────────────────────────────
+    draw.rectangle([0, H - 24, W, H], fill=(14, 14, 14))
+    footer_font = _sc_font(11)
+    footer_text = f"QSR Simulations  ·  qsr.gg  ·  Generated {datetime.utcnow().strftime('%B %d, %Y')}"
+    draw.text((28, H - 18), footer_text, font=footer_font, fill=_DIM)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+@bot.command(name="statscard", aliases=["card", "stats"])
+@has_arca()
+async def statscard_cmd(ctx, *, driver_name: str = ""):
+    """
+    !statscard             — your own card
+    !statscard <Name>      — any driver's card
+    !card / !stats         — aliases
+    """
+    data         = load_data()
+    standings    = data.get("standings", {})
+    race_results = data.get("race_results", {})
+
+    # Resolve driver name
+    if not driver_name:
+        # Look up by Discord ID from registration
+        reg_driver = get_driver_reg(str(ctx.author.id))
+        if reg_driver:
+            driver_name = reg_driver["name"]
+        else:
+            await ctx.send(
+                "You're not registered. Use `!statscard <Driver Name>` or "
+                "register in `#registration` first.")
+            return
+
+    matched = next((n for n in standings if driver_name.lower() in n.lower()), None)
+    if not matched:
+        await ctx.send(
+            f"❌ No stats found for `{driver_name}`. "
+            "They may not have raced yet or the name doesn't match standings.")
+        return
+
+    info    = standings[matched]
+    history = race_results.get(matched, [])
+
+    # ── Derive stats ─────────────────────────────────────────
+    races       = info.get("races", 0)
+    wins        = info.get("wins", 0)
+    total_pts   = info.get("points", 0)
+    total_inc   = info.get("incidents", 0)
+    top5s       = sum(1 for r in history if r["finish"] <= 5)
+    top10s      = sum(1 for r in history if r["finish"] <= 10)
+    avg_finish  = round(sum(r["finish"] for r in history) / len(history), 1) if history else "—"
+    best_finish = min((r["finish"] for r in history), default=None)
+    avg_inc     = round(total_inc / races, 1) if races else "—"
+    clean_runs  = sum(1 for r in history if r["incidents"] == 0)
+    recent      = [r["finish"] for r in sorted(history, key=lambda r: r["race"], reverse=True)[:5]]
+
+    sorted_s  = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    champ_pos = next((i + 1 for i, (n, _) in enumerate(sorted_s) if n == matched), 0)
+    leader_pts = sorted_s[0][1]["points"] if sorted_s else 0
+    gap        = leader_pts - total_pts
+
+    # Get car number from registration
+    reg     = load_reg()
+    reg_drv = next((d for d in reg["drivers"]
+                    if d["name"].lower() == matched.lower()), None)
+    car_num = reg_drv["number"] if reg_drv else "?"
+
+    await ctx.typing()
+
+    img_bytes = generate_statscard(
+        driver_name=matched,
+        car_number=car_num,
+        champ_pos=champ_pos,
+        total_pts=total_pts,
+        gap=gap,
+        wins=wins,
+        top5s=top5s,
+        top10s=top10s,
+        races=races,
+        avg_finish=avg_finish,
+        best_finish=best_finish,
+        avg_inc=avg_inc,
+        clean_runs=clean_runs,
+        recent_finishes=recent,
+    )
+
+    if not img_bytes:
+        await ctx.send("⚠️ Could not generate graphic — Pillow may not be installed on Railway.")
+        return
+
+    filename = f"statscard_{matched.replace(' ', '_')}.png"
+    await ctx.send(
+        file=discord.File(fp=io.BytesIO(img_bytes), filename=filename))
+
+
 @bot.command(name="help")
 @has_arca()
 async def help_cmd(ctx):
@@ -2036,6 +2298,7 @@ async def help_cmd(ctx):
     embed.add_field(name="!teams",             value="Team standings and rosters", inline=False)
     embed.add_field(name="!jointeam <Name>",   value="Join an existing team mid-season", inline=False)
     embed.add_field(name="!mystats",           value="Your registration profile and team", inline=False)
+    embed.add_field(name="!statscard [Name]",  value="Driver stats graphic — yours or any driver's", inline=False)
     embed.add_field(name="── Admin ──",        value="\u200b", inline=False)
     embed.add_field(name="!setupregistration", value="Post registration embed in #registration (owner)", inline=False)
     embed.add_field(name="!loadschedule",      value="Load schedule from CSV (Track,Date)", inline=False)
