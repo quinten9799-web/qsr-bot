@@ -312,7 +312,7 @@ Q: whats up / hey / how you doing
 A: "Just checkin' the gauges and keepin' the rubber side down. What can I do for ya? 🏁"
 
 Q: How do stage points work?
-A: "Simple enough. Top 10 at the stage end get points — 10 down to 1. But here at QSR we run them green flag. No caution. You want them points, you better be up front when that lap hits. That's racin'."
+A: "Simple enough. Top 10 at the stage end get points — 10 down to 1. We run one stage per race here at QSR, green flag only. No caution. You want them points, you better be up front when that lap hits. Oh, and fastest lap gets you a bonus point too — but only if your car didn't visit the garage. That's racin'."
 
 Q: What happens if I wreck someone on purpose?
 A: "Son, I intimidated plenty of folks in my day — but with skill, not with wreckin'. You intentionally put somebody in the wall here, you're gone. Zero points. DQ. We don't play that game."
@@ -338,8 +338,9 @@ SERIES INFO:
 - Server: QSR Simulations Discord
 
 POINTS SYSTEM:
-- NASCAR Cup Series points format: 40 pts for win, 35 for 2nd, 34 for 3rd, down to 1 pt minimum
-- Stage points awarded to top 10 at each stage end (10-9-8-7-6-5-4-3-2-1)
+- NASCAR 2026 points format: 55 pts for win, 35 for 2nd, 34 for 3rd, decreasing by 1 to 36th–40th (1 pt min)
+- Stage points awarded to top 10 at stage end (10-9-8-7-6-5-4-3-2-1) — QSR runs 1 stage per race
+- Fastest lap bonus: +1 pt to the driver with the fastest lap (excluded if car visited garage)
 - IMPORTANT: Stages run GREEN FLAG — no caution is thrown at stage end
 - No playoffs — full season points champion only
 - Tiebreaker: most wins → most top 5s → most top 10s → best avg finish
@@ -780,7 +781,7 @@ def add_to_history(channel_id: int, role: str, content: str):
 FAQ = {
     "rules":    "📋 Full rulebook in `#league-rules`. Bump-drafting allowed. Intentional wrecking = immediate DQ. All incidents reviewed within 48 hrs.",
     "schedule": "📅 Check `#schedule` for the full season calendar. Races every Monday at 8PM ET. Type `!schedule` for a quick list.",
-    "points":   "🏆 NASCAR points system — 40 pts for the win, scaled to 1 pt minimum. Stage points (top 10, 10-1 pts) run **green flag, no caution**. Type `!standings` for current standings.",
+    "points":   "🏆 2026 NASCAR points — 55 pts for the win, 35 for 2nd, 34 for 3rd, down to 1 pt min. 1 stage per race (top 10 earn 10 down to 1 pts). Fastest lap = +1 bonus pt. Type `!standings` for current standings.",
     "car":      "🚗 ARCA Menards car at **110% horsepower**. No setup restrictions — bring your best.",
     "stages":   "🏁 Stages award top-10 finishers 10 down to 1 pt but **do NOT throw a caution**. Racing stays green. This is a defining rule of the QSR Full Throttle Series.",
     "register": "✍️ Head to `#registration` and follow the pinned post to sign up for the next race.",
@@ -832,7 +833,7 @@ DALE_HYPE = [
     "Strap in. Tonight counts. 🔥",
     "Show up ready or don't show up at all. 🔥",
     "The scoreboard doesn't lie. 🔥",
-    "One night. 40 points. Make 'em yours. 🔥",
+    "One night. 55 points. Make 'em yours. 🔥",
     "Championship is built on nights like this. 🔥",
     "No excuses on race night. 🔥",
     "The Intimidator's watching. Make it worth watching. 🔥",
@@ -1488,8 +1489,8 @@ async def rules_cmd(ctx):
     embed = discord.Embed(title="📋 QSR Full Throttle Series — Quick Rules", color=0xE8272A)
     embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
     embed.add_field(name="Race Day",             value="Mondays 8PM ET", inline=True)
-    embed.add_field(name="Points",               value="NASCAR system (40 pts win)", inline=True)
-    embed.add_field(name="Stages",               value="Green flag only — no caution", inline=True)
+    embed.add_field(name="Points",               value="2026 NASCAR system (55 pts win, +1 fastest lap)", inline=True)
+    embed.add_field(name="Stages",               value="1 stage per race, green flag — no caution", inline=True)
     embed.add_field(name="Incident Limit",       value="17x per race", inline=True)
     embed.add_field(name="Intentional Wrecking", value="Immediate DQ", inline=True)
     embed.add_field(name="Appeals",              value="$1 deposit, refunded if upheld", inline=True)
@@ -2247,7 +2248,11 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
                        total_pts: int, gap: int, wins: int, top5s: int,
                        top10s: int, races: int, avg_finish, best_finish,
                        avg_inc, clean_runs: int, recent_finishes: list,
-                       archetype: str = "") -> bytes:
+                       archetype: str = "",
+                       pts_trend: int = None,
+                       races_remaining: int = 0,
+                       nemesis: str = "",
+                       nemesis_record: str = "") -> bytes:
     """
     Generate a 900x500 driver stats card. Returns PNG bytes.
     recent_finishes: list of up to 5 finish positions (most recent first)
@@ -2360,6 +2365,35 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         draw.text((x + 14, y + 10), label, font=lbl_font, fill=_DIM)
         vf = _sc_auto_font(draw, value, COL_W - 28, 30, black=True)
         draw.text((x + 14, y + 26), value, font=vf, fill=color)
+
+    # ── Narrative info strip ─────────────────────────────────
+    info_y = pb[3] + 50
+
+    if pts_trend is not None:
+        arrow   = "▲" if pts_trend >= 0 else "▼"
+        t_color = _GREEN if pts_trend >= 0 else _RED
+        draw.text((28, info_y), f"{arrow} {abs(pts_trend):+d} pts last race",
+                  font=_sc_font(12, bold=True), fill=t_color)
+        info_y += 20
+
+    if races_remaining > 0:
+        max_available = races_remaining * 66  # 55 race + 10 stage + 1 FL
+        if gap == 0:
+            math_text  = f"{races_remaining} races left to defend"
+            math_color = _GOLD
+        elif gap <= max_available:
+            math_text  = f"ALIVE — {gap} back, {max_available} pts available"
+            math_color = _GREEN
+        else:
+            math_text  = f"ELIMINATED — {gap} back, only {max_available} left"
+            math_color = _RED
+        draw.text((28, info_y), math_text,
+                  font=_sc_font(11, bold=True), fill=math_color)
+        info_y += 20
+
+    if nemesis:
+        nem_text = f"vs {nemesis}: {nemesis_record}" if nemesis_record else f"Rival: {nemesis}"
+        draw.text((28, info_y), nem_text, font=_sc_font(11), fill=_DIM)
 
     # ── Recent form bar ──────────────────────────────────────
     form_y    = H - 90
@@ -2486,6 +2520,44 @@ async def statscard_cmd(ctx, *, driver_name: str = ""):
                     if d["name"].lower() == matched.lower()), None)
     car_num = reg_drv["number"] if reg_drv else "?"
 
+    # Points trend
+    pts_trend = None
+    sorted_hist = sorted(history, key=lambda r: r["race"])
+    if len(sorted_hist) >= 2:
+        last_pts = sorted_hist[-1]["points"] + sorted_hist[-1].get("stage_pts", 0)
+        prev_pts = sorted_hist[-2]["points"] + sorted_hist[-2].get("stage_pts", 0)
+        pts_trend = last_pts - prev_pts
+    elif len(sorted_hist) == 1:
+        pts_trend = sorted_hist[-1]["points"] + sorted_hist[-1].get("stage_pts", 0)
+
+    # Championship math
+    races_run       = data.get("race_number", 1) - 1
+    races_remaining = max(0, 14 - races_run)
+
+    # Nemesis from rivalries.json
+    nemesis = ""
+    nemesis_record = ""
+    rivalries = load_rivalries()
+    worst = None
+    worst_ratio = 0
+    for key, rv in rivalries.items():
+        if matched not in rv.get("drivers", []):
+            continue
+        a, b  = rv["drivers"]
+        other = b if a == matched else a
+        my_w  = rv["wins"].get(matched, 0)
+        opp_w = rv["wins"].get(other, 0)
+        total = my_w + opp_w
+        if total < 2:
+            continue
+        ratio = opp_w / total
+        if ratio > worst_ratio:
+            worst_ratio = ratio
+            worst = (other, my_w, opp_w)
+    if worst:
+        nemesis, my_w, opp_w = worst
+        nemesis_record = f"{my_w}-{opp_w}"
+
     await ctx.typing()
 
     archetypes = get_driver_archetypes(race_results, standings)
@@ -2507,6 +2579,10 @@ async def statscard_cmd(ctx, *, driver_name: str = ""):
         clean_runs=clean_runs,
         recent_finishes=recent,
         archetype=archetype,
+        pts_trend=pts_trend,
+        races_remaining=races_remaining,
+        nemesis=nemesis,
+        nemesis_record=nemesis_record,
     )
 
     if not img_bytes:
