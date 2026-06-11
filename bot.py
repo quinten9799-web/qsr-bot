@@ -180,7 +180,7 @@ def save_data(data: dict):
 
 QSR_KNOWLEDGE = """
 You are Dale — channeling the spirit and voice of Dale Earnhardt Sr., "The Intimidator."
-You are the official assistant for QSR Simulations and the QSR Full Throttle Series.
+You are the official assistant for QSR Simulations and the QSR High Horsepower Series.
 
 PERSONALITY & VOICE:
 - Speak like Dale Earnhardt Sr. — gruff, confident, direct, Southern drawl in your words
@@ -783,7 +783,7 @@ FAQ = {
     "schedule": "📅 Check `#schedule` for the full season calendar. Races every Monday at 8PM ET. Type `!schedule` for a quick list.",
     "points":   "🏆 2026 NASCAR points — 55 pts for the win, 35 for 2nd, 34 for 3rd, down to 1 pt min. 1 stage per race (top 10 earn 10 down to 1 pts). Fastest lap = +1 bonus pt. Type `!standings` for current standings.",
     "car":      "🚗 ARCA Menards car at **110% horsepower**. No setup restrictions — bring your best.",
-    "stages":   "🏁 Stages award top-10 finishers 10 down to 1 pt but **do NOT throw a caution**. Racing stays green. This is a defining rule of the QSR Full Throttle Series.",
+    "stages":   "🏁 Stages award top-10 finishers 10 down to 1 pt but **do NOT throw a caution**. Racing stays green. This is a defining rule of the QSR High Horsepower Series.",
     "register": "✍️ Head to `#registration` and follow the pinned post to sign up for the next race.",
     "number":   "🔢 Check `#number-list` for taken numbers, then post your request in `#number-request`. Numbers are first-come, first-served.",
     "protest":  "⚖️ Post in `#penalty-report` with your iRacing subsession ID and incident timestamp. Race Control reviews within 48 hrs. Appeals cost $1 — refunded if upheld.",
@@ -794,7 +794,7 @@ FAQ = {
     "blocking": "🚗 One defensive move per straightaway is allowed. Erratic or repeated blocking that causes contact is penalized.",
     "bump":     "💥 Bump drafting is permitted on oval tracks. Intentional spinning or wrecking via contact is NOT permitted.",
     "iracing":  "🎮 We race on iRacing using the League Sessions feature. Join under QSR Simulations to find our hosted sessions.",
-    "arca":     "🏎️ The ARCA Menards car runs at 110% HP in our series — that means full unrestricted power. It's fast, it's loud, it's QSR Full Throttle.",
+    "arca":     "🏎️ The ARCA Menards car runs at 110% HP in our series — that means full unrestricted power. It's fast, it's loud, it's QSR High Horsepower.",
 }
 
 
@@ -1011,7 +1011,7 @@ async def dales_weekly_take():
             timestamp=datetime.utcnow()
         )
         embed.set_author(name="Dale's Take")
-        embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
         await ch.send(embed=embed)
 
 
@@ -1048,7 +1048,7 @@ async def pre_race_trash_talk():
     top5_names = [name for name, _ in sorted_s[:5]]
     rivalry_ctx = get_rivalry_context()
     prompt = (
-        f"It's 30 minutes before the QSR Full Throttle Series race tonight. "
+        f"It's 30 minutes before the QSR High Horsepower Series race tonight. "
         f"You're Dale Earnhardt Sr. Look at these top standings: {top5_names}. "
         f"{rivalry_ctx} "
         f"Pick two drivers who are close in points or have a heated rivalry and call it out. "
@@ -1094,7 +1094,7 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
     rivalry_callouts = update_rivalries(results)
     rivalry_ctx      = get_rivalry_context()
     prompt = (
-        f"You just watched Race {race_num} of the QSR Full Throttle Series. "
+        f"You just watched Race {race_num} of the QSR High Horsepower Series. "
         f"Here's what happened: {results_summary} "
         f"{rivalry_ctx} "
         f"Give a post-race reaction in Dale's voice. "
@@ -1116,7 +1116,7 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
             embed.add_field(name="🔥 Streak Alert", value="\n".join(streak_callouts), inline=False)
         if rivalry_callouts:
             embed.add_field(name="⚔️ Rivalry Watch", value="\n".join(rivalry_callouts), inline=False)
-        embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
         await ch.send(embed=embed)
     total_incidents = sum(r.get("incidents", 0) for r in results)
     avg_incidents   = total_incidents / len(results) if results else 0
@@ -1139,7 +1139,7 @@ async def newcomer_callout(guild: discord.Guild, driver_name: str):
     if not ch:
         return
     prompt = (
-        f"A new driver named {driver_name} just registered for their first QSR Full Throttle Series race. "
+        f"A new driver named {driver_name} just registered for their first QSR High Horsepower Series race. "
         f"Welcome them in Dale Earnhardt Sr.'s voice. "
         f"Be welcoming but also let them know this is real racing — "
         f"earn your stripes on track. 2-3 sentences. Genuine but Dale-tough."
@@ -1152,7 +1152,7 @@ async def newcomer_callout(guild: discord.Guild, driver_name: str):
             color=0xE8272A,
             timestamp=datetime.utcnow()
         )
-        embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
         await ch.send(embed=embed)
 
 
@@ -1192,7 +1192,7 @@ async def race_prediction():
     if schedule and len(schedule) >= race_num:
         track = schedule[race_num - 1].get("track", "tonight's track")
     prompt = (
-        f"It's one hour before Race {race_num} at {track} in the QSR Full Throttle Series. "
+        f"It's one hour before Race {race_num} at {track} in the QSR High Horsepower Series. "
         f"Current top 5 in standings: {top5_names}. "
         f"Make a bold race prediction as Dale Earnhardt Sr. Pick a winner and maybe a surprise "
         f"storyline to watch. 2-3 sentences. Confident. Dale doesn't hedge his bets."
@@ -1261,7 +1261,7 @@ async def on_ready():
     pre_race_trash_talk.start()
     race_prediction.start()
     race_announcement_scheduler.start()
-    await bot.change_presence(activity=discord.Game("QSR Full Throttle Series 🏁"))
+    await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
     else:
@@ -1298,7 +1298,7 @@ async def on_message(message: discord.Message):
                 ),
                 color=0x222222
             )
-            embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
             await message.reply(embed=embed)
             await bot.process_commands(message)
             return
@@ -1334,7 +1334,7 @@ async def on_message(message: discord.Message):
                     add_to_history(channel_id, "assistant", response)
                     update_user_memory(message.author.id, message.author.display_name, question, response)
                     embed = discord.Embed(description=response, color=0xE8272A)
-                    embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+                    embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
                     await message.reply(embed=embed)
                     await bot.process_commands(message)
                     return
@@ -1342,7 +1342,7 @@ async def on_message(message: discord.Message):
             for key, answer in FAQ.items():
                 if key in q_lower:
                     embed = discord.Embed(description=answer, color=0xE8272A)
-                    embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+                    embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
                     await message.reply(embed=embed)
                     responded = True
                     break
@@ -1381,7 +1381,7 @@ async def on_member_join(member: discord.Member):
             ),
             color=0xE8272A
         )
-        embed.set_footer(text="QSR Simulations | Full Throttle Series")
+        embed.set_footer(text="QSR Simulations | High Horsepower Series")
         await ch.send(embed=embed)
 
 
@@ -1415,21 +1415,21 @@ async def ask(ctx, *, question: str = ""):
                 ),
                 color=0x333333
             )
-            embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
             await ctx.send(embed=embed)
             return
         if ANTHROPIC_API_KEY:
             response = await ask_claude(question)
             if response:
                 embed = discord.Embed(description=response, color=0xE8272A)
-                embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+                embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
                 await ctx.send(embed=embed)
                 return
         q = question.lower()
         for key, answer in FAQ.items():
             if key in q:
                 embed = discord.Embed(description=answer, color=0xE8272A)
-                embed.set_footer(text="QSR Full Throttle | Ask Dale")
+                embed.set_footer(text="QSR High Horsepower | Ask Dale")
                 await ctx.send(embed=embed)
                 return
         await ctx.send(
@@ -1453,7 +1453,7 @@ async def standings(ctx):
         return
     sorted_s = sorted(s.items(), key=lambda x: x[1]["points"], reverse=True)
     embed    = discord.Embed(
-        title="🏆 QSR Full Throttle Series — Championship Standings",
+        title="🏆 QSR High Horsepower Series — Championship Standings",
         color=0xE8272A,
         timestamp=datetime.utcnow()
     )
@@ -1476,7 +1476,7 @@ async def schedule_cmd(ctx):
     if not sched:
         await ctx.send("📅 Schedule not loaded yet. Check back soon!")
         return
-    embed = discord.Embed(title="📅 QSR Full Throttle — Season Schedule", color=0xE8272A)
+    embed = discord.Embed(title="📅 QSR High Horsepower — Season Schedule", color=0xE8272A)
     lines = []
     for i, race in enumerate(sched, 1):
         done = "✅" if race.get("complete") else "🔜"
@@ -1487,7 +1487,7 @@ async def schedule_cmd(ctx):
 @bot.command(name="rules")
 @has_arca()
 async def rules_cmd(ctx):
-    embed = discord.Embed(title="📋 QSR Full Throttle Series — Quick Rules", color=0xE8272A)
+    embed = discord.Embed(title="📋 QSR High Horsepower Series — Quick Rules", color=0xE8272A)
     embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
     embed.add_field(name="Race Day",             value="Mondays 8PM ET", inline=True)
     embed.add_field(name="Points",               value="2026 NASCAR system (55 pts win, +1 fastest lap)", inline=True)
@@ -1534,7 +1534,7 @@ async def post_number_list(guild: discord.Guild):
     avail_str = "  ".join(avail) if avail else "—"
 
     embed = discord.Embed(
-        title="🔢 QSR Full Throttle Series — Car Numbers",
+        title="🔢 QSR High Horsepower Series — Car Numbers",
         color=0xE8272A,
         timestamp=datetime.utcnow(),
     )
@@ -1561,17 +1561,99 @@ async def post_number_list(guild: discord.Guild):
     await ch.send(embed=embed)
 
 
+class TeamSelectView(discord.ui.View):
+    """Ephemeral dropdown sent after registration — lets driver pick or skip a team."""
+
+    def __init__(self, driver_name: str, discord_id: str, guild: discord.Guild):
+        super().__init__(timeout=120)
+        self.driver_name = driver_name
+        self.discord_id  = discord_id
+        self.guild       = guild
+
+        reg   = load_reg()
+        teams = reg.get("teams", [])
+
+        options = []
+        for t in teams:
+            if len(t.get("members", [])) < 4:
+                options.append(discord.SelectOption(
+                    label=t["name"],
+                    description=f"{len(t['members'])}/4 drivers",
+                    value=t["name"],
+                ))
+        options.append(discord.SelectOption(
+            label="No Team",
+            description="Skip — you can join or create a team later",
+            value="__none__",
+        ))
+
+        select = discord.ui.Select(
+            placeholder="🏎️ Join a team, or skip...",
+            options=options,
+            min_values=1,
+            max_values=1,
+        )
+        select.callback = self.on_select
+        self.add_item(select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        choice = interaction.data["values"][0]
+
+        if choice == "__none__":
+            await interaction.response.edit_message(
+                content="👍 No team selected. You can join or create one anytime with `!jointeam`.",
+                view=None)
+            return
+
+        reg  = load_reg()
+        team = next((t for t in reg["teams"] if t["name"] == choice), None)
+
+        if not team:
+            await interaction.response.edit_message(
+                content="❌ That team no longer exists. Use `!jointeam` to try again.",
+                view=None)
+            return
+
+        if len(team.get("members", [])) >= 4:
+            await interaction.response.edit_message(
+                content=f"❌ **{choice}** is full (4/4). Use `!jointeam` to check other teams.",
+                view=None)
+            return
+
+        race_num = load_data().get("race_number", 1)
+        team["members"].append({
+            "driver_name": self.driver_name,
+            "discord_id":  self.discord_id,
+            "discord_tag": str(interaction.user),
+            "joined_race": race_num,
+        })
+
+        # Update driver's team field
+        for d in reg["drivers"]:
+            if d["discord_id"] == self.discord_id:
+                d["team"] = choice
+                break
+
+        save_reg(reg)
+
+        # Give team role if it exists
+        role = discord.utils.get(self.guild.roles, name=choice)
+        if role:
+            try:
+                await interaction.user.add_roles(role)
+            except Exception:
+                pass
+
+        await interaction.response.edit_message(
+            content=f"✅ You've joined **{choice}**! Welcome to the team. 🏎️",
+            view=None)
+
+
 class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
     full_name = discord.ui.TextInput(
         label="Full Name",
         placeholder="e.g. John Smith",
         max_length=50,
-        required=True,
-    )
-    iracing_id = discord.ui.TextInput(
-        label="iRacing Customer ID",
-        placeholder="Numbers only — find it on iRacing.com",
-        max_length=20,
         required=True,
     )
     car_number = discord.ui.TextInput(
@@ -1588,10 +1670,9 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        name    = self.full_name.value.strip()
-        iid     = self.iracing_id.value.strip()
-        num     = self.car_number.value.strip().upper()
-        ack     = self.rules_ack.value.strip().upper()
+        name       = self.full_name.value.strip()
+        num        = self.car_number.value.strip().upper()
+        ack        = self.rules_ack.value.strip().upper()
         discord_id = str(interaction.user.id)
 
         # Rules ack check
@@ -1609,7 +1690,6 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
             await interaction.response.send_message(
                 "❌ Invalid car number. Choose 00 or 0–99.", ephemeral=True)
             return
-        # Use the canonical form
         if num == "00":
             num_final = "00"
         else:
@@ -1637,19 +1717,18 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
         if num_final in taken:
             await interaction.response.send_message(
                 f"❌ **#{num_final}** is already taken. Choose a different number.\n"
-                f"Tip: `!numbers` shows what's available.",
+                f"Check <#1267606656297074710> to see what's available.",
                 ephemeral=True)
             return
 
         # Field full?
-        conf = confirmed_count()
+        conf   = confirmed_count()
         status = "Confirmed" if conf < reg["max_field"] else "Waitlist"
 
         reg["drivers"].append({
             "name":          name,
             "discord_id":    discord_id,
             "discord_tag":   str(interaction.user),
-            "iracing_id":    iid,
             "number":        num_final,
             "status":        status,
             "paid":          False,
@@ -1658,20 +1737,21 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
         })
         save_reg(reg)
 
-        # Confirm to driver
+        # Confirm to driver + show team dropdown
         if status == "Confirmed":
             msg = (f"✅ **You're in, {name}!**\n"
                    f"Car **#{num_final}** is yours.\n"
                    f"Status: **Confirmed** — pending payment verification.\n"
-                   f"Entry fee: **${reg['entry_fee']}** — payment details in `#registration`.\n"
-                   f"See you at Daytona. 🏁")
+                   f"Entry fee: **${reg['entry_fee']}** — payment details in `#registration`.\n\n"
+                   f"**Want to join a team?** Pick one below, or skip.")
         else:
             pos = sum(1 for d in reg["drivers"] if d["status"] == "Waitlist")
             msg = (f"📋 **{name}, you're on the waitlist** (position {pos}).\n"
-                   f"Car **#{num_final}** is reserved for you if a spot opens.\n"
-                   f"We'll notify you if you move up. 🏁")
+                   f"Car **#{num_final}** is reserved for you if a spot opens.\n\n"
+                   f"**Want to join a team?** Pick one below, or skip.")
 
-        await interaction.response.send_message(msg, ephemeral=True)
+        view = TeamSelectView(name, discord_id, interaction.guild)
+        await interaction.response.send_message(msg, view=view, ephemeral=True)
 
         # Staff notification
         guild    = interaction.guild
@@ -1681,12 +1761,11 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
                 title="🆕 New Driver Registration",
                 color=0x2ecc71 if status == "Confirmed" else 0xf1c40f,
             )
-            embed.add_field(name="Name",       value=name,                     inline=True)
-            embed.add_field(name="Discord",    value=str(interaction.user),    inline=True)
-            embed.add_field(name="Number",     value=f"#{num_final}",          inline=True)
-            embed.add_field(name="iRacing ID", value=iid,                      inline=True)
-            embed.add_field(name="Status",     value=status,                   inline=True)
-            embed.add_field(name="Payment",    value="⏳ Pending",             inline=True)
+            embed.add_field(name="Name",    value=name,                  inline=True)
+            embed.add_field(name="Discord", value=str(interaction.user), inline=True)
+            embed.add_field(name="Number",  value=f"#{num_final}",       inline=True)
+            embed.add_field(name="Status",  value=status,                inline=True)
+            embed.add_field(name="Payment", value="⏳ Pending",          inline=True)
             embed.set_footer(text=f"Field: {conf+1 if status=='Confirmed' else conf}/{reg['max_field']} confirmed")
             await staff_ch.send(embed=embed)
 
@@ -1811,7 +1890,7 @@ class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
                     ),
                     color=0xE8272A,
                 )
-                embed.set_footer(text="QSR Full Throttle Series — Team Registration")
+                embed.set_footer(text="QSR High Horsepower Series — Team Registration")
                 await tf_ch.send(embed=embed)
 
         # Staff ping
@@ -1858,9 +1937,9 @@ async def setup_registration_cmd(ctx):
         return
     reg = load_reg()
     embed = discord.Embed(
-        title="🏁 QSR Full Throttle Series — Season 1 Registration",
+        title="🏁 QSR High Horsepower Series — Season 1 Registration",
         description=(
-            "**Welcome to the QSR Full Throttle Series.**\n\n"
+            "**Welcome to the QSR High Horsepower Series.**\n\n"
             "Click **Register as Driver** to claim your spot and car number.\n"
             "Click **Register a Team** to create a team and start earning team points.\n\n"
             f"💰 **Entry Fee:** ${reg['entry_fee']} per driver\n"
@@ -1871,7 +1950,7 @@ async def setup_registration_cmd(ctx):
         ),
         color=0xC0392B,
     )
-    embed.set_footer(text="QSR Simulations | Full Throttle Series Season 1")
+    embed.set_footer(text="QSR Simulations | High Horsepower Series Season 1")
     await ch.send(embed=embed, view=RegistrationView())
     await ctx.send("✅ Registration embed posted in #registration!")
 
@@ -1948,7 +2027,7 @@ async def teams_cmd(ctx):
         await ctx.send("No teams registered yet. Be the first — hit **Register a Team** in `#registration`! 🏁")
         return
     embed = discord.Embed(
-        title="🏎️ QSR Full Throttle Series — Team Standings",
+        title="🏎️ QSR High Horsepower Series — Team Standings",
         color=0xE8272A,
         timestamp=datetime.utcnow(),
     )
@@ -2005,7 +2084,7 @@ async def mystats_cmd(ctx):
     embed.add_field(name="Payment",    value="✅ Paid" if driver.get("paid") else "⏳ Pending", inline=True)
     embed.add_field(name="iRacing ID", value=driver.get("iracing_id","—"), inline=True)
     embed.add_field(name="Team",       value=driver.get("team") or "No team", inline=True)
-    embed.set_footer(text="QSR Full Throttle Series Season 1")
+    embed.set_footer(text="QSR High Horsepower Series Season 1")
     await ctx.send(embed=embed, ephemeral=False)
 
 
@@ -2228,7 +2307,7 @@ async def career_cmd(ctx, *, driver_name: str = ""):
         inline=True
     )
     srh_url     = profile.get("sim_racer_hub_url", "")
-    footer_text = "QSR Full Throttle Series — Season 1"
+    footer_text = "QSR High Horsepower Series — Season 1"
     if srh_url:
         footer_text += f" | SRH: {srh_url}"
     summary_embed.set_footer(text=footer_text)
@@ -2252,7 +2331,7 @@ async def career_cmd(ctx, *, driver_name: str = ""):
                 f"{r['points']}{stage_str} pts{inc_str}"
             )
         history_embed.description = "\n".join(lines)
-        history_embed.set_footer(text=f"{len(history)} race(s) | Season 1 · QSR Full Throttle Series")
+        history_embed.set_footer(text=f"{len(history)} race(s) | Season 1 · QSR High Horsepower Series")
 
     await ctx.send(embed=summary_embed)
     await ctx.send(embed=history_embed)
