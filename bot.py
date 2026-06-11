@@ -1944,7 +1944,7 @@ async def setup_registration_cmd(ctx):
             "Click **Register a Team** to create a team and start earning team points.\n\n"
             f"💰 **Entry Fee:** ${reg['entry_fee']} per driver\n"
             f"🏎️ **Max Field:** {reg['max_field']} drivers\n"
-            f"📅 **Season Start:** July 20, 2026 — Daytona\n\n"
+            f"📅 **Season Start:** July 20, 2026 — Michigan\n\n"
             "Read the rulebook in `#league-rules` before registering.\n"
             "Questions? Ask Dale in `#ask-dale`. 🏁"
         ),
@@ -2082,7 +2082,6 @@ async def mystats_cmd(ctx):
     embed.add_field(name="Car Number", value=f"#{driver['number']}",   inline=True)
     embed.add_field(name="Status",     value=driver["status"],          inline=True)
     embed.add_field(name="Payment",    value="✅ Paid" if driver.get("paid") else "⏳ Pending", inline=True)
-    embed.add_field(name="iRacing ID", value=driver.get("iracing_id","—"), inline=True)
     embed.add_field(name="Team",       value=driver.get("team") or "No team", inline=True)
     embed.set_footer(text="QSR High Horsepower Series Season 1")
     await ctx.send(embed=embed, ephemeral=False)
