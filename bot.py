@@ -1369,15 +1369,15 @@ async def on_member_join(member: discord.Member):
             title="🏁  Welcome to QSR Simulations!",
             description=(
                 f"Well, look who just pulled into the garage — {member.mention}! Welcome to QSR Simulations.\n\n"
-                "**QSR Full Throttle Series** — We run the ARCA car at full 110% horsepower. "
+                "**QSR High Horsepower Series** — We run the ARCA car at full 110% horsepower. "
                 "No restrictions. Real power. Real racin'.\n\n"
                 "**Here's what you need to do:**\n"
                 "1️⃣  Grab your roles → `#get-roles`\n"
                 "2️⃣  Read the rules → `#league-rules`\n"
-                "3️⃣  Claim your number → `#number-request`\n"
-                "4️⃣  Sign up for the next race → `#registration`\n\n"
+                f"3️⃣  Check available numbers → <#1267606656297074710>\n"
+                "4️⃣  Sign up for the race → `#registration`\n\n"
                 "Any questions, you ask Dale in `#ask-dale`. "
-                "I'll tell you straight. See you on the track, son. 🏁"
+                "I'll tell you straight. See you at Michigan, son. 🏁"
             ),
             color=0xE8272A
         )
