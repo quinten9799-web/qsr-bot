@@ -1264,11 +1264,8 @@ async def on_ready():
     print(f"🔄  Syncing slash commands to guild {GUILD_ID}...")
     print(f"🔄  Commands in tree: {[c.name for c in bot.tree.get_commands()]}")
     try:
-        # Clear any stale global registrations first
-        bot.tree.clear_commands(guild=None)
-        await bot.tree.sync(guild=None)
-        print("✅  Cleared global slash commands")
-        # Now sync guild-specific commands
+        # Copy global tree commands into guild scope, then sync
+        bot.tree.copy_global_to(guild=discord.Object(id=GUILD_ID))
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
         print(f"✅  Synced {len(synced)} slash command(s) to guild: {[c.name for c in synced]}")
     except discord.errors.Forbidden as e:
@@ -1281,6 +1278,27 @@ async def on_ready():
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
     else:
         print("⚠️  No ANTHROPIC_API_KEY — using FAQ mode only")
+
+    # Post startup notice to #staff-chat
+    try:
+        _guild = bot.get_guild(GUILD_ID)
+        if _guild:
+            _staff_ch = discord.utils.get(_guild.text_channels, name="staff-chat")
+            if _staff_ch:
+                _slash_count = len([c for c in bot.tree.get_commands()])
+                embed = discord.Embed(
+                    title="🔄 Bot Updated & Online",
+                    description="Dale bot has restarted and is fully operational.",
+                    color=0xE8520A,
+                    timestamp=datetime.utcnow()
+                )
+                embed.add_field(name="Slash Commands", value=f"✅ {_slash_count} registered", inline=True)
+                embed.add_field(name="AI", value="✅ Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ mode", inline=True)
+                embed.add_field(name="Sync Server", value=f"✅ Port {PORT}", inline=True)
+                embed.set_footer(text="QSR High Horsepower Series | Dale Bot")
+                await _staff_ch.send(embed=embed)
+    except Exception as e:
+        print(f"⚠️  Could not post startup notice: {e}")
 
 
 @bot.event
