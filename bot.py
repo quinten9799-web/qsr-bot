@@ -1261,11 +1261,17 @@ async def on_ready():
     race_prediction.start()
     race_announcement_scheduler.start()
     await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
+    print(f"🔄  Syncing slash commands to guild {GUILD_ID}...")
+    print(f"🔄  Commands in tree: {[c.name for c in bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))]}")
     try:
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"✅  Synced {len(synced)} slash command(s) to guild")
+        print(f"✅  Synced {len(synced)} slash command(s): {[c.name for c in synced]}")
+    except discord.errors.Forbidden as e:
+        print(f"❌  Slash sync FORBIDDEN — bot missing applications.commands scope: {e}")
+    except discord.errors.HTTPException as e:
+        print(f"❌  Slash sync HTTP error {e.status}: {e.text}")
     except Exception as e:
-        print(f"⚠️  Slash command sync failed: {e}")
+        print(f"❌  Slash sync failed: {type(e).__name__}: {e}")
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
     else:
@@ -3100,6 +3106,15 @@ async def slash_career(interaction: discord.Interaction, driver_name: str):
     )
     await interaction.followup.send(embed=summary_embed)
     await interaction.followup.send(embed=history_embed)
+
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    print(f"❌ Slash command error in /{interaction.command.name if interaction.command else '?'}: {error}")
+    try:
+        await interaction.response.send_message(f"⚠️ Something went wrong: {error}", ephemeral=True)
+    except Exception:
+        pass
 
 
 bot.run(BOT_TOKEN)
