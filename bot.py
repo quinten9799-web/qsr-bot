@@ -1262,10 +1262,15 @@ async def on_ready():
     race_announcement_scheduler.start()
     await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
     print(f"🔄  Syncing slash commands to guild {GUILD_ID}...")
-    print(f"🔄  Commands in tree: {[c.name for c in bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))]}")
+    print(f"🔄  Commands in tree: {[c.name for c in bot.tree.get_commands()]}")
     try:
+        # Clear any stale global registrations first
+        bot.tree.clear_commands(guild=None)
+        await bot.tree.sync(guild=None)
+        print("✅  Cleared global slash commands")
+        # Now sync guild-specific commands
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"✅  Synced {len(synced)} slash command(s): {[c.name for c in synced]}")
+        print(f"✅  Synced {len(synced)} slash command(s) to guild: {[c.name for c in synced]}")
     except discord.errors.Forbidden as e:
         print(f"❌  Slash sync FORBIDDEN — bot missing applications.commands scope: {e}")
     except discord.errors.HTTPException as e:
@@ -2882,7 +2887,7 @@ print(f"✅  Sync server started on port {PORT}")
 #  Synced to the guild on_ready so they appear immediately
 # ─────────────────────────────────────────────────────────────────
 
-@bot.tree.command(name="standings", description="Current championship standings", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="standings", description="Current championship standings")
 async def slash_standings(interaction: discord.Interaction):
     data = load_data()
     s    = data.get("standings", {})
@@ -2907,7 +2912,7 @@ async def slash_standings(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="schedule", description="Season race schedule", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="schedule", description="Season race schedule")
 async def slash_schedule(interaction: discord.Interaction):
     data  = load_data()
     sched = data.get("schedule", [])
@@ -2926,7 +2931,7 @@ async def slash_schedule(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="rules", description="Quick rules summary", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="rules", description="Quick rules summary")
 async def slash_rules(interaction: discord.Interaction):
     embed = discord.Embed(title="📋 QSR High Horsepower Series — Quick Rules", color=0xE8272A)
     embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
@@ -2941,7 +2946,7 @@ async def slash_rules(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="mystats", description="Your registration profile and team", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="mystats", description="Your registration profile and team")
 async def slash_mystats(interaction: discord.Interaction):
     discord_id = str(interaction.user.id)
     driver = get_driver_reg(discord_id)
@@ -2962,7 +2967,7 @@ async def slash_mystats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="teams", description="Team standings and rosters", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="teams", description="Team standings and rosters")
 async def slash_teams(interaction: discord.Interaction):
     await interaction.response.defer()
     try:
@@ -2990,7 +2995,7 @@ async def slash_teams(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed)
 
 
-@bot.tree.command(name="numbers", description="Available and taken car numbers", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="numbers", description="Available and taken car numbers")
 async def slash_numbers(interaction: discord.Interaction):
     taken = taken_numbers()
     avail = [n for n in VALID_NUMBERS if n not in taken]
@@ -3005,7 +3010,7 @@ async def slash_numbers(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="ask", description="Ask Dale anything about QSR, iRacing, or NASCAR", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="ask", description="Ask Dale anything about QSR, iRacing, or NASCAR")
 async def slash_ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer()
     q_lower = question.lower()
@@ -3039,7 +3044,7 @@ async def slash_ask(interaction: discord.Interaction, question: str):
     )
 
 
-@bot.tree.command(name="career", description="Driver career summary and race history", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="career", description="Driver career summary and race history")
 async def slash_career(interaction: discord.Interaction, driver_name: str):
     await interaction.response.defer()
     data         = load_data()
