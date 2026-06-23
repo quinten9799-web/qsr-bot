@@ -825,31 +825,6 @@ SCHEDULE = [
 ]
 POSTED_FILE             = os.path.join(_DATA_DIR, "posted_announcements.json")
 
-# ─────────────────────────────────────────────────────────────────
-#  RACE DATE HELPER — checks if today (ET) is a scheduled race date
-#  Season 1 runs July–Oct, always EDT (UTC-4). No need to handle EST.
-# ─────────────────────────────────────────────────────────────────
-
-def get_todays_race() -> dict | None:
-    """Returns the SCHEDULE entry for today's race date in ET, or None."""
-    et_offset = timedelta(hours=4)  # EDT = UTC-4 all season
-    now_et    = datetime.utcnow() - et_offset
-    for entry in SCHEDULE:
-        try:
-            race_dt = datetime.strptime(entry["date"], "%B %d, %Y")
-            if (race_dt.month == now_et.month and
-                    race_dt.day   == now_et.day and
-                    race_dt.year  == now_et.year):
-                return entry
-        except Exception:
-            pass
-    return None
-
-def is_race_day_et() -> bool:
-    """True if today (ET) is one of the 14 scheduled race dates."""
-    return get_todays_race() is not None
-
-
 # RACE_ANNOUNCEMENTS replaced — announcements now built dynamically
 # from race_config in data.json, set via the Race Setup table in qsr_app.py
 
@@ -905,7 +880,7 @@ def save_posted_announcement(race_num: int):
 async def race_announcement_scheduler():
     """Every Monday at 12PM ET (16:00 UTC), build and post the week's race announcement."""
     now_utc = datetime.utcnow()
-    if not is_race_day_et():
+    if now_utc.weekday() != 0:
         return
     if not (now_utc.hour == 16 and now_utc.minute == 0):
         return
@@ -1005,7 +980,7 @@ async def race_announcement_scheduler():
 async def dales_weekly_take():
     """Every Monday morning Dale posts an unprompted take in #pitlane."""
     now = datetime.utcnow()
-    if not is_race_day_et() or now.hour != 12:
+    if now.weekday() != 0 or now.hour != 12:
         return
     guild = bot.get_guild(GUILD_ID)
     if not guild:
@@ -1047,7 +1022,7 @@ async def dales_weekly_take():
 async def pre_race_trash_talk():
     """30 minutes before race, Dale calls out a rivalry."""
     now = datetime.utcnow()
-    if not is_race_day_et():
+    if now.weekday() != RACE_DAY:
         return
     race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
     race_dt        = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
@@ -1190,7 +1165,7 @@ PREDICTION_FILE = os.path.join(_DATA_DIR, "dale_prediction.json")
 async def race_prediction():
     """Dale posts a race prediction 1 hour before green flag."""
     now = datetime.utcnow()
-    if not is_race_day_et():
+    if now.weekday() != RACE_DAY:
         return
     race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
     race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
@@ -1242,7 +1217,7 @@ async def race_prediction():
 @tasks.loop(hours=1)
 async def race_reminder():
     now = datetime.utcnow()
-    if not is_race_day_et():
+    if now.weekday() != RACE_DAY:
         return
     race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
     race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
@@ -1285,7 +1260,12 @@ async def on_ready():
     pre_race_trash_talk.start()
     race_prediction.start()
     race_announcement_scheduler.start()
-    await bot.change_presence(activity=discord.Game("QSR Full Throttle Series 🏁"))
+    await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
+    try:
+        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f"✅  Synced {len(synced)} slash command(s) to guild")
+    except Exception as e:
+        print(f"⚠️  Slash command sync failed: {e}")
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
     else:
@@ -2891,4 +2871,235 @@ _sync_thread.start()
 print(f"✅  Sync server started on port {PORT}")
 
 # ─────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
+#  SLASH COMMANDS — mirrors of the most-used prefix commands
+#  Synced to the guild on_ready so they appear immediately
+# ─────────────────────────────────────────────────────────────────
+
+@bot.tree.command(name="standings", description="Current championship standings", guild=discord.Object(id=GUILD_ID))
+async def slash_standings(interaction: discord.Interaction):
+    data = load_data()
+    s    = data.get("standings", {})
+    if not s:
+        await interaction.response.send_message("No standings yet — Race 1 incoming! 🏁", ephemeral=True)
+        return
+    sorted_s = sorted(s.items(), key=lambda x: x[1]["points"], reverse=True)
+    medals   = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines    = []
+    for i, (driver, info) in enumerate(sorted_s[:20], 1):
+        icon    = medals.get(i, f"`{i:>2}.`")
+        wins    = info.get("wins", 0)
+        win_str = f" ⭐x{wins}" if wins else ""
+        lines.append(f"{icon} **{driver}** — {info['points']} pts{win_str}")
+    embed = discord.Embed(
+        title="🏆 QSR High Horsepower Series — Championship Standings",
+        description="\n".join(lines),
+        color=0xE8272A,
+        timestamp=datetime.utcnow()
+    )
+    embed.set_footer(text=f"Through Race {data.get('race_number',1)-1} | Updated after each race")
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="schedule", description="Season race schedule", guild=discord.Object(id=GUILD_ID))
+async def slash_schedule(interaction: discord.Interaction):
+    data  = load_data()
+    sched = data.get("schedule", [])
+    if not sched:
+        # Fall back to hardcoded SCHEDULE
+        sched = [{"track": e["track"], "date": e["date"], "complete": False} for e in SCHEDULE]
+    lines = []
+    for i, race in enumerate(sched, 1):
+        done = "✅" if race.get("complete") else "🔜"
+        lines.append(f"{done} **Race {i}** — {race['track']} | {race['date']}")
+    embed = discord.Embed(
+        title="📅 QSR High Horsepower — Season Schedule",
+        description="\n".join(lines),
+        color=0xE8272A
+    )
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="rules", description="Quick rules summary", guild=discord.Object(id=GUILD_ID))
+async def slash_rules(interaction: discord.Interaction):
+    embed = discord.Embed(title="📋 QSR High Horsepower Series — Quick Rules", color=0xE8272A)
+    embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
+    embed.add_field(name="Race Day",             value="Mondays 8PM ET", inline=True)
+    embed.add_field(name="Points",               value="2026 NASCAR system (55 pts win, +1 fastest lap)", inline=True)
+    embed.add_field(name="Stages",               value="1 stage per race, green flag — no caution", inline=True)
+    embed.add_field(name="Incident Limit",       value="17x per race", inline=True)
+    embed.add_field(name="Intentional Wrecking", value="Immediate DQ", inline=True)
+    embed.add_field(name="Appeals",              value="$1 deposit, refunded if upheld", inline=True)
+    embed.add_field(name="Full Rulebook",        value="See `#league-rules`", inline=True)
+    embed.set_footer(text="Use /ask <question> for more detail on anything")
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="mystats", description="Your registration profile and team", guild=discord.Object(id=GUILD_ID))
+async def slash_mystats(interaction: discord.Interaction):
+    discord_id = str(interaction.user.id)
+    driver = get_driver_reg(discord_id)
+    if not driver:
+        await interaction.response.send_message(
+            "You're not registered yet! Head to `#registration` and click **Register as Driver**. 🏁",
+            ephemeral=True)
+        return
+    embed = discord.Embed(
+        title=f"🏁 {driver['name']} — Registration Profile",
+        color=0xE8272A,
+    )
+    embed.add_field(name="Car Number", value=f"#{driver['number']}",   inline=True)
+    embed.add_field(name="Status",     value=driver["status"],          inline=True)
+    embed.add_field(name="Payment",    value="✅ Paid" if driver.get("paid") else "⏳ Pending", inline=True)
+    embed.add_field(name="Team",       value=driver.get("team") or "No team", inline=True)
+    embed.set_footer(text="QSR High Horsepower Series Season 1")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="teams", description="Team standings and rosters", guild=discord.Object(id=GUILD_ID))
+async def slash_teams(interaction: discord.Interaction):
+    await interaction.response.defer()
+    try:
+        recalc_team_points()
+    except Exception:
+        pass
+    reg   = load_reg()
+    teams = sorted(reg.get("teams", []), key=lambda t: t.get("points", 0), reverse=True)
+    if not teams:
+        await interaction.followup.send("No teams registered yet. Be the first — hit **Register a Team** in `#registration`! 🏁")
+        return
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines  = []
+    for i, team in enumerate(teams, 1):
+        icon    = medals.get(i, f"`{i:>2}.`")
+        members = ", ".join(m["driver_name"] for m in team.get("members", []))
+        lines.append(f"{icon} **{team['name']}** — {team.get('points',0)} pts\n    👥 {members}")
+    embed = discord.Embed(
+        title="🏎️ QSR High Horsepower Series — Team Standings",
+        description="\n".join(lines),
+        color=0xE8272A,
+        timestamp=datetime.utcnow(),
+    )
+    embed.set_footer(text="Points accumulate from the race each driver joined their team")
+    await interaction.followup.send(embed=embed)
+
+
+@bot.tree.command(name="numbers", description="Available and taken car numbers", guild=discord.Object(id=GUILD_ID))
+async def slash_numbers(interaction: discord.Interaction):
+    taken = taken_numbers()
+    avail = [n for n in VALID_NUMBERS if n not in taken]
+    taken_str = " · ".join(f"~~{n}~~" for n in sorted(taken, key=lambda x: (len(x), x))) if taken else "None taken yet!"
+    avail_str = " · ".join(avail[:40])
+    if len(avail) > 40:
+        avail_str += f" _...and {len(avail)-40} more_"
+    embed = discord.Embed(title="🔢 QSR Car Numbers — Season 1", color=0xE8272A)
+    embed.add_field(name=f"✅ Available ({len(avail)})", value=avail_str or "—", inline=False)
+    embed.add_field(name=f"🔴 Taken ({len(taken)})",    value=taken_str,         inline=False)
+    embed.set_footer(text="Register in #registration to claim your number")
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="ask", description="Ask Dale anything about QSR, iRacing, or NASCAR", guild=discord.Object(id=GUILD_ID))
+async def slash_ask(interaction: discord.Interaction, question: str):
+    await interaction.response.defer()
+    q_lower = question.lower()
+    daytona_keywords = ["daytona 2001", "february 18", "february 2001", "how did you die",
+                       "crash 2001", "dale died", "earnhardt died", "the crash"]
+    if any(kw in q_lower for kw in daytona_keywords):
+        embed = discord.Embed(
+            description="...I don\'t much like talkin\' about that day. Some things you just carry. 🏁",
+            color=0x333333
+        )
+        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
+        await interaction.followup.send(embed=embed)
+        return
+    if ANTHROPIC_API_KEY:
+        user_ctx = get_user_context(interaction.user.id, interaction.user.display_name)
+        response = await ask_claude(question, user_context=user_ctx)
+        if response:
+            update_user_memory(interaction.user.id, interaction.user.display_name, question, response)
+            embed = discord.Embed(description=response, color=0xE8272A)
+            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
+            await interaction.followup.send(embed=embed)
+            return
+    for key, answer in FAQ.items():
+        if key in q_lower:
+            embed = discord.Embed(description=answer, color=0xE8272A)
+            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
+            await interaction.followup.send(embed=embed)
+            return
+    await interaction.followup.send(
+        "I ain\'t got a clean answer on that one right now. Try `#help-desk` or ask me something about racing. 🏁"
+    )
+
+
+@bot.tree.command(name="career", description="Driver career summary and race history", guild=discord.Object(id=GUILD_ID))
+async def slash_career(interaction: discord.Interaction, driver_name: str):
+    await interaction.response.defer()
+    data         = load_data()
+    standings    = data.get("standings", {})
+    race_results = data.get("race_results", {})
+    matched = next((n for n in standings if driver_name.lower() in n.lower()), None)
+    if not matched:
+        await interaction.followup.send(f"❌ Driver `{driver_name}` not found in standings.")
+        return
+    info        = standings[matched]
+    history     = race_results.get(matched, [])
+    races       = info.get("races", 0)
+    wins        = info.get("wins", 0)
+    total_pts   = info.get("points", 0)
+    total_inc   = info.get("incidents", 0)
+    top5s       = sum(1 for r in history if r["finish"] <= 5)
+    top10s      = sum(1 for r in history if r["finish"] <= 10)
+    avg_finish  = round(sum(r["finish"] for r in history) / len(history), 1) if history else "—"
+    best_finish = min((r["finish"] for r in history), default=None)
+    avg_inc     = round(total_inc / races, 1) if races else "—"
+    clean_runs  = sum(1 for r in history if r["incidents"] == 0)
+    sorted_s    = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    champ_pos   = next((i + 1 for i, (n, _) in enumerate(sorted_s) if n == matched), "?")
+    leader_pts  = sorted_s[0][1]["points"] if sorted_s else 0
+    gap         = leader_pts - total_pts
+    pos_medals  = {1: "🏆", 2: "🥈", 3: "🥉"}
+    pos_icon    = pos_medals.get(champ_pos, f"P{champ_pos}")
+    gap_str     = "LEADER" if gap == 0 else f"-{gap} pts"
+    best_str    = f"P{best_finish}" if best_finish else "—"
+    summary_embed = discord.Embed(
+        title=f"🏁 {matched} — Career Profile",
+        color=0xE8272A,
+        timestamp=datetime.utcnow()
+    )
+    summary_embed.add_field(
+        name="📊 Championship",
+        value=f"**{pos_icon} Position:** P{champ_pos}\n**Points:** {total_pts}\n**Gap to Leader:** {gap_str}",
+        inline=True
+    )
+    summary_embed.add_field(
+        name="🏎️ Season Stats",
+        value=f"**Races:** {races}\n**Wins:** {wins}\n**Top 5s:** {top5s}\n**Top 10s:** {top10s}",
+        inline=True
+    )
+    summary_embed.add_field(
+        name="📈 Averages",
+        value=f"**Avg Finish:** {avg_finish}\n**Best Finish:** {best_str}\n**Avg Incidents:** {avg_inc}x\n**Clean Runs:** {clean_runs}",
+        inline=True
+    )
+    fin_medals = {1: "🏆", 2: "🥈", 3: "🥉"}
+    history_lines = []
+    for r in history:
+        fin_icon   = fin_medals.get(r["finish"], f"P{r['finish']}")
+        inc_str    = f" ⚠️{r['incidents']}x" if r["incidents"] > 0 else " ✅"
+        stage_str  = f" +{r['stage_pts']}S" if r.get("stage_pts") else ""
+        history_lines.append(
+            f"**R{r['race']}** {fin_icon} · {r['track'][:22]} · {r['points']}{stage_str} pts{inc_str}"
+        )
+    history_embed = discord.Embed(
+        title=f"📋 {matched} — Race History",
+        description="\n".join(history_lines) if history_lines else "No race history yet — check back after Race 1! 🏁",
+        color=0x1A1A2E,
+        timestamp=datetime.utcnow()
+    )
+    await interaction.followup.send(embed=summary_embed)
+    await interaction.followup.send(embed=history_embed)
+
+
 bot.run(BOT_TOKEN)
