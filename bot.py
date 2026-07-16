@@ -100,10 +100,28 @@ def save_reg(d: dict):
     with open(REG_FILE, "w") as f:
         json.dump(d, f, indent=2)
 
+def norm_num(v) -> str:
+    """Canonical string form of a car number: '00' stays '00', everything
+    else strips leading zeros ('07' -> '7'). Handles ints and stray formats
+    so comparisons never leak a duplicate due to formatting differences."""
+    s = str(v).strip().upper()
+    if s == "00":
+        return "00"
+    try:
+        return str(int(s))
+    except (ValueError, TypeError):
+        return s
+
 def taken_numbers() -> set:
+    """Set of canonical car numbers already claimed (excludes Withdrawn)."""
     reg = load_reg()
-    return {dr["number"] for dr in reg["drivers"]
-            if dr.get("number") and dr.get("status") != "Withdrawn"}
+    return {norm_num(dr["number"]) for dr in reg["drivers"]
+            if dr.get("number") not in (None, "") and dr.get("status") != "Withdrawn"}
+
+def available_numbers() -> list:
+    """Ordered list of car numbers still open, in VALID_NUMBERS order."""
+    taken = taken_numbers()
+    return [n for n in VALID_NUMBERS if norm_num(n) not in taken]
 
 def confirmed_count() -> int:
     return sum(1 for d in load_reg()["drivers"] if d["status"] == "Confirmed")
@@ -1260,45 +1278,11 @@ async def on_ready():
     pre_race_trash_talk.start()
     race_prediction.start()
     race_announcement_scheduler.start()
-    await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
-    print(f"🔄  Syncing slash commands to guild {GUILD_ID}...")
-    print(f"🔄  Commands in tree: {[c.name for c in bot.tree.get_commands()]}")
-    try:
-        # Copy global tree commands into guild scope, then sync
-        bot.tree.copy_global_to(guild=discord.Object(id=GUILD_ID))
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"✅  Synced {len(synced)} slash command(s) to guild: {[c.name for c in synced]}")
-    except discord.errors.Forbidden as e:
-        print(f"❌  Slash sync FORBIDDEN — bot missing applications.commands scope: {e}")
-    except discord.errors.HTTPException as e:
-        print(f"❌  Slash sync HTTP error {e.status}: {e.text}")
-    except Exception as e:
-        print(f"❌  Slash sync failed: {type(e).__name__}: {e}")
+    await bot.change_presence(activity=discord.Game("QSR Full Throttle Series 🏁"))
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
     else:
         print("⚠️  No ANTHROPIC_API_KEY — using FAQ mode only")
-
-    # Post startup notice to #staff-chat
-    try:
-        _guild = bot.get_guild(GUILD_ID)
-        if _guild:
-            _staff_ch = discord.utils.get(_guild.text_channels, name="staff-chat")
-            if _staff_ch:
-                _slash_count = len([c for c in bot.tree.get_commands()])
-                embed = discord.Embed(
-                    title="🔄 Bot Updated & Online",
-                    description="Dale bot has restarted and is fully operational.",
-                    color=0xE8520A,
-                    timestamp=datetime.utcnow()
-                )
-                embed.add_field(name="Slash Commands", value=f"✅ {_slash_count} registered", inline=True)
-                embed.add_field(name="AI", value="✅ Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ mode", inline=True)
-                embed.add_field(name="Sync Server", value=f"✅ Port {PORT}", inline=True)
-                embed.set_footer(text="QSR High Horsepower Series | Dale Bot")
-                await _staff_ch.send(embed=embed)
-    except Exception as e:
-        print(f"⚠️  Could not post startup notice: {e}")
 
 
 @bot.event
@@ -1558,12 +1542,6 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
         max_length=20,
         required=True,
     )
-    car_number = discord.ui.TextInput(
-        label="Car Number (00–99)",
-        placeholder="Enter your number — first come first served",
-        max_length=2,
-        required=True,
-    )
     rules_ack = discord.ui.TextInput(
         label="Rules Acknowledgment",
         placeholder='Type YES to confirm you have read the QSR rulebook',
@@ -1571,11 +1549,16 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
         required=True,
     )
 
+    def __init__(self, chosen_number: str):
+        super().__init__()
+        # Number is pre-selected via the picker, so it's never free-typed here.
+        self.chosen_number = norm_num(chosen_number)
+
     async def on_submit(self, interaction: discord.Interaction):
         name    = self.full_name.value.strip()
         iid     = self.iracing_id.value.strip()
-        num     = self.car_number.value.strip().upper()
         ack     = self.rules_ack.value.strip().upper()
+        num_final = self.chosen_number
         discord_id = str(interaction.user.id)
 
         # Rules ack check
@@ -1584,25 +1567,6 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
                 "❌ You must type **YES** to acknowledge the rulebook. Try again.",
                 ephemeral=True)
             return
-
-        # Number validation
-        num_norm = num.lstrip("0") or "0"
-        if num == "00":
-            num_norm = "00"
-        if num_norm not in VALID_NUMBERS and num not in VALID_NUMBERS:
-            await interaction.response.send_message(
-                "❌ Invalid car number. Choose 00 or 0–99.", ephemeral=True)
-            return
-        # Use the canonical form
-        if num == "00":
-            num_final = "00"
-        else:
-            try:
-                num_final = str(int(num))
-            except ValueError:
-                await interaction.response.send_message(
-                    "❌ Invalid car number.", ephemeral=True)
-                return
 
         reg = load_reg()
 
@@ -1616,12 +1580,13 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
                 ephemeral=True)
             return
 
-        # Number taken?
-        taken = taken_numbers()
-        if num_final in taken:
+        # Race-condition guard: number may have been claimed between the
+        # picker and this submit. Numbers can't be picked if taken, but two
+        # people can grab the last one seconds apart.
+        if num_final in taken_numbers():
             await interaction.response.send_message(
-                f"❌ **#{num_final}** is already taken. Choose a different number.\n"
-                f"Tip: `!numbers` shows what's available.",
+                f"❌ **#{num_final}** was just claimed by another driver.\n"
+                f"Click **Register as Driver** again and pick a different number.",
                 ephemeral=True)
             return
 
@@ -1802,6 +1767,79 @@ class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
                 f"🏎️ New team registered: **{tname}** | Owner: {interaction.user.mention} | {len(members)} member(s)")
 
 
+# ── Car-number picker (Option A) ─────────────────────────────────
+# A short-lived, per-user ephemeral flow that only ever offers numbers
+# that are still available, so a taken number can't be selected at all.
+
+class _NumberSelect(discord.ui.Select):
+    """Step 2: pick a specific open number from a <=25 chunk."""
+    def __init__(self, numbers: list):
+        options = [discord.SelectOption(label=f"#{n}", value=n)
+                   for n in numbers[:25]]
+        super().__init__(placeholder="Pick your car number…",
+                         min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: "NumberPickerView" = self.view
+        view.chosen_number = self.values[0]
+        view.clear_items()
+        view.add_item(_ContinueButton(view.chosen_number))
+        await interaction.response.edit_message(
+            content=f"You picked **#{view.chosen_number}** ✅\n"
+                    f"Click below to finish your registration.",
+            view=view)
+
+
+class _RangeSelect(discord.ui.Select):
+    """Step 1: pick a range (only used when >25 numbers are open)."""
+    def __init__(self, chunks: list):
+        self.chunks = chunks
+        options = [
+            discord.SelectOption(
+                label=f"#{ch[0]} – #{ch[-1]}",
+                description=f"{len(ch)} open",
+                value=str(i),
+            )
+            for i, ch in enumerate(chunks)
+        ]
+        super().__init__(placeholder="Step 1 — pick a number range…",
+                         min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: "NumberPickerView" = self.view
+        chunk = self.chunks[int(self.values[0])]
+        view.clear_items()
+        view.add_item(_NumberSelect(chunk))
+        await interaction.response.edit_message(
+            content="**Step 2** — pick your car number:", view=view)
+
+
+class _ContinueButton(discord.ui.Button):
+    """Opens the registration modal with the chosen number locked in."""
+    def __init__(self, number: str):
+        super().__init__(label=f"Continue with #{number}",
+                         style=discord.ButtonStyle.success, emoji="🏁")
+        self.number = number
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(DriverRegModal(self.number))
+
+
+class NumberPickerView(discord.ui.View):
+    """Ephemeral, per-user. Chunks available numbers into <=25 groups so the
+    second dropdown is always valid. If <=25 numbers are open, skips straight
+    to the number select."""
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.chosen_number = None
+        avail = available_numbers()
+        chunks = [avail[i:i + 25] for i in range(0, len(avail), 25)]
+        if len(chunks) <= 1:
+            self.add_item(_NumberSelect(avail))
+        else:
+            self.add_item(_RangeSelect(chunks))
+
+
 class RegistrationView(discord.ui.View):
     """Persistent registration embed — two buttons: Driver + Team."""
     def __init__(self):
@@ -1815,7 +1853,27 @@ class RegistrationView(discord.ui.View):
         row=0,
     )
     async def driver_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(DriverRegModal())
+        # Already registered? Stop before they bother picking a number.
+        existing = get_driver_reg(str(interaction.user.id))
+        if existing:
+            await interaction.response.send_message(
+                f"⚠️ You're already registered as **{existing['name']}** "
+                f"(#{existing['number']}, Status: {existing['status']}).\n"
+                f"Contact an admin to make changes.",
+                ephemeral=True)
+            return
+
+        # Any numbers left?
+        if not available_numbers():
+            await interaction.response.send_message(
+                "❌ Every car number is currently taken. Contact an admin.",
+                ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            "🏁 **Let's get you registered.**\n"
+            "First, choose your car number — only numbers still available are shown.",
+            view=NumberPickerView(), ephemeral=True)
 
     @discord.ui.button(
         label="Register a Team",
@@ -2900,244 +2958,4 @@ _sync_thread.start()
 print(f"✅  Sync server started on port {PORT}")
 
 # ─────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────
-#  SLASH COMMANDS — mirrors of the most-used prefix commands
-#  Synced to the guild on_ready so they appear immediately
-# ─────────────────────────────────────────────────────────────────
-
-@bot.tree.command(name="standings", description="Current championship standings")
-async def slash_standings(interaction: discord.Interaction):
-    data = load_data()
-    s    = data.get("standings", {})
-    if not s:
-        await interaction.response.send_message("No standings yet — Race 1 incoming! 🏁", ephemeral=True)
-        return
-    sorted_s = sorted(s.items(), key=lambda x: x[1]["points"], reverse=True)
-    medals   = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines    = []
-    for i, (driver, info) in enumerate(sorted_s[:20], 1):
-        icon    = medals.get(i, f"`{i:>2}.`")
-        wins    = info.get("wins", 0)
-        win_str = f" ⭐x{wins}" if wins else ""
-        lines.append(f"{icon} **{driver}** — {info['points']} pts{win_str}")
-    embed = discord.Embed(
-        title="🏆 QSR High Horsepower Series — Championship Standings",
-        description="\n".join(lines),
-        color=0xE8272A,
-        timestamp=datetime.utcnow()
-    )
-    embed.set_footer(text=f"Through Race {data.get('race_number',1)-1} | Updated after each race")
-    await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="schedule", description="Season race schedule")
-async def slash_schedule(interaction: discord.Interaction):
-    data  = load_data()
-    sched = data.get("schedule", [])
-    if not sched:
-        # Fall back to hardcoded SCHEDULE
-        sched = [{"track": e["track"], "date": e["date"], "complete": False} for e in SCHEDULE]
-    lines = []
-    for i, race in enumerate(sched, 1):
-        done = "✅" if race.get("complete") else "🔜"
-        lines.append(f"{done} **Race {i}** — {race['track']} | {race['date']}")
-    embed = discord.Embed(
-        title="📅 QSR High Horsepower — Season Schedule",
-        description="\n".join(lines),
-        color=0xE8272A
-    )
-    await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="rules", description="Quick rules summary")
-async def slash_rules(interaction: discord.Interaction):
-    embed = discord.Embed(title="📋 QSR High Horsepower Series — Quick Rules", color=0xE8272A)
-    embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
-    embed.add_field(name="Race Day",             value="Mondays 8PM ET", inline=True)
-    embed.add_field(name="Points",               value="2026 NASCAR system (55 pts win, +1 fastest lap)", inline=True)
-    embed.add_field(name="Stages",               value="1 stage per race, green flag — no caution", inline=True)
-    embed.add_field(name="Incident Limit",       value="17x per race", inline=True)
-    embed.add_field(name="Intentional Wrecking", value="Immediate DQ", inline=True)
-    embed.add_field(name="Appeals",              value="$1 deposit, refunded if upheld", inline=True)
-    embed.add_field(name="Full Rulebook",        value="See `#league-rules`", inline=True)
-    embed.set_footer(text="Use /ask <question> for more detail on anything")
-    await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="mystats", description="Your registration profile and team")
-async def slash_mystats(interaction: discord.Interaction):
-    discord_id = str(interaction.user.id)
-    driver = get_driver_reg(discord_id)
-    if not driver:
-        await interaction.response.send_message(
-            "You're not registered yet! Head to `#registration` and click **Register as Driver**. 🏁",
-            ephemeral=True)
-        return
-    embed = discord.Embed(
-        title=f"🏁 {driver['name']} — Registration Profile",
-        color=0xE8272A,
-    )
-    embed.add_field(name="Car Number", value=f"#{driver['number']}",   inline=True)
-    embed.add_field(name="Status",     value=driver["status"],          inline=True)
-    embed.add_field(name="Payment",    value="✅ Paid" if driver.get("paid") else "⏳ Pending", inline=True)
-    embed.add_field(name="Team",       value=driver.get("team") or "No team", inline=True)
-    embed.set_footer(text="QSR High Horsepower Series Season 1")
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-@bot.tree.command(name="teams", description="Team standings and rosters")
-async def slash_teams(interaction: discord.Interaction):
-    await interaction.response.defer()
-    try:
-        recalc_team_points()
-    except Exception:
-        pass
-    reg   = load_reg()
-    teams = sorted(reg.get("teams", []), key=lambda t: t.get("points", 0), reverse=True)
-    if not teams:
-        await interaction.followup.send("No teams registered yet. Be the first — hit **Register a Team** in `#registration`! 🏁")
-        return
-    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-    lines  = []
-    for i, team in enumerate(teams, 1):
-        icon    = medals.get(i, f"`{i:>2}.`")
-        members = ", ".join(m["driver_name"] for m in team.get("members", []))
-        lines.append(f"{icon} **{team['name']}** — {team.get('points',0)} pts\n    👥 {members}")
-    embed = discord.Embed(
-        title="🏎️ QSR High Horsepower Series — Team Standings",
-        description="\n".join(lines),
-        color=0xE8272A,
-        timestamp=datetime.utcnow(),
-    )
-    embed.set_footer(text="Points accumulate from the race each driver joined their team")
-    await interaction.followup.send(embed=embed)
-
-
-@bot.tree.command(name="numbers", description="Available and taken car numbers")
-async def slash_numbers(interaction: discord.Interaction):
-    taken = taken_numbers()
-    avail = [n for n in VALID_NUMBERS if n not in taken]
-    taken_str = " · ".join(f"~~{n}~~" for n in sorted(taken, key=lambda x: (len(x), x))) if taken else "None taken yet!"
-    avail_str = " · ".join(avail[:40])
-    if len(avail) > 40:
-        avail_str += f" _...and {len(avail)-40} more_"
-    embed = discord.Embed(title="🔢 QSR Car Numbers — Season 1", color=0xE8272A)
-    embed.add_field(name=f"✅ Available ({len(avail)})", value=avail_str or "—", inline=False)
-    embed.add_field(name=f"🔴 Taken ({len(taken)})",    value=taken_str,         inline=False)
-    embed.set_footer(text="Register in #registration to claim your number")
-    await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="ask", description="Ask Dale anything about QSR, iRacing, or NASCAR")
-async def slash_ask(interaction: discord.Interaction, question: str):
-    await interaction.response.defer()
-    q_lower = question.lower()
-    daytona_keywords = ["daytona 2001", "february 18", "february 2001", "how did you die",
-                       "crash 2001", "dale died", "earnhardt died", "the crash"]
-    if any(kw in q_lower for kw in daytona_keywords):
-        embed = discord.Embed(
-            description="...I don\'t much like talkin\' about that day. Some things you just carry. 🏁",
-            color=0x333333
-        )
-        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
-        await interaction.followup.send(embed=embed)
-        return
-    if ANTHROPIC_API_KEY:
-        user_ctx = get_user_context(interaction.user.id, interaction.user.display_name)
-        response = await ask_claude(question, user_context=user_ctx)
-        if response:
-            update_user_memory(interaction.user.id, interaction.user.display_name, question, response)
-            embed = discord.Embed(description=response, color=0xE8272A)
-            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
-            await interaction.followup.send(embed=embed)
-            return
-    for key, answer in FAQ.items():
-        if key in q_lower:
-            embed = discord.Embed(description=answer, color=0xE8272A)
-            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
-            await interaction.followup.send(embed=embed)
-            return
-    await interaction.followup.send(
-        "I ain\'t got a clean answer on that one right now. Try `#help-desk` or ask me something about racing. 🏁"
-    )
-
-
-@bot.tree.command(name="career", description="Driver career summary and race history")
-async def slash_career(interaction: discord.Interaction, driver_name: str):
-    await interaction.response.defer()
-    data         = load_data()
-    standings    = data.get("standings", {})
-    race_results = data.get("race_results", {})
-    matched = next((n for n in standings if driver_name.lower() in n.lower()), None)
-    if not matched:
-        await interaction.followup.send(f"❌ Driver `{driver_name}` not found in standings.")
-        return
-    info        = standings[matched]
-    history     = race_results.get(matched, [])
-    races       = info.get("races", 0)
-    wins        = info.get("wins", 0)
-    total_pts   = info.get("points", 0)
-    total_inc   = info.get("incidents", 0)
-    top5s       = sum(1 for r in history if r["finish"] <= 5)
-    top10s      = sum(1 for r in history if r["finish"] <= 10)
-    avg_finish  = round(sum(r["finish"] for r in history) / len(history), 1) if history else "—"
-    best_finish = min((r["finish"] for r in history), default=None)
-    avg_inc     = round(total_inc / races, 1) if races else "—"
-    clean_runs  = sum(1 for r in history if r["incidents"] == 0)
-    sorted_s    = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
-    champ_pos   = next((i + 1 for i, (n, _) in enumerate(sorted_s) if n == matched), "?")
-    leader_pts  = sorted_s[0][1]["points"] if sorted_s else 0
-    gap         = leader_pts - total_pts
-    pos_medals  = {1: "🏆", 2: "🥈", 3: "🥉"}
-    pos_icon    = pos_medals.get(champ_pos, f"P{champ_pos}")
-    gap_str     = "LEADER" if gap == 0 else f"-{gap} pts"
-    best_str    = f"P{best_finish}" if best_finish else "—"
-    summary_embed = discord.Embed(
-        title=f"🏁 {matched} — Career Profile",
-        color=0xE8272A,
-        timestamp=datetime.utcnow()
-    )
-    summary_embed.add_field(
-        name="📊 Championship",
-        value=f"**{pos_icon} Position:** P{champ_pos}\n**Points:** {total_pts}\n**Gap to Leader:** {gap_str}",
-        inline=True
-    )
-    summary_embed.add_field(
-        name="🏎️ Season Stats",
-        value=f"**Races:** {races}\n**Wins:** {wins}\n**Top 5s:** {top5s}\n**Top 10s:** {top10s}",
-        inline=True
-    )
-    summary_embed.add_field(
-        name="📈 Averages",
-        value=f"**Avg Finish:** {avg_finish}\n**Best Finish:** {best_str}\n**Avg Incidents:** {avg_inc}x\n**Clean Runs:** {clean_runs}",
-        inline=True
-    )
-    fin_medals = {1: "🏆", 2: "🥈", 3: "🥉"}
-    history_lines = []
-    for r in history:
-        fin_icon   = fin_medals.get(r["finish"], f"P{r['finish']}")
-        inc_str    = f" ⚠️{r['incidents']}x" if r["incidents"] > 0 else " ✅"
-        stage_str  = f" +{r['stage_pts']}S" if r.get("stage_pts") else ""
-        history_lines.append(
-            f"**R{r['race']}** {fin_icon} · {r['track'][:22]} · {r['points']}{stage_str} pts{inc_str}"
-        )
-    history_embed = discord.Embed(
-        title=f"📋 {matched} — Race History",
-        description="\n".join(history_lines) if history_lines else "No race history yet — check back after Race 1! 🏁",
-        color=0x1A1A2E,
-        timestamp=datetime.utcnow()
-    )
-    await interaction.followup.send(embed=summary_embed)
-    await interaction.followup.send(embed=history_embed)
-
-
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    print(f"❌ Slash command error in /{interaction.command.name if interaction.command else '?'}: {error}")
-    try:
-        await interaction.response.send_message(f"⚠️ Something went wrong: {error}", ephemeral=True)
-    except Exception:
-        pass
-
-
 bot.run(BOT_TOKEN)
