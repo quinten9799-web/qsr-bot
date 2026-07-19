@@ -1273,6 +1273,25 @@ async def on_ready():
     bot.add_view(RegistrationView())
     bot.add_view(RSVPView())
     print(f"✅  Ask Dale Bot online as {bot.user}")
+
+    # ── Slash command sync ──────────────────────────────────────
+    # Every hybrid command below is registered globally the moment its
+    # decorator runs. copy_global_to() copies those global definitions
+    # into this guild's command bucket, and sync(guild=...) pushes that
+    # bucket to Discord — which OVERWRITES whatever was registered for
+    # this guild before, including any stale/ghost slash commands left
+    # behind by older deploys. That overwrite is what fixes commands
+    # like /standings responding with "The application did not respond":
+    # the ghost had no live handler behind it; this sync replaces it
+    # with the real one.
+    try:
+        guild_obj = discord.Object(id=GUILD_ID)
+        bot.tree.copy_global_to(guild=guild_obj)
+        synced = await bot.tree.sync(guild=guild_obj)
+        print(f"✅  Synced {len(synced)} slash commands to guild {GUILD_ID}")
+    except Exception as e:
+        print(f"⚠️  Slash command sync failed: {e}")
+
     race_reminder.start()
     dales_weekly_take.start()
     pre_race_trash_talk.start()
@@ -1407,7 +1426,7 @@ async def on_member_join(member: discord.Member):
 #  MEMBER COMMANDS
 # ─────────────────────────────────────────────────────────────────
 
-@bot.command(name="ask")
+@bot.hybrid_command(name="ask", description="Ask Dale anything — rules, iRacing, NASCAR, racing tips")
 @has_arca()
 async def ask(ctx, *, question: str = ""):
     if not question:
@@ -1455,12 +1474,12 @@ async def ask(ctx, *, question: str = ""):
             "Ask me somethin' about racin' though — that I can handle. 🏁"
         )
 
-@bot.command(name="dale")
+@bot.hybrid_command(name="dale", description="Ask Dale anything (same as /ask)")
 @has_arca()
 async def dale(ctx, *, question: str = ""):
     await ask(ctx, question=question)
 
-@bot.command(name="standings")
+@bot.hybrid_command(name="standings", description="Current championship standings")
 @has_arca()
 async def standings(ctx):
     data = load_data()
@@ -1485,7 +1504,7 @@ async def standings(ctx):
     embed.set_footer(text=f"Through Race {data.get('race_number',1)-1} | Updated after each race by Race Control Bot")
     await ctx.send(embed=embed)
 
-@bot.command(name="schedule")
+@bot.hybrid_command(name="schedule", description="Season race schedule")
 @has_arca()
 async def schedule_cmd(ctx):
     data  = load_data()
@@ -1501,7 +1520,7 @@ async def schedule_cmd(ctx):
     embed.description = "\n".join(lines)
     await ctx.send(embed=embed)
 
-@bot.command(name="rules")
+@bot.hybrid_command(name="rules", description="Quick rules summary")
 @has_arca()
 async def rules_cmd(ctx):
     embed = discord.Embed(title="📋 QSR Full Throttle Series — Quick Rules", color=0xE8272A)
@@ -1886,7 +1905,7 @@ class RegistrationView(discord.ui.View):
         await interaction.response.send_modal(TeamRegModal())
 
 
-@bot.command(name="setupregistration")
+@bot.hybrid_command(name="setupregistration", description="Post the registration embed in #registration (admin)")
 @is_admin()
 async def setup_registration_cmd(ctx):
     """Post persistent registration embed in #registration. Run once."""
@@ -1915,7 +1934,7 @@ async def setup_registration_cmd(ctx):
     await ctx.send("✅ Registration embed posted in #registration!")
 
 
-@bot.command(name="jointeam")
+@bot.hybrid_command(name="jointeam", description="Join an existing team mid-season")
 @has_arca()
 async def join_team_cmd(ctx, *, team_name: str = ""):
     """Join an existing team mid-season. Points prior to joining don't carry over."""
@@ -1975,7 +1994,7 @@ async def join_team_cmd(ctx, *, team_name: str = ""):
     )
 
 
-@bot.command(name="teams")
+@bot.hybrid_command(name="teams", description="Team standings and rosters")
 @has_arca()
 async def teams_cmd(ctx):
     """List all registered teams and their points."""
@@ -2003,7 +2022,7 @@ async def teams_cmd(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command(name="numbers")
+@bot.hybrid_command(name="numbers", description="Show available and taken car numbers")
 @has_arca()
 async def numbers_cmd(ctx):
     """Show available and taken car numbers."""
@@ -2025,7 +2044,7 @@ async def numbers_cmd(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command(name="mystats")
+@bot.hybrid_command(name="mystats", description="Your registration profile and team")
 @has_arca()
 async def mystats_cmd(ctx):
     """Check your own registration status and team."""
@@ -2106,7 +2125,7 @@ class RoleSelectView(discord.ui.View):
         await interaction.response.send_message(msg, ephemeral=True)
 
 
-@bot.command(name="setuproles")
+@bot.hybrid_command(name="setuproles", description="Post the role selection dropdown in #get-roles (admin)")
 @is_admin()
 async def setup_roles_cmd(ctx):
     """Post the role selection dropdown in #get-roles. Run once."""
@@ -2177,7 +2196,7 @@ async def restructure(ctx):
         await asyncio.sleep(1)
     await ctx.send("✅ Server restructured! Manually delete any old channels you no longer need.")
 
-@bot.command(name="career")
+@bot.hybrid_command(name="career", description="Driver career summary + race-by-race history")
 @has_arca()
 async def career_cmd(ctx, *, driver_name: str = ""):
     """
@@ -2554,7 +2573,7 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     return buf.getvalue()
 
 
-@bot.command(name="statscard", aliases=["card", "stats"])
+@bot.hybrid_command(name="statscard", aliases=["card", "stats"], description="Driver stats graphic — yours or any driver's")
 @has_arca()
 async def statscard_cmd(ctx, *, driver_name: str = ""):
     """
@@ -2686,7 +2705,7 @@ async def statscard_cmd(ctx, *, driver_name: str = ""):
         file=discord.File(fp=io.BytesIO(img_bytes), filename=filename))
 
 
-@bot.command(name="rivalries", aliases=["beef", "h2h"])
+@bot.hybrid_command(name="rivalries", aliases=["beef", "h2h"], description="Hottest head-to-head rivalries this season")
 @has_arca()
 async def rivalries_cmd(ctx):
     """Show the hottest current rivalries in the series."""
@@ -2740,7 +2759,7 @@ async def rivalries_cmd(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command(name="archetypes", aliases=["types", "drivers"])
+@bot.hybrid_command(name="archetypes", aliases=["types", "drivers"], description="Every driver's current archetype label")
 @has_arca()
 async def archetypes_cmd(ctx):
     """Show every driver's current archetype label."""
@@ -2779,7 +2798,7 @@ async def archetypes_cmd(ctx):
     await ctx.send(embed=embed)
 
 
-@bot.command(name="help")
+@bot.hybrid_command(name="help", description="List all Ask Dale commands")
 @has_arca()
 async def help_cmd(ctx):
     ai_status = "✅ AI Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ Mode"
@@ -2835,14 +2854,14 @@ async def dale_memory_cmd(ctx, *, username: str = ""):
     embed.set_footer(text="Use !dalemem reset @user to clear someone's memory")
     await ctx.send(embed=embed)
 
-@bot.command(name="newcomer")
+@bot.hybrid_command(name="newcomer", description="Welcome a new driver to the garage (admin)")
 @is_admin()
 async def newcomer_cmd(ctx, *, driver_name: str):
     guild = bot.get_guild(GUILD_ID)
     await newcomer_callout(guild, driver_name)
     await ctx.send(f"✅ Dale welcomed {driver_name} to the garage!")
 
-@bot.command(name="dalerecap")
+@bot.hybrid_command(name="dalerecap", description="Trigger Dale's post-race reaction (admin)")
 @is_admin()
 async def dale_recap_cmd(ctx):
     data     = load_data()
@@ -2858,7 +2877,7 @@ async def dale_recap_cmd(ctx):
     await post_race_reaction(guild, race_num - 1, results, last_sub)
     await ctx.send("✅ Dale's reaction posted!")
 
-@bot.command(name="dalemood")
+@bot.hybrid_command(name="dalemood", description="Set or view Dale's mood (admin)")
 @is_admin()
 async def dale_mood_cmd(ctx, mood: str = ""):
     if mood in ["neutral", "good", "grumpy", "fired_up"]:
