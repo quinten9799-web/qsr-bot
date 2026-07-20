@@ -372,9 +372,10 @@ RULES SUMMARY:
 - Appeals: $1 deposit, refunded if appeal upheld, 24 hour window to appeal
 
 REGISTRATION:
-- Register in #registration channel on Discord
-- Claim car number in #number-request (check #number-list first)
-- Numbers are first-come first-served, locked for the season
+- Register in the #registration channel — click "Register as Driver"
+- Pick your car number from a dropdown that only shows numbers still available, then enter your name + iRacing ID and acknowledge the rules
+- Numbers are first-come first-served and locked for the season
+- The #number-list and #number-request channels are RETIRED — never send people there; numbers are handled entirely inside #registration now
 
 PROTESTS:
 - Submit in #penalty-report within 24 hours of race
@@ -393,9 +394,7 @@ DISCORD CHANNELS:
 - #points-standings: Live standings updated after each race
 - #race-results: Race by race results
 - #penalty-report: Submit protests and view penalties
-- #number-list: Taken car numbers
-- #number-request: Request your number
-- #registration: Sign up for races
+- #registration: Sign up for races and pick your car number
 - #how-to-watch: Stream info
 - #help-desk: Contact admins directly
 
@@ -482,6 +481,41 @@ def update_user_memory(user_id: int, display_name: str, message_content: str, da
     if len(memory[uid]["notes"]) > 10:
         memory[uid]["notes"] = memory[uid]["notes"][-10:]
     save_user_memory(memory)
+
+
+def get_sender_context(member) -> str:
+    """Tell Dale exactly WHO is talking to him right now, including their
+    registered driver profile (name + car number) if they have one. Without
+    this, Dale only sees the Discord display name and can't answer questions
+    like 'what number am I' or address people by their racing name."""
+    display = getattr(member, "display_name", None) or "there"
+    lines = [
+        "\n\n=== WHO YOU ARE TALKING TO RIGHT NOW ===",
+        f"This message is from {display} (their Discord display name).",
+    ]
+    reg = get_driver_reg(str(getattr(member, "id", "")))
+    if reg:
+        team_line = f" Team: {reg['team']}." if reg.get("team") else " No team."
+        lines.append(
+            f"They ARE a registered QSR driver. Registered racing name: "
+            f"\"{reg['name']}\". Car number: #{reg['number']}. "
+            f"Status: {reg['status']}.{team_line}"
+        )
+        lines.append(
+            "Use their racing name when you address them. If they ask what number "
+            "they run, what their status is, or anything about their own registration, "
+            "answer DIRECTLY from the info above. Do NOT send them to #number-list or "
+            "#number-request — those are retired. Numbers are picked in #registration now."
+        )
+    else:
+        lines.append(
+            "They are NOT a registered driver yet. Address them by their display name. "
+            "If they ask about their number or how to sign up, tell them to head to "
+            "#registration, click Register as Driver, and pick an open number from the "
+            "dropdown. Do NOT mention #number-list or #number-request — those are retired."
+        )
+    lines.append("=== END WHO YOU ARE TALKING TO ===")
+    return "\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -803,7 +837,7 @@ FAQ = {
     "car":      "🚗 ARCA Menards car at **110% horsepower**. No setup restrictions — bring your best.",
     "stages":   "🏁 Stages award top-10 finishers 10 down to 1 pt but **do NOT throw a caution**. Racing stays green. This is a defining rule of the QSR Full Throttle Series.",
     "register": "✍️ Head to `#registration` and follow the pinned post to sign up for the next race.",
-    "number":   "🔢 Check `#number-list` for taken numbers, then post your request in `#number-request`. Numbers are first-come, first-served.",
+    "number":   "🔢 You pick your car number right in `#registration` — click **Register as Driver** and choose from the numbers still open (first-come, first-served). `!numbers` shows what's taken.",
     "protest":  "⚖️ Post in `#penalty-report` with your iRacing subsession ID and incident timestamp. Race Control reviews within 48 hrs. Appeals cost $1 — refunded if upheld.",
     "stream":   "📺 Check `#how-to-watch` for broadcast info. Stream details posted before each race.",
     "contact":  "📨 Tag an @Admin or post in `#help-desk` for direct staff help.",
@@ -1364,6 +1398,7 @@ async def on_message(message: discord.Message):
                         ref_content = ref.embeds[0].description or ref.content
                     question = f'[Replying to: "{ref_content}"]\n{question}'
                 user_ctx = get_user_context(message.author.id, message.author.display_name)
+                user_ctx += get_sender_context(message.author)
                 response = await ask_claude(question, channel_id, combined_history, user_ctx)
                 if response:
                     add_to_history(channel_id, "user", question)
@@ -1410,8 +1445,7 @@ async def on_member_join(member: discord.Member):
                 "**Here's what you need to do:**\n"
                 "1️⃣  Grab your roles → `#get-roles`\n"
                 "2️⃣  Read the rules → `#league-rules`\n"
-                "3️⃣  Claim your number → `#number-request`\n"
-                "4️⃣  Sign up for the next race → `#registration`\n\n"
+                "3️⃣  Register & pick your car number → `#registration`\n\n"
                 "Any questions, you ask Dale in `#ask-dale`. "
                 "I'll tell you straight. See you on the track, son. 🏁"
             ),
@@ -1455,7 +1489,9 @@ async def ask(ctx, *, question: str = ""):
             await ctx.send(embed=embed)
             return
         if ANTHROPIC_API_KEY:
-            response = await ask_claude(question)
+            user_ctx = get_user_context(ctx.author.id, ctx.author.display_name)
+            user_ctx += get_sender_context(ctx.author)
+            response = await ask_claude(question, user_context=user_ctx)
             if response:
                 embed = discord.Embed(description=response, color=0xE8272A)
                 embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
@@ -1632,7 +1668,7 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
                    f"Car **#{num_final}** is yours.\n"
                    f"Status: **Confirmed** — pending payment verification.\n"
                    f"Entry fee: **${reg['entry_fee']}** — payment details in `#registration`.\n"
-                   f"See you at Daytona. 🏁")
+                   f"🏁 Season opens **{SCHEDULE[0]['date']}** at **{SCHEDULE[0]['track']}**. See you there.")
         else:
             pos = sum(1 for d in reg["drivers"] if d["status"] == "Waitlist")
             msg = (f"📋 **{name}, you're on the waitlist** (position {pos}).\n"
@@ -1923,7 +1959,9 @@ async def setup_registration_cmd(ctx):
             "Click **Register a Team** to create a team and start earning team points.\n\n"
             f"💰 **Entry Fee:** ${reg['entry_fee']} per driver\n"
             f"🏎️ **Max Field:** {reg['max_field']} drivers\n"
-            f"📅 **Season Start:** July 20, 2026 — Daytona\n\n"
+            f"📅 **Season Opener:** {SCHEDULE[0]['date']} — {SCHEDULE[0]['track']}\n"
+            f"🏁 **Finale:** {SCHEDULE[-1]['date']} — {SCHEDULE[-1]['track']}\n"
+            f"🗓️ **{len(SCHEDULE)} races**, every Monday 8PM ET\n\n"
             "Read the rulebook in `#league-rules` before registering.\n"
             "Questions? Ask Dale in `#ask-dale`. 🏁"
         ),
