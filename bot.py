@@ -860,20 +860,20 @@ ANNOUNCEMENT_CHANNEL_ID = 1173977366117232731
 ARCA_ROLE_ID            = 1173980377279377538
 
 SCHEDULE = [
-    {"race":1,  "date":"July 20, 2026",      "track":"Michigan International Speedway"},
-    {"race":2,  "date":"July 27, 2026",      "track":"Las Vegas Motor Speedway"},
-    {"race":3,  "date":"August 3, 2026",     "track":"Chicagoland Speedway"},
-    {"race":4,  "date":"August 10, 2026",    "track":"Charlotte Motor Speedway"},
-    {"race":5,  "date":"August 17, 2026",    "track":"Darlington Raceway"},
-    {"race":6,  "date":"August 24, 2026",    "track":"Watkins Glen International"},
-    {"race":7,  "date":"August 31, 2026",    "track":"Iowa Speedway"},
-    {"race":8,  "date":"September 7, 2026",  "track":"Dover Motor Speedway"},
-    {"race":9,  "date":"September 14, 2026", "track":"Rockingham Speedway"},
-    {"race":10, "date":"September 21, 2026", "track":"Lime Rock Park"},
-    {"race":11, "date":"September 28, 2026", "track":"New Hampshire Motor Speedway"},
-    {"race":12, "date":"October 5, 2026",    "track":"Atlanta Motor Speedway"},
-    {"race":13, "date":"October 12, 2026",   "track":"Kansas Speedway"},
-    {"race":14, "date":"October 19, 2026",   "track":"Homestead-Miami Speedway"},
+    {"race":1,  "date":"August 3, 2026",        "track":"Michigan International Speedway"},
+    {"race":2,  "date":"August 10, 2026",       "track":"Las Vegas Motor Speedway"},
+    {"race":3,  "date":"August 17, 2026",       "track":"Chicagoland Speedway"},
+    {"race":4,  "date":"August 24, 2026",       "track":"Charlotte Motor Speedway"},
+    {"race":5,  "date":"August 31, 2026",       "track":"Darlington Raceway"},
+    {"race":6,  "date":"September 7, 2026",     "track":"Watkins Glen International"},
+    {"race":7,  "date":"September 14, 2026",    "track":"Iowa Speedway"},
+    {"race":8,  "date":"September 21, 2026",    "track":"Dover Motor Speedway"},
+    {"race":9,  "date":"September 28, 2026",    "track":"Rockingham Speedway"},
+    {"race":10,  "date":"October 5, 2026",       "track":"Lime Rock Park"},
+    {"race":11,  "date":"October 12, 2026",      "track":"New Hampshire Motor Speedway"},
+    {"race":12,  "date":"October 19, 2026",      "track":"Atlanta Motor Speedway"},
+    {"race":13,  "date":"October 26, 2026",      "track":"Kansas Speedway"},
+    {"race":14,  "date":"November 2, 2026",      "track":"Homestead-Miami Speedway"},
 ]
 POSTED_FILE             = os.path.join(_DATA_DIR, "posted_announcements.json")
 
