@@ -7,6 +7,7 @@ import io
 import shutil
 import aiohttp
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import asyncio
 import threading
 from flask import Flask, request, jsonify
@@ -875,6 +876,42 @@ SCHEDULE = [
 ]
 POSTED_FILE             = os.path.join(_DATA_DIR, "posted_announcements.json")
 
+# ─────────────────────────────────────────────────────────────────
+#  RACE WINDOW HELPER — Eastern-Time anchored, SCHEDULE-driven
+#
+#  BUG THIS REPLACES: pre_race_trash_talk / race_prediction / race_reminder
+#  used to gate on `datetime.utcnow().weekday() != RACE_DAY` combined with a
+#  fixed RACE_TIME_UTC ("01:00"). That pairing assumed EST (UTC-5) year-round.
+#  During EDT (UTC-4, which covers the entire season except the Nov 2 finale),
+#  8:00 PM ET Monday actually falls at 00:00 UTC **Tuesday** — a different
+#  weekday than RACE_DAY=0. Meanwhile UTC rolls over to "Monday" at 8-9 PM ET
+#  *Sunday* evening, which is why race-night messages were firing a full day
+#  early. Anchoring directly to America/New_York (zoneinfo handles DST
+#  automatically) and cross-referencing SCHEDULE's actual dates removes both
+#  the DST mismatch and the early-UTC-rollover bug in one shot.
+# ─────────────────────────────────────────────────────────────────
+
+ET = ZoneInfo("America/New_York")
+RACE_START_HOUR_ET = 20  # 8:00 PM ET
+
+def get_current_race_window():
+    """Return (schedule_entry, race_start_dt_et) for TODAY in Eastern Time if
+    today matches a SCHEDULE date, else (None, None). This is the single
+    source of truth for "is it race night" — no weekday integers involved."""
+    now_et = datetime.now(ET)
+    for entry in SCHEDULE:
+        try:
+            race_date = datetime.strptime(entry["date"], "%B %d, %Y").date()
+        except ValueError:
+            continue
+        if race_date == now_et.date():
+            race_start = datetime(
+                race_date.year, race_date.month, race_date.day,
+                RACE_START_HOUR_ET, 0, 0, tzinfo=ET
+            )
+            return entry, race_start
+    return None, None
+
 # RACE_ANNOUNCEMENTS replaced — announcements now built dynamically
 # from race_config in data.json, set via the Race Setup table in qsr_app.py
 
@@ -928,15 +965,17 @@ def save_posted_announcement(race_num: int):
 
 @tasks.loop(minutes=1)
 async def race_announcement_scheduler():
-    """Every Monday at 12PM ET (16:00 UTC), build and post the week's race announcement."""
-    now_utc = datetime.utcnow()
-    if now_utc.weekday() != 0:
+    """At 12:00 PM ET on race day, build and post the week's race announcement."""
+    race_entry, race_start = get_current_race_window()
+    if not race_entry:
         return
-    if not (now_utc.hour == 16 and now_utc.minute == 0):
+    now_et  = datetime.now(ET)
+    noon_et = now_et.replace(hour=12, minute=0, second=0, microsecond=0)
+    if abs((now_et - noon_et).total_seconds()) > 60:
         return
 
+    race_num  = race_entry["race"]
     data      = load_data()
-    race_num  = data.get("race_number", 1)
     race_cfg  = data.get("race_config", {})
     posted    = load_posted_announcements()
 
@@ -948,28 +987,13 @@ async def race_announcement_scheduler():
         print(f"⚠️ No race_config for Race {race_num} — skipping announcement")
         return
 
-    # Safety check: verify today's date matches this race's scheduled date
-    # Prevents wrong announcement if race_number wasn't updated after last race
-    race_date_str = cfg.get("date", "")
-    if race_date_str:
-        try:
-            from datetime import datetime as _dt
-            race_date = _dt.strptime(race_date_str.strip(), "%B %d, %Y")
-            today     = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-            race_day  = race_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            if today != race_day:
-                print(f"⚠️ Race {race_num} date mismatch: config says {race_date_str}, today is {now_utc.strftime('%B %d, %Y')} — skipping")
-                return
-        except Exception as e:
-            print(f"⚠️ Could not parse race date '{race_date_str}': {e} — proceeding anyway")
-
     channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
     if not channel:
         print(f"❌ Announcement channel not found")
         return
 
-    track      = cfg.get("track", SCHEDULE[race_num-1]["track"] if race_num <= len(SCHEDULE) else "TBD")
-    date_str   = cfg.get("date",  SCHEDULE[race_num-1]["date"]  if race_num <= len(SCHEDULE) else "TBD")
+    track      = cfg.get("track", race_entry["track"])
+    date_str   = cfg.get("date",  race_entry["date"])
     laps       = cfg.get("laps", 0)
     stage_lap  = cfg.get("stage_lap", 0)
     track_clean = track.replace(" — SEASON FINALE", "").strip()
@@ -1071,17 +1095,12 @@ async def dales_weekly_take():
 @tasks.loop(minutes=1)
 async def pre_race_trash_talk():
     """30 minutes before race, Dale calls out a rivalry."""
-    now = datetime.utcnow()
-    if now.weekday() != RACE_DAY:
+    _, race_start = get_current_race_window()
+    if not race_start:
         return
-    race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_dt        = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    # Handle midnight boundary: if race time is early UTC (e.g. 01:00) and now is late UTC,
-    # the race is on the next calendar day — shift race_dt forward one day.
-    if race_dt < now - timedelta(hours=12):
-        race_dt += timedelta(days=1)
-    thirty_min_out = race_dt - timedelta(minutes=30)
-    if abs((now - thirty_min_out).total_seconds()) > 60:
+    now_et = datetime.now(ET)
+    thirty_min_out = race_start - timedelta(minutes=30)
+    if abs((now_et - thirty_min_out).total_seconds()) > 60:
         return
     guild = bot.get_guild(GUILD_ID)
     if not guild or not ANTHROPIC_API_KEY:
@@ -1214,16 +1233,12 @@ PREDICTION_FILE = os.path.join(_DATA_DIR, "dale_prediction.json")
 @tasks.loop(minutes=1)
 async def race_prediction():
     """Dale posts a race prediction 1 hour before green flag."""
-    now = datetime.utcnow()
-    if now.weekday() != RACE_DAY:
+    race_entry, race_start = get_current_race_window()
+    if not race_start:
         return
-    race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    # Handle midnight boundary
-    if race_dt < now - timedelta(hours=12):
-        race_dt += timedelta(days=1)
-    one_hour_out = race_dt - timedelta(hours=1)
-    if abs((now - one_hour_out).total_seconds()) > 60:
+    now_et = datetime.now(ET)
+    one_hour_out = race_start - timedelta(hours=1)
+    if abs((now_et - one_hour_out).total_seconds()) > 60:
         return
     guild = bot.get_guild(GUILD_ID)
     if not guild or not ANTHROPIC_API_KEY:
@@ -1233,13 +1248,10 @@ async def race_prediction():
         return
     data      = load_data()
     standings = data.get("standings", {})
-    schedule  = data.get("schedule", [])
-    race_num  = data.get("race_number", 1)
+    race_num  = race_entry["race"]
+    track     = race_entry.get("track", "tonight's track")
     sorted_s   = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
     top5_names = [name for name, _ in sorted_s[:5]]
-    track = ""
-    if schedule and len(schedule) >= race_num:
-        track = schedule[race_num - 1].get("track", "tonight's track")
     prompt = (
         f"It's one hour before Race {race_num} at {track} in the QSR High Horsepower Series. "
         f"Current top 5 in standings: {top5_names}. "
@@ -1266,16 +1278,12 @@ async def race_prediction():
 
 @tasks.loop(hours=1)
 async def race_reminder():
-    now = datetime.utcnow()
-    if now.weekday() != RACE_DAY:
+    _, race_start = get_current_race_window()
+    if not race_start:
         return
-    race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    # Handle midnight boundary
-    if race_dt < now - timedelta(hours=12):
-        race_dt += timedelta(days=1)
-    one_hour_out = race_dt - timedelta(hours=1)
-    if abs((now - one_hour_out).total_seconds()) < 3600:
+    now_et = datetime.now(ET)
+    one_hour_out = race_start - timedelta(hours=1)
+    if abs((now_et - one_hour_out).total_seconds()) < 3600:
         guild = bot.get_guild(GUILD_ID)
         if not guild:
             return
