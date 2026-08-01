@@ -2216,6 +2216,61 @@ async def numbers_cmd(ctx):
     await ctx.send(embed=embed)
 
 
+@bot.hybrid_command(name="roster", description="Full driver roster — everyone signed up and their car number")
+@has_arca()
+async def roster_cmd(ctx):
+    """Quick list of every registered driver and their car number, grouped
+    by status and sorted low-to-high."""
+    reg = load_reg()
+    drivers = [d for d in reg["drivers"] if d.get("status") != "Withdrawn"]
+    if not drivers:
+        await ctx.send("No drivers registered yet. Head to `#registration` to be the first! 🏁")
+        return
+
+    def sort_key(d):
+        n = norm_num(d.get("number", ""))
+        try:
+            return (int(n), n)
+        except ValueError:
+            return (9999, n)
+
+    confirmed = sorted([d for d in drivers if d["status"] == "Confirmed"], key=sort_key)
+    waitlist  = sorted([d for d in drivers if d["status"] == "Waitlist"],  key=sort_key)
+    other     = sorted([d for d in drivers if d["status"] not in ("Confirmed", "Waitlist")], key=sort_key)
+
+    embed = discord.Embed(
+        title="🏁 QSR Full Throttle Series — Driver Roster",
+        color=0xE8272A,
+    )
+
+    def add_group(label: str, group: list):
+        if not group:
+            return
+        lines = [f"**#{d.get('number','?')}** — {d['name']}"
+                 + (f" ({d['team']})" if d.get("team") else "")
+                 for d in group]
+        chunk, chunk_len, part = [], 0, 1
+        for line in lines:
+            if (chunk_len + len(line) + 1 > 1000 or len(chunk) >= 20) and chunk:
+                embed.add_field(
+                    name=f"{label} ({len(group)})" if part == 1 else f"{label} (cont.)",
+                    value="\n".join(chunk), inline=False)
+                chunk, chunk_len, part = [], 0, part + 1
+            chunk.append(line)
+            chunk_len += len(line) + 1
+        if chunk:
+            embed.add_field(
+                name=f"{label} ({len(group)})" if part == 1 else f"{label} (cont.)",
+                value="\n".join(chunk), inline=False)
+
+    add_group("✅ Confirmed", confirmed)
+    add_group("📋 Waitlist", waitlist)
+    add_group("⏳ Other", other)
+
+    embed.set_footer(text=f"{len(drivers)} driver(s) on the roster · {reg.get('max_field',40)} max field")
+    await ctx.send(embed=embed)
+
+
 @bot.hybrid_command(name="mystats", description="Your registration profile and team")
 @has_arca()
 async def mystats_cmd(ctx):
@@ -3014,6 +3069,7 @@ async def help_cmd(ctx):
     embed.add_field(name="!rules",             value="Quick rules summary", inline=False)
     embed.add_field(name="!career <Name>",     value="Driver career summary + race-by-race history", inline=False)
     embed.add_field(name="!numbers",           value="Show available and taken car numbers", inline=False)
+    embed.add_field(name="!roster",            value="Full driver roster — everyone signed up and their number", inline=False)
     embed.add_field(name="!teams",             value="Team standings and rosters", inline=False)
     embed.add_field(name="!jointeam <Name>",   value="Join an existing team mid-season", inline=False)
     embed.add_field(name="!mystats",           value="Your registration profile and team", inline=False)
