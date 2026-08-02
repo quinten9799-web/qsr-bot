@@ -148,8 +148,9 @@ def available_numbers() -> list:
     taken = taken_numbers()
     return [n for n in VALID_NUMBERS if norm_num(n) not in taken]
 
-def confirmed_count() -> int:
-    return sum(1 for d in load_reg()["drivers"] if d["status"] == "Confirmed")
+def confirmed_count() -> int:    return sum(1 for d in load_reg()["drivers"] if d["status"] == "Confirmed")
+
+TEAM_MAX_MEMBERS = 4   # roster cap per team
 
 def get_driver_reg(discord_id: str) -> dict | None:
     return next((d for d in load_reg()["drivers"]
@@ -159,6 +160,65 @@ def get_team(team_name: str) -> dict | None:
     name_lower = team_name.strip().lower()
     return next((t for t in load_reg()["teams"]
                  if t["name"].lower() == name_lower), None)
+
+# ── Team helpers (operate on an in-memory reg so callers can batch edits) ──
+
+def get_team_in(reg: dict, team_name: str) -> dict | None:
+    """Find a team inside an already-loaded reg dict. get_team() reloads from
+    disk, which silently discards edits the caller hasn't saved yet."""
+    name_lower = team_name.strip().lower()
+    return next((t for t in reg.get("teams", [])
+                 if t["name"].lower() == name_lower), None)
+
+def get_team_of(reg: dict, discord_id: str) -> dict | None:
+    """The team a given Discord user is a member of, if any."""
+    did = str(discord_id)
+    return next((t for t in reg.get("teams", [])
+                 if any(str(m.get("discord_id")) == did
+                        for m in t.get("members", []))), None)
+
+def team_is_full(team: dict) -> bool:
+    return len(team.get("members", [])) >= TEAM_MAX_MEMBERS
+
+def set_driver_team(reg: dict, discord_id: str, team_name):
+    """Keep the driver record's team field in sync with team membership."""
+    did = str(discord_id)
+    for d in reg.get("drivers", []):
+        if str(d.get("discord_id")) == did:
+            d["team"] = team_name
+
+def promote_next_owner(team: dict) -> dict | None:
+    """Hand ownership to the longest-tenured remaining member.
+
+    Longest-tenured = joined at the earliest race; ties break by position in
+    the member list, which is append-ordered, so the earlier joiner wins.
+    Returns the new owner's member record, or None if the team is empty.
+    """
+    members = team.get("members", [])
+    if not members:
+        return None
+    new_owner = min(enumerate(members),
+                    key=lambda pair: (pair[1].get("joined_race", 1), pair[0]))[1]
+    team["owner_id"]  = str(new_owner.get("discord_id", ""))
+    team["owner_tag"] = new_owner.get("discord_tag", "")
+    return new_owner
+
+async def apply_team_role(guild, member, team: dict, add: bool):
+    """Add or remove a team's Discord role. Never raises — role failures
+    shouldn't block the underlying roster change."""
+    rid = team.get("discord_role_id")
+    if not rid or member is None:
+        return
+    try:
+        role = guild.get_role(int(rid))
+        if not role:
+            return
+        if add:
+            await member.add_roles(role)
+        else:
+            await member.remove_roles(role)
+    except Exception:
+        pass
 
 def recalc_team_points():
     """Recalculate team points from standings. Call after every race result save."""
@@ -1721,29 +1781,19 @@ class DriverRegModal(discord.ui.Modal, title="🏁 QSR Driver Registration"):
 
 
 class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
+    """Create a team. Members are added afterwards via /teaminvite.
+
+    The old version had three free-text 'Driver N Discord Tag' slots that
+    were matched with a substring search. That could silently attach the
+    wrong driver, and any unmatched text became a ghost member with no
+    discord_id — invisible to points and to sync. Nobody consented to being
+    added either. Invites replace all of that.
+    """
     team_name = discord.ui.TextInput(
         label="Team Name",
         placeholder="e.g. Thunder Racing",
         max_length=50,
         required=True,
-    )
-    driver2 = discord.ui.TextInput(
-        label="Driver 2 Discord Tag (optional)",
-        placeholder="e.g. username or leave blank",
-        max_length=50,
-        required=False,
-    )
-    driver3 = discord.ui.TextInput(
-        label="Driver 3 Discord Tag (optional)",
-        placeholder="e.g. username or leave blank",
-        max_length=50,
-        required=False,
-    )
-    driver4 = discord.ui.TextInput(
-        label="Driver 4 Discord Tag (optional)",
-        placeholder="e.g. username or leave blank",
-        max_length=50,
-        required=False,
     )
     looking = discord.ui.TextInput(
         label="Looking for drivers? (YES / NO)",
@@ -1753,44 +1803,40 @@ class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        tname    = self.team_name.value.strip()
-        looking  = self.looking.value.strip().upper() == "YES"
-        owner_id = str(interaction.user.id)
+        tname     = self.team_name.value.strip()
+        looking   = self.looking.value.strip().upper() == "YES"
+        owner_id  = str(interaction.user.id)
         owner_tag = str(interaction.user)
 
         reg = load_reg()
 
-        # Duplicate team name
         if get_team(tname):
             await interaction.response.send_message(
                 f"❌ A team named **{tname}** already exists. Choose a different name.",
                 ephemeral=True)
             return
 
-        # Owner must be a registered driver
         owner_reg = get_driver_reg(owner_id)
-        owner_name = owner_reg["name"] if owner_reg else interaction.user.display_name
+        if not owner_reg:
+            await interaction.response.send_message(
+                "❌ You need to register as a driver before creating a team. "
+                "Use the **Register as Driver** button in `#registration`.",
+                ephemeral=True)
+            return
 
-        # Build member list — owner first, then optional slots
+        if owner_reg.get("team"):
+            await interaction.response.send_message(
+                f"❌ You're already on **{owner_reg['team']}**. Use `/teamleave` first.",
+                ephemeral=True)
+            return
+
+        join_race = load_data().get("race_number", 1)
         members = [{
-            "driver_name":  owner_name,
-            "discord_id":   owner_id,
-            "discord_tag":  owner_tag,
-            "joined_race":  load_data().get("race_number", 1),
+            "driver_name": owner_reg["name"],
+            "discord_id":  owner_id,
+            "discord_tag": owner_tag,
+            "joined_race": join_race,
         }]
-        for slot in [self.driver2.value, self.driver3.value, self.driver4.value]:
-            tag = slot.strip()
-            if tag:
-                # Find the driver in reg by discord_tag match (best effort)
-                match = next((d for d in reg["drivers"]
-                              if d.get("discord_tag","").lower() == tag.lower()
-                              or tag.lower() in d.get("name","").lower()), None)
-                members.append({
-                    "driver_name":  match["name"] if match else tag,
-                    "discord_id":   match.get("discord_id","") if match else "",
-                    "discord_tag":  tag,
-                    "joined_race":  load_data().get("race_number", 1),
-                })
 
         team = {
             "name":       tname,
@@ -1802,28 +1848,35 @@ class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
             "created_at": datetime.utcnow().isoformat(),
         }
         reg["teams"].append(team)
+
+        # Write the team back onto the driver record. The old code never did
+        # this, so owners showed as team-less everywhere and could join a
+        # second team because the "already on a team" guard never fired.
+        for d in reg["drivers"]:
+            if d.get("discord_id") == owner_id:
+                d["team"] = tname
         save_reg(reg)
 
-        # Create Discord role for the team
         guild = interaction.guild
         try:
             role = await guild.create_role(name=f"Team: {tname}", mentionable=True)
-            # Add role to owner
             await interaction.user.add_roles(role)
-            team["discord_role_id"] = str(role.id)
-            save_reg(reg)
+            reg = load_reg()
+            t = get_team_in(reg, tname)
+            if t is not None:
+                t["discord_role_id"] = str(role.id)
+                save_reg(reg)
         except Exception:
             pass
 
         await interaction.response.send_message(
             f"✅ **{tname}** is officially registered!\n"
             f"Owner: {interaction.user.mention}\n"
-            f"Members: {len(members)}/4\n"
+            f"Roster: 1/4 — invite drivers with `/teaminvite @driver`\n"
             f"{'🔍 Posted in #team-forming — looking for drivers!' if looking else ''}\n"
-            f"Points: 0 (accumulate from current race forward) 🏁",
+            f"Points accumulate from Race {join_race} forward. 🏁",
             ephemeral=True)
 
-        # Post to #team-forming if looking
         if looking:
             tf_ch = discord.utils.get(guild.text_channels, name="team-forming")
             if tf_ch:
@@ -1831,20 +1884,20 @@ class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
                     title=f"🏎️ {tname} — Looking for Drivers!",
                     description=(
                         f"**Owner:** {interaction.user.mention}\n"
-                        f"**Current Roster:** {', '.join(m['driver_name'] for m in members)}\n"
-                        f"**Spots Available:** {4 - len(members)}\n\n"
-                        f"DM {interaction.user.mention} or use `!jointeam {tname}` to join!"
+                        f"**Roster:** {owner_reg['name']}\n"
+                        f"**Spots Available:** 3\n\n"
+                        f"DM {interaction.user.mention}, or ask them to "
+                        f"`/teaminvite` you. You can also use `/jointeam {tname}`."
                     ),
                     color=0xE8272A,
                 )
                 embed.set_footer(text="QSR Full Throttle Series — Team Registration")
                 await tf_ch.send(embed=embed)
 
-        # Staff ping
         staff_ch = discord.utils.get(guild.text_channels, name=STAFF_CH)
         if staff_ch:
             await staff_ch.send(
-                f"🏎️ New team registered: **{tname}** | Owner: {interaction.user.mention} | {len(members)} member(s)")
+                f"🏎️ New team registered: **{tname}** | Owner: {interaction.user.mention}")
 
 
 # ── Car-number picker (Option A) ─────────────────────────────────
@@ -2126,64 +2179,411 @@ async def setup_registration_cmd(ctx):
     await ctx.send("✅ Registration embed posted in #registration!")
 
 
-@bot.hybrid_command(name="jointeam", description="Join an existing team mid-season")
+# ─────────────────────────────────────────────────────────────────
+#  TEAM MANAGEMENT — create, invite, leave, kick, disband
+#  Invite-based by design: the owner invites, the driver accepts. That
+#  guarantees a real discord_id on every member and means nobody lands on
+#  a roster without agreeing to it.
+# ─────────────────────────────────────────────────────────────────
+
+class TeamInviteView(discord.ui.View):
+    """Accept/Decline buttons on a team invite. 24h expiry.
+
+    Every guard is re-checked at accept time, not just at send time — the
+    team can fill up, the invitee can join elsewhere, or the team can be
+    disbanded while the invite sits there.
+    """
+    def __init__(self, team_name: str, invitee_id: str, inviter_tag: str):
+        super().__init__(timeout=86400)
+        self.team_name   = team_name
+        self.invitee_id  = str(invitee_id)
+        self.inviter_tag = inviter_tag
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.invitee_id:
+            await interaction.response.send_message(
+                "This invite isn't for you.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, emoji="✅")
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        reg    = load_reg()
+        team   = get_team_in(reg, self.team_name)
+        driver = next((d for d in reg["drivers"]
+                       if str(d.get("discord_id")) == self.invitee_id), None)
+
+        if not team:
+            await interaction.response.edit_message(
+                content=f"❌ **{self.team_name}** no longer exists.", view=None)
+            return
+        if not driver:
+            await interaction.response.edit_message(
+                content="❌ You're not registered as a driver. Register in `#registration` first.",
+                view=None)
+            return
+        if get_team_of(reg, self.invitee_id):
+            await interaction.response.edit_message(
+                content=f"❌ You're already on **{driver.get('team')}**. "
+                        f"Use `/teamleave` before joining another team.", view=None)
+            return
+        if team_is_full(team):
+            await interaction.response.edit_message(
+                content=f"❌ **{team['name']}** is full ({TEAM_MAX_MEMBERS}/{TEAM_MAX_MEMBERS}).",
+                view=None)
+            return
+
+        join_race = load_data().get("race_number", 1)
+        team["members"].append({
+            "driver_name": driver["name"],
+            "discord_id":  self.invitee_id,
+            "discord_tag": str(interaction.user),
+            "joined_race": join_race,
+        })
+        set_driver_team(reg, self.invitee_id, team["name"])
+        save_reg(reg)
+        recalc_team_points()
+
+        await apply_team_role(interaction.guild, interaction.user, team, add=True)
+
+        await interaction.response.edit_message(
+            content=f"✅ You've joined **{team['name']}**!\n"
+                    f"Roster: {len(team['members'])}/{TEAM_MAX_MEMBERS}\n"
+                    f"Your team points count from Race {join_race} forward — "
+                    f"points you scored before that stay yours individually. 🏁",
+            view=None)
+
+        staff_ch = discord.utils.get(interaction.guild.text_channels, name=STAFF_CH)
+        if staff_ch:
+            await staff_ch.send(
+                f"🤝 **{driver['name']}** joined team **{team['name']}** "
+                f"(invited by {self.inviter_tag}) — {len(team['members'])}/{TEAM_MAX_MEMBERS}")
+
+    @discord.ui.button(label="Decline", style=discord.ButtonStyle.secondary, emoji="✖️")
+    async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(
+            content=f"You declined the invite to **{self.team_name}**.", view=None)
+
+
+class ConfirmDisbandView(discord.ui.View):
+    """Two-step confirm for disbanding — it wipes team points irreversibly."""
+    def __init__(self, team_name: str, owner_id: str):
+        super().__init__(timeout=120)
+        self.team_name = team_name
+        self.owner_id  = str(owner_id)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return str(interaction.user.id) == self.owner_id
+
+    @discord.ui.button(label="Disband Team", style=discord.ButtonStyle.danger, emoji="💥")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        reg  = load_reg()
+        team = get_team_in(reg, self.team_name)
+        if not team:
+            await interaction.response.edit_message(
+                content="❌ That team no longer exists.", view=None)
+            return
+
+        guild = interaction.guild
+        for m in team.get("members", []):
+            set_driver_team(reg, m.get("discord_id", ""), None)
+            member = guild.get_member(int(m["discord_id"])) if str(m.get("discord_id")).isdigit() else None
+            await apply_team_role(guild, member, team, add=False)
+
+        rid = team.get("discord_role_id")
+        reg["teams"] = [t for t in reg["teams"]
+                        if t["name"].lower() != self.team_name.lower()]
+        save_reg(reg)
+
+        if rid:
+            try:
+                role = guild.get_role(int(rid))
+                if role:
+                    await role.delete(reason="QSR team disbanded")
+            except Exception:
+                pass
+
+        await interaction.response.edit_message(
+            content=f"💥 **{self.team_name}** has been disbanded. "
+                    f"All members are now team-less and team points are gone.",
+            view=None)
+
+        staff_ch = discord.utils.get(guild.text_channels, name=STAFF_CH)
+        if staff_ch:
+            await staff_ch.send(f"💥 Team **{self.team_name}** disbanded by {interaction.user}")
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Disband cancelled.", view=None)
+
+
+@bot.hybrid_command(name="createteam", description="Create a new team")
+@has_arca()
+async def create_team_cmd(ctx):
+    """Open the team creation form. Available any time after signing up."""
+    driver = get_driver_reg(str(ctx.author.id))
+    if not driver:
+        await ctx.send("❌ Register as a driver first in `#registration`.", ephemeral=True)
+        return
+    if driver.get("team"):
+        await ctx.send(f"❌ You're already on **{driver['team']}**. Use `/teamleave` first.",
+                       ephemeral=True)
+        return
+    if ctx.interaction:
+        await ctx.interaction.response.send_modal(TeamRegModal())
+    else:
+        await ctx.send("Use the slash command `/createteam` (the form only opens from slash "
+                       "commands), or the **Register a Team** button in `#registration`.")
+
+
+@bot.hybrid_command(name="teaminvite", description="Invite a driver to your team")
+@has_arca()
+async def team_invite_cmd(ctx, driver: discord.Member):
+    """Owner-only. Sends the driver an invite they accept or decline."""
+    reg  = load_reg()
+    team = get_team_of(reg, str(ctx.author.id))
+    if not team:
+        await ctx.send("❌ You're not on a team. Use `/createteam` to start one.",
+                       ephemeral=True)
+        return
+    if str(team.get("owner_id")) != str(ctx.author.id):
+        await ctx.send(f"❌ Only the owner of **{team['name']}** can invite drivers.",
+                       ephemeral=True)
+        return
+    if team_is_full(team):
+        await ctx.send(f"❌ **{team['name']}** is full ({TEAM_MAX_MEMBERS}/{TEAM_MAX_MEMBERS}).",
+                       ephemeral=True)
+        return
+    if driver.id == ctx.author.id:
+        await ctx.send("You're already on your own team. 🙂", ephemeral=True)
+        return
+    if driver.bot:
+        await ctx.send("❌ You can't invite a bot.", ephemeral=True)
+        return
+
+    invitee = next((d for d in reg["drivers"]
+                    if str(d.get("discord_id")) == str(driver.id)), None)
+    if not invitee:
+        await ctx.send(f"❌ {driver.mention} isn't registered as a driver yet. "
+                       f"They need to register in `#registration` first.", ephemeral=True)
+        return
+    if get_team_of(reg, str(driver.id)):
+        await ctx.send(f"❌ {driver.mention} is already on **{invitee.get('team')}**.",
+                       ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🏎️ Team Invite",
+        description=(f"{driver.mention}, **{ctx.author.display_name}** has invited you "
+                     f"to join **{team['name']}**.\n\n"
+                     f"**Roster:** {len(team['members'])}/{TEAM_MAX_MEMBERS}\n"
+                     f"**Current points:** {team.get('points', 0)}\n\n"
+                     f"Team points count from the race you join forward. "
+                     f"Points you've already scored stay yours individually."),
+        color=0xE8272A,
+    )
+    embed.set_footer(text="Invite expires in 24 hours")
+    await ctx.send(content=driver.mention, embed=embed,
+                   view=TeamInviteView(team["name"], str(driver.id), str(ctx.author)))
+
+
+@bot.hybrid_command(name="myteam", description="Your team roster and details")
+@has_arca()
+async def my_team_cmd(ctx):
+    reg  = load_reg()
+    team = get_team_of(reg, str(ctx.author.id))
+    if not team:
+        await ctx.send("You're not on a team yet. Use `/createteam` to start one, "
+                       "or `/teams` to see who's recruiting.", ephemeral=True)
+        return
+
+    lines = []
+    for m in team.get("members", []):
+        crown = " 👑" if str(m.get("discord_id")) == str(team.get("owner_id")) else ""
+        lines.append(f"• **{m['driver_name']}**{crown} — joined Race {m.get('joined_race', 1)}")
+
+    embed = discord.Embed(title=f"🏎️ {team['name']}", color=0xE8272A)
+    embed.add_field(name="Points", value=str(team.get("points", 0)), inline=True)
+    embed.add_field(name="Roster",
+                    value=f"{len(team.get('members', []))}/{TEAM_MAX_MEMBERS}", inline=True)
+    embed.add_field(name="Recruiting",
+                    value="Yes 🔍" if team.get("looking") else "No", inline=True)
+    embed.add_field(name="Drivers", value="\n".join(lines) or "—", inline=False)
+    if str(team.get("owner_id")) == str(ctx.author.id):
+        embed.add_field(
+            name="Owner Commands",
+            value="`/teaminvite @driver` · `/teamkick @driver` · `/teamdisband`",
+            inline=False)
+    embed.set_footer(text="QSR Full Throttle Series")
+    await ctx.send(embed=embed)
+
+
+@bot.hybrid_command(name="teamleave", description="Leave your current team")
+@has_arca()
+async def team_leave_cmd(ctx):
+    """Leave your team. If the owner leaves, ownership passes to the
+    longest-tenured remaining member rather than dissolving the team."""
+    reg  = load_reg()
+    team = get_team_of(reg, str(ctx.author.id))
+    if not team:
+        await ctx.send("You're not on a team.", ephemeral=True)
+        return
+
+    was_owner = str(team.get("owner_id")) == str(ctx.author.id)
+    team["members"] = [m for m in team.get("members", [])
+                       if str(m.get("discord_id")) != str(ctx.author.id)]
+    set_driver_team(reg, str(ctx.author.id), None)
+
+    note = ""
+    if not team["members"]:
+        rid = team.get("discord_role_id")
+        reg["teams"] = [t for t in reg["teams"] if t["name"] != team["name"]]
+        note = f"\n**{team['name']}** had no members left and has been dissolved."
+        save_reg(reg)
+        if rid:
+            try:
+                role = ctx.guild.get_role(int(rid))
+                if role:
+                    await role.delete(reason="QSR team empty")
+            except Exception:
+                pass
+    else:
+        if was_owner:
+            new_owner = promote_next_owner(team)
+            note = (f"\nOwnership of **{team['name']}** passed to "
+                    f"**{new_owner['driver_name']}** (longest-tenured member).")
+        save_reg(reg)
+        recalc_team_points()
+        await apply_team_role(ctx.guild, ctx.author, team, add=False)
+
+    await ctx.send(f"✅ You've left **{team['name']}**.{note}")
+
+    staff_ch = discord.utils.get(ctx.guild.text_channels, name=STAFF_CH)
+    if staff_ch:
+        await staff_ch.send(f"👋 **{ctx.author}** left team **{team['name']}**.{note}")
+
+
+@bot.hybrid_command(name="teamkick", description="Remove a driver from your team (owner only)")
+@has_arca()
+async def team_kick_cmd(ctx, driver: discord.Member):
+    reg  = load_reg()
+    team = get_team_of(reg, str(ctx.author.id))
+    if not team:
+        await ctx.send("You're not on a team.", ephemeral=True)
+        return
+    if str(team.get("owner_id")) != str(ctx.author.id):
+        await ctx.send(f"❌ Only the owner of **{team['name']}** can remove drivers.",
+                       ephemeral=True)
+        return
+    if str(driver.id) == str(ctx.author.id):
+        await ctx.send("❌ You can't kick yourself — use `/teamleave` "
+                       "(ownership passes to the next member).", ephemeral=True)
+        return
+
+    member = next((m for m in team.get("members", [])
+                   if str(m.get("discord_id")) == str(driver.id)), None)
+    if not member:
+        await ctx.send(f"❌ {driver.mention} isn't on **{team['name']}**.", ephemeral=True)
+        return
+
+    team["members"] = [m for m in team["members"]
+                       if str(m.get("discord_id")) != str(driver.id)]
+    set_driver_team(reg, str(driver.id), None)
+    save_reg(reg)
+    recalc_team_points()
+    await apply_team_role(ctx.guild, driver, team, add=False)
+
+    await ctx.send(f"✅ **{member['driver_name']}** has been removed from **{team['name']}**. "
+                   f"Roster: {len(team['members'])}/{TEAM_MAX_MEMBERS}")
+
+    staff_ch = discord.utils.get(ctx.guild.text_channels, name=STAFF_CH)
+    if staff_ch:
+        await staff_ch.send(
+            f"🚫 **{member['driver_name']}** removed from **{team['name']}** by {ctx.author}")
+
+
+@bot.hybrid_command(name="teamdisband", description="Disband your team (owner only)")
+@has_arca()
+async def team_disband_cmd(ctx):
+    reg  = load_reg()
+    team = get_team_of(reg, str(ctx.author.id))
+    if not team:
+        await ctx.send("You're not on a team.", ephemeral=True)
+        return
+    if str(team.get("owner_id")) != str(ctx.author.id):
+        await ctx.send(f"❌ Only the owner of **{team['name']}** can disband it. "
+                       f"Use `/teamleave` to leave instead.", ephemeral=True)
+        return
+
+    await ctx.send(
+        f"⚠️ Disband **{team['name']}**?\n"
+        f"This removes all {len(team.get('members', []))} member(s), deletes the team role, "
+        f"and wipes **{team.get('points', 0)} team points**. This cannot be undone.",
+        view=ConfirmDisbandView(team["name"], str(ctx.author.id)),
+        ephemeral=True)
+
+
+@bot.hybrid_command(name="jointeam", description="Join a team that's recruiting")
 @has_arca()
 async def join_team_cmd(ctx, *, team_name: str = ""):
-    """Join an existing team mid-season. Points prior to joining don't carry over."""
+    """Join a team that has marked itself as recruiting. Teams not recruiting
+    require an invite from the owner via /teaminvite."""
     if not team_name:
-        await ctx.send("Usage: `!jointeam <Team Name>`")
+        await ctx.send("Usage: `/jointeam <Team Name>` — see `/teams` for the list.",
+                       ephemeral=True)
         return
 
-    reg      = load_reg()
-    data     = load_data()
+    reg        = load_reg()
     discord_id = str(ctx.author.id)
 
-    driver = get_driver_reg(discord_id)
+    driver = next((d for d in reg["drivers"]
+                   if str(d.get("discord_id")) == discord_id), None)
     if not driver:
-        await ctx.send("❌ You're not registered as a driver yet. Head to `#registration` first.")
+        await ctx.send("❌ You're not registered as a driver yet. Head to `#registration` first.",
+                       ephemeral=True)
         return
 
-    team = get_team(team_name)
+    team = get_team_in(reg, team_name)
     if not team:
-        await ctx.send(f"❌ No team named **{team_name}** found. Check spelling or use `!teams` to see all teams.")
+        await ctx.send(f"❌ No team named **{team_name}** found. Use `/teams` to see them all.",
+                       ephemeral=True)
+        return
+    if get_team_of(reg, discord_id):
+        await ctx.send(f"⚠️ You're already on **{driver.get('team')}**. Use `/teamleave` first.",
+                       ephemeral=True)
+        return
+    if team_is_full(team):
+        await ctx.send(f"❌ **{team['name']}** is full "
+                       f"({TEAM_MAX_MEMBERS}/{TEAM_MAX_MEMBERS}).", ephemeral=True)
+        return
+    if not team.get("looking"):
+        owner = team.get("owner_tag", "the owner")
+        await ctx.send(f"🔒 **{team['name']}** isn't open for direct joins. "
+                       f"Ask {owner} to invite you with `/teaminvite`.", ephemeral=True)
         return
 
-    # Already on a team?
-    if driver.get("team"):
-        await ctx.send(f"⚠️ You're already on **{driver['team']}**. Contact an admin to switch teams.")
-        return
-
-    # Team full?
-    if len(team.get("members", [])) >= 4:
-        await ctx.send(f"❌ **{team_name}** is full (4/4 drivers).")
-        return
-
-    # Add to team
-    join_race = data.get("race_number", 1)
+    join_race = load_data().get("race_number", 1)
     team["members"].append({
         "driver_name": driver["name"],
         "discord_id":  discord_id,
         "discord_tag": str(ctx.author),
         "joined_race": join_race,
     })
-    driver["team"] = team["name"]
-
-    # Assign team role if it exists
-    if team.get("discord_role_id"):
-        guild = ctx.guild
-        role  = guild.get_role(int(team["discord_role_id"]))
-        if role:
-            try:
-                await ctx.author.add_roles(role)
-            except Exception:
-                pass
-
+    set_driver_team(reg, discord_id, team["name"])
     save_reg(reg)
+    recalc_team_points()
+    await apply_team_role(ctx.guild, ctx.author, team, add=True)
+
     await ctx.send(
-        f"✅ **{driver['name']}** has joined **{team_name}**!\n"
-        f"Team points will count from Race {join_race} forward. "
-        f"Previous points are yours individually — they don't carry over to the team. 🏁"
-    )
+        f"✅ **{driver['name']}** has joined **{team['name']}**! "
+        f"Roster: {len(team['members'])}/{TEAM_MAX_MEMBERS}\n"
+        f"Team points count from Race {join_race} forward. 🏁")
+
+    staff_ch = discord.utils.get(ctx.guild.text_channels, name=STAFF_CH)
+    if staff_ch:
+        await staff_ch.send(
+            f"🤝 **{driver['name']}** joined **{team['name']}** via /jointeam "
+            f"— {len(team['members'])}/{TEAM_MAX_MEMBERS}")
 
 
 @bot.hybrid_command(name="teams", description="Team standings and rosters")
@@ -3077,31 +3477,57 @@ async def archetypes_cmd(ctx):
 @bot.hybrid_command(name="help", description="List all Ask Dale commands")
 @has_arca()
 async def help_cmd(ctx):
+    """Driver-facing command list. Admin commands are deliberately excluded —
+    members don't need them and listing them just invites failed attempts."""
     ai_status = "✅ AI Enabled" if ANTHROPIC_API_KEY else "⚠️ FAQ Mode"
     embed = discord.Embed(
-        title=f"🏁 Ask Dale #3 — The Intimidator Bot [{ai_status}]",
+        title=f"🏁 Ask Dale — Driver Commands [{ai_status}]",
+        description="Every command works as a slash command — type `/` and pick it "
+                    "from the list. The old `!` versions still work too.",
         color=0xE8272A
     )
-    embed.add_field(name="!ask <anything>", value="Ask Dale anything — rules, iRacing, NASCAR history, racing tips, standings, and more", inline=False)
-    embed.add_field(name="!dale <question>", value="Same as !ask", inline=False)
-    embed.add_field(name="!standings",         value="Current championship standings", inline=False)
-    embed.add_field(name="!schedule",          value="Season race schedule", inline=False)
-    embed.add_field(name="!rules",             value="Quick rules summary", inline=False)
-    embed.add_field(name="!career <Name>",     value="Driver career summary + race-by-race history", inline=False)
-    embed.add_field(name="!numbers",           value="Show available and taken car numbers", inline=False)
-    embed.add_field(name="!roster",            value="Full driver roster — everyone signed up and their number", inline=False)
-    embed.add_field(name="!teams",             value="Team standings and rosters", inline=False)
-    embed.add_field(name="!jointeam <Name>",   value="Join an existing team mid-season", inline=False)
-    embed.add_field(name="!mystats",           value="Your registration profile and team", inline=False)
-    embed.add_field(name="!mynumber",          value="Change your car number", inline=False)
-    embed.add_field(name="!statscard [Name]",  value="Driver stats graphic — yours or any driver's", inline=False)
-    embed.add_field(name="!rivalries",          value="Hottest head-to-head rivalries this season", inline=False)
-    embed.add_field(name="!archetypes",         value="Every driver's current archetype label", inline=False)
-    embed.add_field(name="── Admin ──",        value="\u200b", inline=False)
-    embed.add_field(name="!setupregistration", value="Post registration embed in #registration (owner)", inline=False)
-    embed.add_field(name="!loadschedule",      value="Load schedule from CSV (Track,Date)", inline=False)
-    embed.add_field(name="!restructure",       value="Rebuild Discord channel layout", inline=False)
+    embed.add_field(
+        name="🗣️  Ask Dale",
+        value="`/ask <anything>` — rules, iRacing, NASCAR history, racing tips\n"
+              "`/dale <question>` — same thing",
+        inline=False)
+    embed.add_field(
+        name="🏆  Season Info",
+        value="`/standings` — championship standings\n"
+              "`/schedule` — full season calendar\n"
+              "`/rules` — quick rules summary\n"
+              "`/roster` — every driver signed up and their number\n"
+              "`/numbers` — which car numbers are open",
+        inline=False)
+    embed.add_field(
+        name="👤  Your Profile",
+        value="`/mystats` — your registration, number and team\n"
+              "`/mynumber` — change your car number\n"
+              "`/career <Name>` — race-by-race history for any driver\n"
+              "`/statscard [Name]` — driver stats graphic",
+        inline=False)
+    embed.add_field(
+        name="🏎️  Teams",
+        value="`/teams` — team standings and rosters\n"
+              "`/myteam` — your roster, points and open slots\n"
+              "`/createteam` — start a new team\n"
+              "`/jointeam <Name>` — join a team that's recruiting\n"
+              "`/teamleave` — leave your team",
+        inline=False)
+    embed.add_field(
+        name="👑  Team Owners Only",
+        value="`/teaminvite @driver` — invite a driver to your team\n"
+              "`/teamkick @driver` — remove a driver\n"
+              "`/teamdisband` — disband the team",
+        inline=False)
+    embed.add_field(
+        name="🔥  Storylines",
+        value="`/rivalries` — hottest head-to-head battles\n"
+              "`/archetypes` — every driver's archetype label",
+        inline=False)
+    embed.set_footer(text="QSR Full Throttle Series — Season 1")
     await ctx.send(embed=embed)
+
 
 @bot.command(name="dalemem")
 @is_admin()
