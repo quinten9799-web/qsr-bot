@@ -98,8 +98,28 @@ def load_reg() -> dict:
     return d
 
 def save_reg(d: dict):
+    _backup_reg()
     with open(REG_FILE, "w") as f:
         json.dump(d, f, indent=2)
+
+def _backup_reg():
+    """Snapshot registration.json before every overwrite, keeping the 20 most
+    recent. data.json has always had this; registration.json did not, which
+    meant a bad sync push could destroy driver signups with no way back."""
+    try:
+        if not os.path.exists(REG_FILE):
+            return
+        backup_dir = os.path.join(_DATA_DIR, "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        shutil.copy2(REG_FILE, os.path.join(backup_dir, f"registration_{ts}.json"))
+        backups = sorted(
+            [f for f in os.listdir(backup_dir) if f.startswith("registration_")],
+            reverse=True)
+        for old in backups[20:]:
+            os.remove(os.path.join(backup_dir, old))
+    except Exception as e:
+        print(f"⚠️  registration backup failed: {e}")
 
 _ZERO_PADDED_NUMBERS = {"00", "01", "02", "03", "04", "05", "06", "07", "08", "09"}
 
@@ -876,7 +896,7 @@ SCHEDULE = [
     {"race":9,  "date":"September 28, 2026",    "track":"Rockingham Speedway"},
     {"race":10,  "date":"October 5, 2026",       "track":"Lime Rock Park"},
     {"race":11,  "date":"October 12, 2026",      "track":"New Hampshire Motor Speedway"},
-    {"race":12,  "date":"October 19, 2026",      "track":"Atlanta Motor Speedway"},
+    {"race":12,  "date":"October 19, 2026",      "track":"New Atlanta Motor Speedway"},
     {"race":13,  "date":"October 26, 2026",      "track":"Kansas Speedway"},
     {"race":14,  "date":"November 2, 2026",      "track":"Homestead-Miami Speedway"},
 ]
@@ -3213,15 +3233,62 @@ def get_registration():
 
 @sync_app.route("/sync/registration", methods=["POST"])
 def post_registration():
+    """Accept a registration push from the desktop app — MERGED, never blind.
+
+    The desktop app's copy is a snapshot from whenever it last pulled. Drivers
+    who registered in Discord since then exist here but not in that snapshot.
+    A straight overwrite silently deletes them, which is exactly how a 27-driver
+    field became 21. So: the server is authoritative for driver EXISTENCE, the
+    client is authoritative for admin FIELDS (paid, status, number, team).
+
+    Deletions are still possible, but only when explicit — the client lists the
+    driver key in `removed_ids`.
+    """
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
     try:
         payload = request.get_json(force=True)
         if not isinstance(payload, dict):
             return jsonify({"error": "Invalid payload"}), 400
-        with open(REG_FILE, "w") as f:
-            json.dump(payload, f, indent=2)
-        return jsonify({"status": "ok"}), 200
+
+        current = {}
+        if os.path.exists(REG_FILE):
+            with open(REG_FILE) as f:
+                current = json.load(f)
+
+        def key_of(d):
+            return str(d.get("discord_id") or "").strip() or \
+                   (d.get("name", "") or "").strip().lower()
+
+        tombstones = {str(k).strip().lower() for k in payload.get("removed_ids", [])}
+        incoming   = {key_of(d): d for d in payload.get("drivers", [])}
+        merged, seen = [], set()
+
+        # Server-side drivers first — preserves anyone who signed up since the
+        # client's last pull.
+        for d in current.get("drivers", []):
+            k = key_of(d)
+            if k in tombstones:
+                continue
+            merged.append(incoming.get(k, d))   # client edits win when present
+            seen.add(k)
+
+        # Then anything the client has that the server doesn't (admin-added).
+        for k, d in incoming.items():
+            if k not in seen and k not in tombstones:
+                merged.append(d)
+
+        result = dict(current)
+        result.update({k: v for k, v in payload.items()
+                       if k not in ("drivers", "removed_ids")})
+        result["drivers"] = merged
+        result.pop("removed_ids", None)
+
+        dropped = len(current.get("drivers", [])) - len(
+            [d for d in current.get("drivers", []) if key_of(d) not in tombstones])
+        save_reg(result)
+        return jsonify({"status": "ok", "drivers": len(merged),
+                        "removed": dropped}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
