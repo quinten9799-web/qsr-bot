@@ -228,6 +228,41 @@ def get_team_of(reg: dict, discord_id: str) -> dict | None:
 def team_is_full(team: dict) -> bool:
     return len(team.get("members", [])) >= TEAM_MAX_MEMBERS
 
+def reconcile_driver_teams(reg: dict) -> int:
+    """Rebuild every driver's `team` field from the team rosters.
+
+    `driver["team"]` and `teams[].members` are two copies of one fact, and
+    two copies always drift. They drifted badly: the sync merge let a client
+    record win wholesale for any driver present on both sides, so a stale
+    push from the desktop app reset `team` to None and silently un-joined
+    drivers who had just accepted an invite in Discord.
+
+    Rosters are the source of truth — they're what points, invites and the
+    roster cap all read. This makes `team` a derived cache of that, so a
+    stale field can never contradict the roster again. Returns the number of
+    driver records corrected.
+    """
+    by_id, by_name = {}, {}
+    for team in reg.get("teams", []):
+        tname = team.get("name")
+        for m in team.get("members", []):
+            did = str(m.get("discord_id") or "").strip()
+            if did:
+                by_id[did] = tname
+            nm = (m.get("driver_name", "") or "").strip().lower()
+            if nm:
+                by_name[nm] = tname
+
+    fixed = 0
+    for d in reg.get("drivers", []):
+        did = str(d.get("discord_id") or "").strip()
+        nm  = (d.get("name", "") or "").strip().lower()
+        correct = by_id.get(did) if did in by_id else by_name.get(nm)
+        if d.get("team") != correct:
+            d["team"] = correct
+            fixed += 1
+    return fixed
+
 def set_driver_team(reg: dict, discord_id: str, team_name):
     """Keep the driver record's team field in sync with team membership."""
     did = str(discord_id)
@@ -2731,6 +2766,11 @@ async def join_team_cmd(ctx, *, team_name: str = ""):
 async def free_agents_cmd(ctx):
     """Who's available to recruit. Team owners live in this list."""
     reg = load_reg()
+    # Self-heal any drift before reporting — this list is what owners recruit
+    # from, so showing someone as free when they just joined a team is the
+    # single most confusing failure mode it has.
+    if reconcile_driver_teams(reg):
+        save_reg(reg)
     free = [d for d in reg.get("drivers", [])
             if not d.get("team") and d.get("status") not in ("Withdrawn",)]
 
@@ -4083,6 +4123,10 @@ def post_registration():
         result.pop("removed_ids", None)
         result.pop("removed_teams", None)
 
+        # Rosters win over the cached `team` field. Without this, a stale
+        # client record overwrites a driver who just joined a team in Discord.
+        corrected = reconcile_driver_teams(result)
+
         dropped = len(current.get("drivers", [])) - len(
             [d for d in current.get("drivers", []) if key_of(d) not in tombstones])
         save_reg(result)
@@ -4093,6 +4137,7 @@ def post_registration():
             "teams_after":    len(merged_teams),
             "tombstoned_drivers": sorted(tombstones),
             "tombstoned_teams":   sorted(team_tombstones),
+            "team_fields_corrected": corrected,
         })
         return jsonify({"status": "ok", "drivers": len(merged), "teams": len(merged_teams),
                         "removed": dropped}), 200
