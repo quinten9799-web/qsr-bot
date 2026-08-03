@@ -7,6 +7,7 @@ import io
 import shutil
 import aiohttp
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import asyncio
 import threading
 from flask import Flask, request, jsonify
@@ -961,6 +962,118 @@ SCHEDULE = [
     {"race":14,  "date":"November 2, 2026",      "track":"Homestead-Miami Speedway"},
 ]
 POSTED_FILE             = os.path.join(_DATA_DIR, "posted_announcements.json")
+FIRED_TASKS_FILE        = os.path.join(_DATA_DIR, "fired_tasks.json")
+
+# ─────────────────────────────────────────────────────────────────
+#  RACE-DAY TIMING — anchored to SCHEDULE in Eastern Time
+#
+#  Everything used to key off RACE_DAY (a UTC weekday int) plus
+#  RACE_TIME_UTC. Race night is Monday 8PM ET, which is 01:00 UTC on
+#  TUESDAY — so RACE_DAY=0 made the bot treat Monday 01:00 UTC (Sunday
+#  9PM ET) as green flag, and every "X minutes before race" post fired a
+#  full day early. That's why Dale predicted Race 1 on Sunday night.
+#
+#  Fix: ignore those env vars and derive race day from the SCHEDULE array
+#  in America/New_York. Also survives the EDT→EST change on Nov 1, which
+#  matters because the finale is Nov 2.
+# ─────────────────────────────────────────────────────────────────
+ET = ZoneInfo("America/New_York")
+RACE_START_HOUR = 20   # 8:00 PM ET green flag
+
+def now_et() -> datetime:
+    return datetime.now(ET)
+
+def _parse_sched_date(date_str: str):
+    """'August 3, 2026' -> date object. Returns None if unparseable."""
+    try:
+        return datetime.strptime(date_str.strip(), "%B %d, %Y").date()
+    except Exception:
+        return None
+
+def race_on(day) -> int | None:
+    """Race number scheduled on the given ET date, or None."""
+    for entry in SCHEDULE:
+        d = _parse_sched_date(entry.get("date", ""))
+        if d and d == day:
+            return entry["race"]
+    return None
+
+def todays_race(now=None) -> int | None:
+    """Race number if today (ET) is a race day, else None."""
+    now = now or now_et()
+    return race_on(now.date())
+
+def upcoming_race(now=None):
+    """(race_number, track) for the next race on or after today (ET). Used
+    by tasks that fire on a non-race day but need to reference the race
+    that's coming up, like a Friday hype post ahead of Monday's race."""
+    now = now or now_et()
+    for entry in SCHEDULE:
+        d = _parse_sched_date(entry.get("date", ""))
+        if d and d >= now.date():
+            return entry["race"], entry["track"]
+    return None
+
+def race_green_flag(now=None) -> datetime | None:
+    """Green flag datetime (ET) for today's race, or None if not a race day."""
+    now = now or now_et()
+    if todays_race(now) is None:
+        return None
+    return now.replace(hour=RACE_START_HOUR, minute=0, second=0, microsecond=0)
+
+def load_fired() -> dict:
+    if not os.path.exists(FIRED_TASKS_FILE):
+        return {}
+    try:
+        with open(FIRED_TASKS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def already_fired(task_name: str, now=None) -> bool:
+    """True if this task already ran today. The schedulers tick every
+    minute, so without this a clock hiccup or a Railway restart inside the
+    trigger minute could double-post."""
+    now = now or now_et()
+    return load_fired().get(task_name) == now.date().isoformat()
+
+def mark_fired(task_name: str, now=None):
+    now = now or now_et()
+    fired = load_fired()
+    fired[task_name] = now.date().isoformat()
+    try:
+        with open(FIRED_TASKS_FILE, "w") as f:
+            json.dump(fired, f)
+    except Exception as e:
+        print(f"⚠️ Could not record fired task {task_name}: {e}")
+
+def at_time(now: datetime, hour: int, minute: int) -> bool:
+    return now.hour == hour and now.minute == minute
+
+def should_fire(task_name: str, hour: int, minute: int, now=None) -> bool:
+    """One gate for race-night schedulers: is today a race day, is it the
+    right ET time, and has this not already posted today?"""
+    now = now or now_et()
+    if todays_race(now) is None:
+        return False
+    if not at_time(now, hour, minute):
+        return False
+    if already_fired(task_name, now):
+        return False
+    return True
+
+def should_fire_weekday(task_name: str, weekday: int, hour: int, minute: int, now=None) -> bool:
+    """Same as should_fire(), but for tasks pinned to a specific weekday
+    rather than race day — e.g. a Friday hype post ahead of Monday's race.
+    weekday: Monday=0 ... Sunday=6."""
+    now = now or now_et()
+    if now.weekday() != weekday:
+        return False
+    if not at_time(now, hour, minute):
+        return False
+    if already_fired(task_name, now):
+        return False
+    return True
 
 # RACE_ANNOUNCEMENTS replaced — announcements now built dynamically
 # from race_config in data.json, set via the Race Setup table in qsr_app.py
@@ -1015,40 +1128,29 @@ def save_posted_announcement(race_num: int):
 
 @tasks.loop(minutes=1)
 async def race_announcement_scheduler():
-    """Every Monday at 12PM ET (16:00 UTC), build and post the week's race announcement."""
-    now_utc = datetime.utcnow()
-    if now_utc.weekday() != 0:
-        return
-    if not (now_utc.hour == 16 and now_utc.minute == 0):
+    """12:00 PM ET on race day — the full rundown: track, schedule, laps,
+    stage lap, field size. This is the race-day reminder; there is no
+    separate reminder post."""
+    now = now_et()
+    if not should_fire("announcement", 12, 0, now):
         return
 
+    # Race number comes from the SCHEDULE date, not data.json's counter.
+    # The counter can sit stale if a race night wasn't finalised, which
+    # previously meant announcing the wrong track.
+    race_num  = todays_race(now)
     data      = load_data()
-    race_num  = data.get("race_number", 1)
     race_cfg  = data.get("race_config", {})
     posted    = load_posted_announcements()
 
     if race_num in posted:
+        mark_fired("announcement", now)
         return
 
     cfg = race_cfg.get(str(race_num), {})
     if not cfg:
-        print(f"⚠️ No race_config for Race {race_num} — skipping announcement")
-        return
-
-    # Safety check: verify today's date matches this race's scheduled date
-    # Prevents wrong announcement if race_number wasn't updated after last race
-    race_date_str = cfg.get("date", "")
-    if race_date_str:
-        try:
-            from datetime import datetime as _dt
-            race_date = _dt.strptime(race_date_str.strip(), "%B %d, %Y")
-            today     = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-            race_day  = race_date.replace(hour=0, minute=0, second=0, microsecond=0)
-            if today != race_day:
-                print(f"⚠️ Race {race_num} date mismatch: config says {race_date_str}, today is {now_utc.strftime('%B %d, %Y')} — skipping")
-                return
-        except Exception as e:
-            print(f"⚠️ Could not parse race date '{race_date_str}': {e} — proceeding anyway")
+        print(f"⚠️ No race_config for Race {race_num} — using SCHEDULE defaults")
+        cfg = {}
 
     channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
     if not channel:
@@ -1106,6 +1208,7 @@ async def race_announcement_scheduler():
     view = RSVPView()
     await channel.send(msg, view=view)
     save_posted_announcement(race_num)
+    mark_fired("announcement", now)
     print(f"✅ Race {race_num} announcement posted — {track_clean}")
 
 
@@ -1113,11 +1216,18 @@ async def race_announcement_scheduler():
 #  DALE'S WEEKLY TAKE
 # ─────────────────────────────────────────────────────────────────
 
-@tasks.loop(hours=24)
+@tasks.loop(minutes=1)
 async def dales_weekly_take():
-    """Every Monday morning Dale posts an unprompted take in #pitlane."""
-    now = datetime.utcnow()
-    if now.weekday() != 0 or now.hour != 12:
+    """5:00 PM ET on Friday — Dale posts hype ahead of Monday's race in
+    #pitlane. Moved off race day itself so Monday isn't carrying four posts
+    back to back; this one has no time-sensitive content, so it doesn't
+    need to live there.
+
+    Was @tasks.loop(hours=24) gated on hour==12 UTC, which only ever fired
+    if the bot happened to boot near noon UTC. A Railway restart at the
+    wrong time silently killed it until the next redeploy."""
+    now = now_et()
+    if not should_fire_weekday("weekly_take", 4, 17, 0, now):   # 4 = Friday
         return
     guild = bot.get_guild(GUILD_ID)
     if not guild:
@@ -1130,8 +1240,12 @@ async def dales_weekly_take():
     data      = load_data()
     race_num  = data.get("race_number", 1)
     mood      = get_dale_mood()
+    upcoming       = upcoming_race(now)
+    race_num_next  = upcoming[0] if upcoming else race_num
+    track_next     = (upcoming[1] if upcoming else "the track").replace(" — SEASON FINALE", "")
     prompt = (
-        f"It's Monday morning. Race day is tonight. You're Dale Earnhardt Sr. "
+        f"It's Friday, and Race {race_num_next} at {track_next} is coming up this "
+        f"Monday, green flag 8PM ET. You're Dale Earnhardt Sr. "
         f"Give an unprompted opinion or observation about something racing related. "
         f"Could be about the QSR season so far, real NASCAR news, oval racing in general, "
         f"a life lesson from racing, or just something on your mind. "
@@ -1149,6 +1263,7 @@ async def dales_weekly_take():
         embed.set_author(name="Dale's Take")
         embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
         await ch.send(embed=embed)
+    mark_fired("weekly_take", now)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1158,17 +1273,8 @@ async def dales_weekly_take():
 @tasks.loop(minutes=1)
 async def pre_race_trash_talk():
     """30 minutes before race, Dale calls out a rivalry."""
-    now = datetime.utcnow()
-    if now.weekday() != RACE_DAY:
-        return
-    race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_dt        = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    # Handle midnight boundary: if race time is early UTC (e.g. 01:00) and now is late UTC,
-    # the race is on the next calendar day — shift race_dt forward one day.
-    if race_dt < now - timedelta(hours=12):
-        race_dt += timedelta(days=1)
-    thirty_min_out = race_dt - timedelta(minutes=30)
-    if abs((now - thirty_min_out).total_seconds()) > 60:
+    now = now_et()
+    if not should_fire("trash_talk", 19, 30, now):
         return
     guild = bot.get_guild(GUILD_ID)
     if not guild or not ANTHROPIC_API_KEY:
@@ -1198,10 +1304,11 @@ async def pre_race_trash_talk():
             title="🏁 Dale's Pre-Race Call",
             description=response,
             color=0xE8272A,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(ET)
         )
         embed.set_footer(text="Green flag in 30 minutes | @everyone")
         await ch.send("@everyone", embed=embed)
+    mark_fired("trash_talk", now)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1301,16 +1408,8 @@ PREDICTION_FILE = os.path.join(_DATA_DIR, "dale_prediction.json")
 @tasks.loop(minutes=1)
 async def race_prediction():
     """Dale posts a race prediction 1 hour before green flag."""
-    now = datetime.utcnow()
-    if now.weekday() != RACE_DAY:
-        return
-    race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    # Handle midnight boundary
-    if race_dt < now - timedelta(hours=12):
-        race_dt += timedelta(days=1)
-    one_hour_out = race_dt - timedelta(hours=1)
-    if abs((now - one_hour_out).total_seconds()) > 60:
+    now = now_et()
+    if not should_fire("prediction", 19, 0, now):
         return
     guild = bot.get_guild(GUILD_ID)
     if not guild or not ANTHROPIC_API_KEY:
@@ -1328,11 +1427,25 @@ async def race_prediction():
     if schedule and len(schedule) >= race_num:
         track = schedule[race_num - 1].get("track", "tonight's track")
     prompt = (
-        f"It's one hour before Race {race_num} at {track} in the QSR Full Throttle Series. "
+        f"It's one hour before green flag for Race {race_num} at {track} in the "
+        f"QSR Full Throttle Series. The lobby is open and drivers are joining now. "
         f"Current top 5 in standings: {top5_names}. "
         f"Make a bold race prediction as Dale Earnhardt Sr. Pick a winner and maybe a surprise "
         f"storyline to watch. 2-3 sentences. Confident. Dale doesn't hedge his bets."
     )
+    # Part 1 — LOBBY UP ping. This is the call to action, so it goes first
+    # and carries the @arca mention; the prediction rides behind it.
+    track_clean = (track or "").replace(" — SEASON FINALE", "").strip() or "the track"
+    await ch.send(
+        f"🟢 **LOBBY UP — RACE {race_num}: {track_clean.upper()}**\n"
+        f"<@&{ARCA_ROLE_ID}>\n\n"
+        f"🕖 **7:00 PM ET** — Lobby open / Practice\n"
+        f"🕢 **7:50 PM ET** — Qualifying\n"
+        f"🕗 **8:00 PM ET** — Green flag\n\n"
+        f"Hop in and get your laps. See you out there. 🏁"
+    )
+
+    # Part 2 — Dale's prediction
     response = await ask_claude(prompt, user_context=mood_context())
     if response:
         with open(PREDICTION_FILE, "w") as f:
@@ -1341,49 +1454,13 @@ async def race_prediction():
             title=f"🔮 Dale's Race {race_num} Prediction",
             description=response,
             color=0xFFD700,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(ET)
         )
         embed.set_footer(text="Hold Dale accountable after the race 👀")
         await ch.send(embed=embed)
+    mark_fired("prediction", now)
 
 
-# ─────────────────────────────────────────────────────────────────
-#  RACE REMINDER
-# ─────────────────────────────────────────────────────────────────
-
-@tasks.loop(hours=1)
-async def race_reminder():
-    now = datetime.utcnow()
-    if now.weekday() != RACE_DAY:
-        return
-    race_hour, race_min = map(int, RACE_TIME_UTC.split(":"))
-    race_dt      = now.replace(hour=race_hour, minute=race_min, second=0, microsecond=0)
-    # Handle midnight boundary
-    if race_dt < now - timedelta(hours=12):
-        race_dt += timedelta(days=1)
-    one_hour_out = race_dt - timedelta(hours=1)
-    if abs((now - one_hour_out).total_seconds()) < 3600:
-        guild = bot.get_guild(GUILD_ID)
-        if not guild:
-            return
-        ch = discord.utils.get(guild.text_channels, name=ANNOUNCEMENTS_CH)
-        if ch:
-            embed = discord.Embed(
-                title="🏁 RACE NIGHT — 1 Hour Out!",
-                description=(
-                    "Green flag in **60 minutes**!\n\n"
-                    "✅ Lock in your setup\n"
-                    "✅ Join the hosted league session\n"
-                    "✅ Check `#how-to-watch` for the stream link\n\n"
-                    "@everyone Let's go racing! 🔥"
-                ),
-                color=0xE8272A
-            )
-            await ch.send(embed=embed)
-
-
-# ─────────────────────────────────────────────────────────────────
-#  BOT EVENTS — single on_ready
 # ─────────────────────────────────────────────────────────────────
 
 @bot.event
@@ -1411,7 +1488,6 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️  Slash command sync failed: {e}")
 
-    race_reminder.start()
     dales_weekly_take.start()
     pre_race_trash_talk.start()
     race_prediction.start()
@@ -3628,23 +3704,113 @@ def get_data():
     with open(DATA_FILE) as f:
         return jsonify(json.load(f)), 200
 
+SYNC_LOG_FILE = os.path.join(_DATA_DIR, "sync_log.json")
+
+def log_sync(event: str, detail: dict):
+    """Append-only record of every sync push, keeping the last 200.
+
+    Both data-loss incidents this season were diagnosed by guesswork after
+    the fact. A push log means the next one is a lookup, not an
+    investigation: what arrived, what it would have changed, whether it was
+    accepted or blocked."""
+    try:
+        entries = []
+        if os.path.exists(SYNC_LOG_FILE):
+            with open(SYNC_LOG_FILE) as f:
+                entries = json.load(f)
+        entries.append({"ts": datetime.utcnow().isoformat(),
+                        "event": event, **detail})
+        with open(SYNC_LOG_FILE, "w") as f:
+            json.dump(entries[-200:], f, indent=2)
+    except Exception as e:
+        print(f"⚠️ sync log write failed: {e}")
+
+
+def guard_destructive(current: dict, payload: dict, force: bool) -> list:
+    """Return a list of destructive changes a data.json push would cause.
+
+    The desktop app is always pushing a snapshot, so a stale one can wipe
+    real results — the same way a stale registration snapshot deleted six
+    drivers and a team. Shrinking standings, shrinking race history, or
+    winding the race counter backwards are never legitimate side effects of
+    a routine push, so they're blocked unless explicitly forced.
+    """
+    if force:
+        return []
+    problems = []
+
+    for key, label in (("standings", "standings entries"),
+                       ("race_results", "drivers with race history"),
+                       ("driver_profiles", "driver profiles")):
+        before = len(current.get(key, {}) or {})
+        after  = len(payload.get(key, {}) or {})
+        if after < before:
+            problems.append(f"{label}: {before} → {after} (would lose {before - after})")
+
+    # Total recorded race finishes across all drivers
+    def finish_count(d):
+        return sum(len(v or []) for v in (d.get("race_results", {}) or {}).values())
+    rb, ra = finish_count(current), finish_count(payload)
+    if ra < rb:
+        problems.append(f"recorded race finishes: {rb} → {ra} (would lose {rb - ra})")
+
+    cur_rn, new_rn = current.get("race_number", 1), payload.get("race_number", 1)
+    if isinstance(new_rn, int) and isinstance(cur_rn, int) and new_rn < cur_rn:
+        problems.append(f"race counter would move backwards: {cur_rn} → {new_rn}")
+
+    return problems
+
+
 @sync_app.route("/sync/data", methods=["POST"])
 def post_data():
+    """Accept a data.json push — guarded, backed up, and logged.
+
+    Was a straight overwrite. A stale client could silently destroy
+    standings and race history; add ?force=1 to override deliberately."""
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
     try:
         payload = request.get_json(force=True)
         if not isinstance(payload, dict):
             return jsonify({"error": "Invalid payload"}), 400
-        # Backup before overwrite
+
+        current = {}
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE) as f:
+                current = json.load(f)
+
+        force = str(request.args.get("force", "")).lower() in ("1", "true", "yes")
+        problems = guard_destructive(current, payload, force)
+        if problems:
+            log_sync("data_push_blocked", {"problems": problems})
+            print(f"🛑 Blocked destructive data.json push: {problems}")
+            return jsonify({
+                "error": "Destructive push blocked",
+                "problems": problems,
+                "hint": "Pull from Railway first, or re-send with ?force=1 to override.",
+            }), 409
+
         if os.path.exists(DATA_FILE):
             backup_dir = os.path.join(_DATA_DIR, "backups")
             os.makedirs(backup_dir, exist_ok=True)
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             shutil.copy2(DATA_FILE, os.path.join(backup_dir, f"data_{ts}.json"))
+            backups = sorted([f for f in os.listdir(backup_dir) if f.startswith("data_")],
+                             reverse=True)
+            for old in backups[20:]:
+                try:
+                    os.remove(os.path.join(backup_dir, old))
+                except Exception:
+                    pass
+
         with open(DATA_FILE, "w") as f:
             json.dump(payload, f, indent=2)
-        return jsonify({"status": "ok"}), 200
+        log_sync("data_push", {
+            "standings": len(payload.get("standings", {}) or {}),
+            "race_number": payload.get("race_number"),
+            "forced": force,
+        })
+        return jsonify({"status": "ok", "forced": force}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -3667,8 +3833,15 @@ def post_registration():
     field became 21. So: the server is authoritative for driver EXISTENCE, the
     client is authoritative for admin FIELDS (paid, status, number, team).
 
-    Deletions are still possible, but only when explicit — the client lists the
-    driver key in `removed_ids`.
+    Teams get the identical treatment and for the identical reason — a team
+    created via /createteam after the app's last pull isn't in its snapshot,
+    and a blind overwrite deleted one mid-testing (JCOMM Motorsports vanished
+    between two /teaminvite calls). Server is authoritative for team
+    EXISTENCE, client wins on fields (points, looking, discord_role_id, member
+    list) when it has the team at all.
+
+    Deletions are still possible, but only when explicit — the client lists
+    the driver key / team name in `removed_ids` / `removed_teams`.
     """
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
@@ -3686,34 +3859,73 @@ def post_registration():
             return str(d.get("discord_id") or "").strip() or \
                    (d.get("name", "") or "").strip().lower()
 
-        tombstones = {str(k).strip().lower() for k in payload.get("removed_ids", [])}
-        incoming   = {key_of(d): d for d in payload.get("drivers", [])}
-        merged, seen = [], set()
+        def team_key(t):
+            return (t.get("name", "") or "").strip().lower()
 
-        # Server-side drivers first — preserves anyone who signed up since the
-        # client's last pull.
-        for d in current.get("drivers", []):
-            k = key_of(d)
-            if k in tombstones:
-                continue
-            merged.append(incoming.get(k, d))   # client edits win when present
-            seen.add(k)
+        def merge_collection(cur_list, inc_list, keyfn, tombs):
+            """Server is authoritative for EXISTENCE, client wins on fields.
 
-        # Then anything the client has that the server doesn't (admin-added).
-        for k, d in incoming.items():
-            if k not in seen and k not in tombstones:
-                merged.append(d)
+            Records only vanish when explicitly tombstoned. Used for every
+            record collection so a stale client snapshot can never delete
+            anything — drivers were fixed this way first, then teams had to
+            be fixed identically a day later, so this is now shared."""
+            incoming = {keyfn(x): x for x in (inc_list or [])}
+            out, seen = [], set()
+            for x in (cur_list or []):
+                k = keyfn(x)
+                if k in tombs:
+                    continue
+                out.append(incoming.get(k, x))
+                seen.add(k)
+            for k, x in incoming.items():
+                if k not in seen and k not in tombs:
+                    out.append(x)
+            return out
+
+        tombstones      = {str(k).strip().lower() for k in payload.get("removed_ids", [])}
+        team_tombstones = {str(k).strip().lower() for k in payload.get("removed_teams", [])}
+
+        merged       = merge_collection(current.get("drivers"), payload.get("drivers"),
+                                        key_of, tombstones)
+        merged_teams = merge_collection(current.get("teams"), payload.get("teams"),
+                                        team_key, team_tombstones)
+
+        # Any OTHER list-of-records key gets the same protection automatically.
+        # Without this, the next collection added to registration.json would
+        # repeat this exact bug a third time.
+        handled    = {"drivers", "teams", "removed_ids", "removed_teams"}
+        extra_keys = {k for k, v in list(current.items()) + list(payload.items())
+                      if k not in handled and isinstance(v, list)
+                      and all(isinstance(i, dict) for i in (v or []))}
+        extra_merged = {}
+        for k in extra_keys:
+            def generic_key(x):
+                return str(x.get("id") or x.get("discord_id") or
+                           x.get("name", "")).strip().lower()
+            extra_merged[k] = merge_collection(current.get(k), payload.get(k),
+                                               generic_key, set())
 
         result = dict(current)
         result.update({k: v for k, v in payload.items()
-                       if k not in ("drivers", "removed_ids")})
+                       if k not in handled and k not in extra_keys})
         result["drivers"] = merged
+        result["teams"]   = merged_teams
+        result.update(extra_merged)
         result.pop("removed_ids", None)
+        result.pop("removed_teams", None)
 
         dropped = len(current.get("drivers", [])) - len(
             [d for d in current.get("drivers", []) if key_of(d) not in tombstones])
         save_reg(result)
-        return jsonify({"status": "ok", "drivers": len(merged),
+        log_sync("registration_push", {
+            "drivers_before": len(current.get("drivers", []) or []),
+            "drivers_after":  len(merged),
+            "teams_before":   len(current.get("teams", []) or []),
+            "teams_after":    len(merged_teams),
+            "tombstoned_drivers": sorted(tombstones),
+            "tombstoned_teams":   sorted(team_tombstones),
+        })
+        return jsonify({"status": "ok", "drivers": len(merged), "teams": len(merged_teams),
                         "removed": dropped}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
