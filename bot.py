@@ -157,6 +157,53 @@ def get_driver_reg(discord_id: str) -> dict | None:
     return next((d for d in load_reg()["drivers"]
                  if d.get("discord_id") == discord_id), None)
 
+TEAM_VC_CATEGORY = "🏎️ TEAM GARAGES"
+
+async def ensure_team_voice(guild, team: dict):
+    """Create (or reuse) a voice channel for a team.
+
+    Open to the whole server — anyone can drop into any team's garage. Teams
+    aren't isolated pods here; letting drivers wander between garages is how
+    recruiting conversations and rivalries actually happen.
+
+    Returns the channel, or None if creation failed (missing permissions, hit
+    Discord's 500-channel cap, etc). Never raises: a voice channel failing is
+    not a reason for team creation to fail.
+    """
+    try:
+        name = team.get("name", "Team")
+        # Reuse if we already recorded one and it still exists
+        vc_id = team.get("voice_channel_id")
+        if vc_id:
+            existing = guild.get_channel(int(vc_id))
+            if existing:
+                return existing
+
+        category = discord.utils.get(guild.categories, name=TEAM_VC_CATEGORY)
+        if not category:
+            category = await guild.create_category(TEAM_VC_CATEGORY)
+
+        # No overwrites — inherits the category's permissions, so it's visible
+        # and joinable by everyone the same way any other public channel is.
+        vc = await guild.create_voice_channel(
+            f"🏁 {name}", category=category, reason="QSR team garage")
+        return vc
+    except Exception as e:
+        print(f"⚠️ Could not create voice channel for {team.get('name')}: {e}")
+        return None
+
+async def delete_team_voice(guild, team: dict):
+    """Remove a team's voice channel when the team goes away."""
+    vc_id = team.get("voice_channel_id")
+    if not vc_id:
+        return
+    try:
+        vc = guild.get_channel(int(vc_id))
+        if vc:
+            await vc.delete(reason="QSR team disbanded")
+    except Exception as e:
+        print(f"⚠️ Could not delete voice channel for {team.get('name')}: {e}")
+
 def get_team(team_name: str) -> dict | None:
     name_lower = team_name.strip().lower()
     return next((t for t in load_reg()["teams"]
@@ -1945,10 +1992,25 @@ class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
         except Exception:
             pass
 
+        # Private team garage — created after the role so the overwrite can
+        # reference it.
+        vc = None
+        try:
+            reg = load_reg()
+            t   = get_team_in(reg, tname)
+            if t is not None:
+                vc = await ensure_team_voice(guild, t)
+                if vc:
+                    t["voice_channel_id"] = str(vc.id)
+                    save_reg(reg)
+        except Exception:
+            pass
+
         await interaction.response.send_message(
             f"✅ **{tname}** is officially registered!\n"
             f"Owner: {interaction.user.mention}\n"
             f"Roster: 1/4 — invite drivers with `/teaminvite @driver`\n"
+            + (f"🔊 Your team garage: {vc.mention}\n" if vc else "") +
             f"{'🔍 Posted in #team-forming — looking for drivers!' if looking else ''}\n"
             f"Points accumulate from Race {join_race} forward. 🏁",
             ephemeral=True)
@@ -2367,6 +2429,7 @@ class ConfirmDisbandView(discord.ui.View):
             await apply_team_role(guild, member, team, add=False)
 
         rid = team.get("discord_role_id")
+        await delete_team_voice(guild, team)
         reg["teams"] = [t for t in reg["teams"]
                         if t["name"].lower() != self.team_name.lower()]
         save_reg(reg)
@@ -2513,6 +2576,7 @@ async def team_leave_cmd(ctx):
     note = ""
     if not team["members"]:
         rid = team.get("discord_role_id")
+        await delete_team_voice(ctx.guild, team)
         reg["teams"] = [t for t in reg["teams"] if t["name"] != team["name"]]
         note = f"\n**{team['name']}** had no members left and has been dissolved."
         save_reg(reg)
@@ -2660,6 +2724,110 @@ async def join_team_cmd(ctx, *, team_name: str = ""):
         await staff_ch.send(
             f"🤝 **{driver['name']}** joined **{team['name']}** via /jointeam "
             f"— {len(team['members'])}/{TEAM_MAX_MEMBERS}")
+
+
+@bot.hybrid_command(name="freeagents", description="Drivers available to recruit — not on a team")
+@has_arca()
+async def free_agents_cmd(ctx):
+    """Who's available to recruit. Team owners live in this list."""
+    reg = load_reg()
+    free = [d for d in reg.get("drivers", [])
+            if not d.get("team") and d.get("status") not in ("Withdrawn",)]
+
+    if not free:
+        await ctx.send("🏁 No free agents right now — every registered driver is on a team.")
+        return
+
+    def sort_key(d):
+        n = norm_num(d.get("number", ""))
+        try:
+            return (int(n), n)
+        except ValueError:
+            return (9999, n)
+
+    confirmed = sorted([d for d in free if d.get("status") == "Confirmed"], key=sort_key)
+    other     = sorted([d for d in free if d.get("status") != "Confirmed"], key=sort_key)
+
+    data      = load_data()
+    standings = data.get("standings", {})
+
+    embed = discord.Embed(
+        title="🔍 Free Agents — Available to Recruit",
+        description="Drivers not currently on a team. Owners: invite with "
+                    "`/teaminvite @driver`.",
+        color=0x2ECC71,
+    )
+
+    def add_group(label, group):
+        if not group:
+            return
+        lines = []
+        for d in group:
+            pts = standings.get(d["name"], {}).get("points")
+            pts_txt = f" — {pts} pts" if pts is not None else ""
+            lines.append(f"**#{d.get('number','?')}** {d['name']}{pts_txt}")
+        chunk, size, part = [], 0, 1
+        for line in lines:
+            if (size + len(line) + 1 > 1000 or len(chunk) >= 20) and chunk:
+                embed.add_field(name=f"{label} ({len(group)})" if part == 1 else f"{label} (cont.)",
+                                value="\n".join(chunk), inline=False)
+                chunk, size, part = [], 0, part + 1
+            chunk.append(line); size += len(line) + 1
+        if chunk:
+            embed.add_field(name=f"{label} ({len(group)})" if part == 1 else f"{label} (cont.)",
+                            value="\n".join(chunk), inline=False)
+
+    add_group("✅ Confirmed", confirmed)
+    add_group("⏳ Pending / Waitlist", other)
+
+    open_teams = [t for t in reg.get("teams", [])
+                  if t.get("looking") and len(t.get("members", [])) < TEAM_MAX_MEMBERS]
+    if open_teams:
+        embed.add_field(
+            name="🏎️ Teams Recruiting",
+            value="\n".join(
+                f"**{t['name']}** — {len(t.get('members', []))}/{TEAM_MAX_MEMBERS} "
+                f"(`/jointeam {t['name']}`)" for t in open_teams[:10]),
+            inline=False)
+
+    embed.set_footer(text=f"{len(free)} free agent(s) · QSR Full Throttle Series")
+    await ctx.send(embed=embed)
+
+
+@bot.hybrid_command(name="syncgarages", description="Create missing team voice channels (admin)")
+@is_admin()
+async def sync_garages_cmd(ctx):
+    """Backfill private voice channels for teams created before garages
+    existed. Safe to re-run — teams that already have one are skipped."""
+    reg   = load_reg()
+    teams = reg.get("teams", [])
+    if not teams:
+        await ctx.send("No teams registered yet.")
+        return
+
+    await ctx.send(f"🔧 Checking {len(teams)} team(s) for garages…")
+    created, skipped, failed = [], [], []
+
+    for team in teams:
+        vc_id = team.get("voice_channel_id")
+        if vc_id and ctx.guild.get_channel(int(vc_id)):
+            skipped.append(team["name"])
+            continue
+        vc = await ensure_team_voice(ctx.guild, team)
+        if vc:
+            team["voice_channel_id"] = str(vc.id)
+            created.append(team["name"])
+        else:
+            failed.append(team["name"])
+        await asyncio.sleep(1)   # stay clear of Discord's channel-create rate limit
+
+    save_reg(reg)
+
+    msg = ""
+    if created: msg += f"✅ **Created {len(created)}:** {', '.join(created)}\n"
+    if skipped: msg += f"⏭️ **Already had one ({len(skipped)}):** {', '.join(skipped)}\n"
+    if failed:  msg += f"❌ **Failed ({len(failed)}):** {', '.join(failed)}\n"
+    await ctx.send(msg or "Nothing to do.")
 
 
 @bot.hybrid_command(name="teams", description="Team standings and rosters")
@@ -3586,8 +3754,9 @@ async def help_cmd(ctx):
         name="🏎️  Teams",
         value="`/teams` — team standings and rosters\n"
               "`/myteam` — your roster, points and open slots\n"
-              "`/createteam` — start a new team\n"
+              "`/createteam` — start a new team (gets its own voice garage)\n"
               "`/jointeam <Name>` — join a team that's recruiting\n"
+              "`/freeagents` — drivers available to recruit\n"
               "`/teamleave` — leave your team",
         inline=False)
     embed.add_field(
