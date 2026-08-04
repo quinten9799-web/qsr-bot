@@ -422,6 +422,31 @@ def adjusted_driver_total(scores: list, races_completed: int,
     return raw - sum(dropped), raw, dropped, missed
 
 
+
+def standings_sort_key(info: dict):
+    """Rulebook 5.3.1 tie-break order: points, then most wins, then most
+    top-5s, then most top-10s, then best (lowest) average finish.
+
+    Every standings sort in both files previously ordered on points alone,
+    so a tie fell to whatever order the dict happened to be in — arbitrary,
+    unstable between runs, and deciding real prize money for the top 10.
+    Average finish is negated so that lower sorts as better under reverse=True.
+    """
+    avg = info.get("avg_finish")
+    try:
+        avg = float(avg)
+    except (TypeError, ValueError):
+        avg = 999.0
+    return (info.get("points", 0), info.get("wins", 0),
+            info.get("top5", 0), info.get("top10", 0), -avg)
+
+
+def standings_sorted(standings: dict) -> list:
+    """(name, info) pairs in championship order, tie-breaks applied."""
+    return sorted(standings.items(), key=lambda kv: standings_sort_key(kv[1]),
+                  reverse=True)
+
+
 def compute_adjusted_standings(data: dict) -> dict:
     """Championship standings with drops applied. Raw cumulative points stay
     untouched in data.json — this is derived from race_results."""
@@ -433,12 +458,62 @@ def compute_adjusted_standings(data: dict) -> dict:
         entries = race_results.get(name, [])
         scores  = [e.get("points", 0) for e in entries]
         adj, raw, dropped, missed = adjusted_driver_total(scores, races_completed)
+        finishes = [e.get("finish") for e in entries if e.get("finish")]
         rec = dict(info)
+        rec["top5"]       = sum(1 for f in finishes if f <= 5)
+        rec["top10"]      = sum(1 for f in finishes if f <= 10)
+        rec["avg_finish"] = round(sum(finishes)/len(finishes), 2) if finishes else 999
         rec.update({"points": adj, "raw_points": raw,
                     "dropped": dropped, "missed": missed,
                     "counted": len(scores) - len(dropped)})
         out[name] = rec
     return out
+
+
+_NAME_SUFFIXES = {"ii", "iii", "iv", "jr", "sr"}
+
+def _name_tokens(name: str) -> set:
+    """Normalise a driver name for matching across systems.
+
+    Team rosters carry the name a driver TYPED at registration; race results
+    carry the name iRacing reports. They drift constantly — "Ryan Miller" vs
+    "Ryan Miller II", "Ryan Munoz" vs "Ryan J Munoz", "Aaron Birch" vs
+    "Aaron Birch2". Exact-match lookup silently scored those drivers zero for
+    their team, which cost three teams 97 points after Race 1.
+
+    Lowercases, strips punctuation, drops trailing digits from tokens
+    (Birch2 -> birch) and drops generational suffixes (II, Jr).
+    """
+    import re as _re
+    cleaned = _re.sub(r"[^a-z0-9 ]", " ", (name or "").lower())
+    out = set()
+    for tok in cleaned.split():
+        tok = _re.sub(r"\d+$", "", tok)
+        if tok and tok not in _NAME_SUFFIXES:
+            out.add(tok)
+    return out
+
+def resolve_result_key(name: str, race_results: dict):
+    """Find the race_results key for a team member's name.
+
+    Exact match first. Failing that, one name's tokens being a subset of the
+    other's counts as a match ("ryan munoz" vs "ryan j munoz"). Ambiguous
+    matches are REFUSED — two drivers named Walker must never silently
+    collapse into one another. Returns the key, or None.
+    """
+    if not name:
+        return None
+    if name in race_results:
+        return name
+    lowered = {k.strip().lower(): k for k in race_results}
+    if name.strip().lower() in lowered:
+        return lowered[name.strip().lower()]
+    want = _name_tokens(name)
+    if not want:
+        return None
+    hits = [k for k in race_results
+            if (t := _name_tokens(k)) and (want <= t or t <= want)]
+    return hits[0] if len(hits) == 1 else None
 
 
 def recalc_team_points():
@@ -454,8 +529,9 @@ def recalc_team_points():
         for member in team.get("members", []):
             driver_name = member.get("driver_name", "")
             join_race   = member.get("joined_race", 1)
-            eligible = [r for r in race_results.get(driver_name, [])
-                        if r.get("race", 0) >= join_race]
+            key = resolve_result_key(driver_name, race_results)
+            eligible = [r for r in race_results.get(key, [])
+                        if r.get("race", 0) >= join_race] if key else []
             # race["points"] is total_pts and already includes stage points
             # and the fastest-lap bonus — adding stage_pts again double-counted.
             scores = [r.get("points", 0) for r in eligible]
@@ -1022,7 +1098,7 @@ def get_rivalry_context() -> str:
         return ""
 
     lines = []
-    sorted_s = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    sorted_s = standings_sorted(standings)
 
     # Points battle — top 3 gap
     if len(sorted_s) >= 2:
@@ -1114,7 +1190,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
     race_num  = data.get("race_number", 1)
     live_context = ""
     if standings:
-        sorted_s = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+        sorted_s = standings_sorted(standings)
         top5 = ", ".join(f"{i+1}. {name} ({info['points']}pts)"
                          for i, (name, info) in enumerate(sorted_s[:5]))
         live_context += f"\nCURRENT STANDINGS TOP 5: {top5}"
@@ -1454,7 +1530,7 @@ async def race_announcement_scheduler():
     standings = compute_adjusted_standings(data)
     leader_line = ""
     if standings:
-        leader = max(standings.items(), key=lambda x: x[1]["points"])
+        leader = standings_sorted(standings)[0]
         leader_line = f"🏆 **Points Leader:** {leader[0]} — {leader[1]['points']} pts\n"
 
     # Pull confirmed driver count from registration
@@ -1573,7 +1649,7 @@ async def pre_race_trash_talk():
     standings = compute_adjusted_standings(data)
     if len(standings) < 2:
         return
-    sorted_s   = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    sorted_s   = standings_sorted(standings)
     top5_names = [name for name, _ in sorted_s[:5]]
     rivalry_ctx = get_rivalry_context()
     prompt = (
@@ -1741,7 +1817,7 @@ async def race_prediction():
     standings = compute_adjusted_standings(data)
     schedule  = data.get("schedule", [])
     race_num  = data.get("race_number", 1)
-    sorted_s   = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    sorted_s   = standings_sorted(standings)
     top5_names = [name for name, _ in sorted_s[:5]]
     track = ""
     if schedule and len(schedule) >= race_num:
@@ -2039,7 +2115,7 @@ async def standings(ctx):
     if not s:
         await ctx.send("No standings yet — Race 1 incoming! 🏁")
         return
-    sorted_s = sorted(s.items(), key=lambda x: x[1]["points"], reverse=True)
+    sorted_s = standings_sorted(s)
     embed    = discord.Embed(
         title="🏆 QSR Full Throttle Series — Championship Standings",
         color=0xE8272A,
@@ -2047,7 +2123,7 @@ async def standings(ctx):
     )
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     lines  = []
-    for i, (driver, info) in enumerate(sorted_s[:20], 1):
+    for i, (driver, info) in enumerate(sorted_s[:40], 1):
         icon    = medals.get(i, f"`{i:>2}.`")
         wins    = info.get("wins", 0)
         win_str = f" ⭐x{wins}" if wins else ""
@@ -3093,6 +3169,127 @@ class ConfirmRescoreView(discord.ui.View):
                                                 embed=None, view=None)
 
 
+@bot.hybrid_command(name="teamaudit", description="Show exactly how each team's points are calculated (admin)")
+@is_admin()
+async def team_audit_cmd(ctx, team_name: str = ""):
+    """Break down team scoring driver by driver.
+
+    Team totals are opaque when they look wrong — a driver can score zero
+    for their team because their name didn't match the results, or because
+    they joined after the race. This shows which, per driver.
+    """
+    data = load_data()
+    reg  = load_reg()
+    race_results    = data.get("race_results", {})
+    races_completed = max(0, data.get("race_number", 1) - 1)
+
+    teams = reg.get("teams", [])
+    if team_name:
+        teams = [t for t in teams
+                 if team_name.strip().lower() in (t.get("name", "") or "").lower()]
+    if not teams:
+        await ctx.send("No matching teams found.", ephemeral=True)
+        return
+
+    for team in teams[:5]:
+        lines, total, problems = [], 0, []
+        for m in team.get("members", []):
+            dname = m.get("driver_name", "")
+            join  = m.get("joined_race", 1)
+            key   = resolve_result_key(dname, race_results)
+            if not key:
+                lines.append(f"❓ **{dname}** — no results found (joined R{join})")
+                if any(_name_tokens(dname) & _name_tokens(k) for k in race_results):
+                    problems.append(f"{dname}: name doesn't match results")
+                continue
+            all_races = race_results.get(key, [])
+            counted   = [r for r in all_races if r.get("race", 0) >= join]
+            skipped   = [r for r in all_races if r.get("race", 0) < join]
+            scores    = [r.get("points", 0) for r in counted]
+            window    = max(0, races_completed - (join - 1))
+            adj, raw, dropped, _ = adjusted_driver_total(scores, window)
+            total += adj
+            alias = f" *(matched to {key})*" if key != dname else ""
+            note  = ""
+            if skipped:
+                lost = sum(r.get("points", 0) for r in skipped)
+                note = f" · ⚠️ R{','.join(str(r['race']) for r in skipped)} not counted (-{lost}, joined R{join})"
+                problems.append(f"{dname}: {lost} pts excluded — joined at Race {join}")
+            if dropped:
+                note += f" · dropped {dropped}"
+            lines.append(f"• **{dname}**{alias} — {adj} pts{note}")
+
+        embed = discord.Embed(
+            title=f"🔍 Team Audit — {team.get('name','?')}",
+            description="\n".join(lines) or "No members.",
+            color=0xF1C40F)
+        embed.add_field(name="Calculated total", value=f"**{total}** pts", inline=True)
+        embed.add_field(name="Stored total",
+                        value=str(team.get("points", 0)), inline=True)
+        if problems:
+            embed.add_field(name="⚠️ Issues", value="\n".join(problems[:6]), inline=False)
+        embed.set_footer(text="Run /recalcteams to rebuild totals after fixing")
+        await ctx.send(embed=embed)
+
+
+@bot.hybrid_command(name="setteamjoin", description="Set a team's join race so earlier results count (admin)")
+@is_admin()
+async def set_team_join_cmd(ctx, team_name: str, race_number: int):
+    """Backdate every member's joined_race for a team.
+
+    Team points count from each driver's join race forward (Rulebook 5.2.2).
+    A team formed after Race 1 therefore scores zero from it — correct by
+    the rule, but wrong if the team existed and simply wasn't registered in
+    the bot until later. This backdates them.
+    """
+    reg  = load_reg()
+    team = get_team_in(reg, team_name)
+    if not team:
+        matches = [t for t in reg.get("teams", [])
+                   if team_name.strip().lower() in (t.get("name", "") or "").lower()]
+        team = matches[0] if len(matches) == 1 else None
+    if not team:
+        await ctx.send(f"❌ No single team matched '{team_name}'. Use `/teams` for exact names.",
+                       ephemeral=True)
+        return
+
+    changed = []
+    for m in team.get("members", []):
+        old = m.get("joined_race", 1)
+        if old != race_number:
+            m["joined_race"] = race_number
+            changed.append(f"{m.get('driver_name','?')}: R{old} → R{race_number}")
+    save_reg(reg)
+    recalc_team_points()
+
+    reg2 = load_reg()
+    t2 = get_team_in(reg2, team["name"])
+    await ctx.send(
+        f"✅ **{team['name']}** join race set to **{race_number}** for "
+        f"{len(changed)} member(s).\n"
+        + ("\n".join(f"• {c}" for c in changed[:8]) if changed else "*(no changes needed)*")
+        + f"\n\nTeam total now: **{t2.get('points', 0) if t2 else 0} pts**")
+
+
+@bot.hybrid_command(name="recalcteams", description="Rebuild all team point totals (admin)")
+@is_admin()
+async def recalc_teams_cmd(ctx):
+    """Force a team points rebuild — use after fixing names or join races."""
+    before = {t["name"]: t.get("points", 0) for t in load_reg().get("teams", [])}
+    recalc_team_points()
+    after = {t["name"]: t.get("points", 0) for t in load_reg().get("teams", [])}
+
+    lines = []
+    for name, new in sorted(after.items(), key=lambda kv: kv[1], reverse=True):
+        old = before.get(name, 0)
+        arrow = f" ({new-old:+d})" if new != old else ""
+        lines.append(f"**{name}** — {new} pts{arrow}")
+    await ctx.send(embed=discord.Embed(
+        title="🔄 Team Points Rebuilt",
+        description="\n".join(lines) or "No teams.",
+        color=0x2ECC71))
+
+
 @bot.hybrid_command(name="fixrace", description="Re-score a past race's points (admin)")
 @is_admin()
 async def fix_race_cmd(ctx, race_number: int):
@@ -3573,7 +3770,7 @@ async def career_cmd(ctx, *, driver_name: str = ""):
     clean_runs  = sum(1 for r in history if r["incidents"] == 0)
 
     # Championship position
-    sorted_s    = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    sorted_s    = standings_sorted(standings)
     champ_pos   = next((i + 1 for i, (n, _) in enumerate(sorted_s) if n == matched), "?")
     leader_pts  = sorted_s[0][1]["points"] if sorted_s else 0
     gap         = leader_pts - total_pts
@@ -3952,7 +4149,7 @@ async def statscard_cmd(ctx, *, driver_name: str = ""):
     clean_runs  = sum(1 for r in history if r["incidents"] == 0)
     recent      = [r["finish"] for r in sorted(history, key=lambda r: r["race"], reverse=True)[:5]]
 
-    sorted_s  = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    sorted_s  = standings_sorted(standings)
     champ_pos = next((i + 1 for i, (n, _) in enumerate(sorted_s) if n == matched), 0)
     leader_pts = sorted_s[0][1]["points"] if sorted_s else 0
     gap        = leader_pts - total_pts
@@ -4104,7 +4301,7 @@ async def archetypes_cmd(ctx):
         await ctx.send("No archetype data yet — need at least 2 races per driver. 🏁")
         return
 
-    sorted_s = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
+    sorted_s = standings_sorted(standings)
     icons = {
         "The Hotshot":  "⚡",
         "The Wrecker":  "💥",
