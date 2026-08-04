@@ -36,6 +36,10 @@ if not OWNER_ID:
 
 ANNOUNCEMENTS_CH  = "series-announcements"
 ASK_DALE_CH       = "ask-dale"
+# How far back Dale reads channel history for context. Anything older is a
+# different conversation, not context — reading further back is what let one
+# member's argument leak into the next member's question.
+HISTORY_MAX_AGE_MIN = 20
 # ═══════════════════════════════════════════════════════════════════
 
 intents = discord.Intents.default()
@@ -303,6 +307,62 @@ async def apply_team_role(guild, member, team: dict, add: bool):
     except Exception:
         pass
 
+SEASON_DROPS = 2   # each driver's 2 worst results are discarded
+
+def adjusted_driver_total(scores: list, races_completed: int,
+                          drops: int = SEASON_DROPS) -> tuple:
+    """Drop-race scoring: everyone counts their best N races, where
+    N = (races run so far - 2). The SAME NUMBER of races counts for
+    every driver, which is the whole point.
+
+    Why "best N" and not "drop your 2 worst": dropping always lowers a
+    total, and two drops are a far bigger share of a 4-race card than a
+    6-race one. Literally giving everyone 2 drops therefore PUNISHES anyone
+    with fewer starts — a driver who joined at Race 3 would have finished
+    below a driver who no-showed twice with worse results. Capping the
+    number of counted races instead means:
+
+      • A late joiner whose starts don't exceed the allowance keeps every
+        race and is level with the field — they can join at Race 3 or 5 and
+        still fight for the championship.
+      • A driver who no-showed has already spent the allowance on those
+        absences, so a bad finish stays on their card.
+      • A full-season driver bins their two worst days as intended.
+
+    Returns (adjusted_total, raw_total, dropped_scores, missed_races).
+    """
+    raw = sum(scores)
+    missed = max(0, races_completed - len(scores))
+    if races_completed <= drops:
+        # Too early for drops — applying them now would zero out the field.
+        return raw, raw, [], missed
+
+    counting = races_completed - drops          # races that count, for everyone
+    n_drop = max(0, len(scores) - counting)
+    n_drop = min(n_drop, max(0, len(scores) - 1))   # never drop a last score
+    dropped = sorted(scores)[:n_drop] if n_drop else []
+    return raw - sum(dropped), raw, dropped, missed
+
+
+def compute_adjusted_standings(data: dict) -> dict:
+    """Championship standings with drops applied. Raw cumulative points stay
+    untouched in data.json — this is derived from race_results."""
+    race_results    = data.get("race_results", {})
+    standings       = data.get("standings", {})
+    races_completed = max(0, data.get("race_number", 1) - 1)
+    out = {}
+    for name, info in standings.items():
+        entries = race_results.get(name, [])
+        scores  = [e.get("points", 0) for e in entries]
+        adj, raw, dropped, missed = adjusted_driver_total(scores, races_completed)
+        rec = dict(info)
+        rec.update({"points": adj, "raw_points": raw,
+                    "dropped": dropped, "missed": missed,
+                    "counted": len(scores) - len(dropped)})
+        out[name] = rec
+    return out
+
+
 def recalc_team_points():
     """Recalculate team points from standings. Call after every race result save."""
     data = load_data()
@@ -310,16 +370,20 @@ def recalc_team_points():
     standings = data.get("standings", {})
     race_results = data.get("race_results", {})
 
+    races_completed = max(0, data.get("race_number", 1) - 1)
     for team in reg["teams"]:
         total = 0
         for member in team.get("members", []):
             driver_name = member.get("driver_name", "")
             join_race   = member.get("joined_race", 1)
-            if driver_name not in race_results:
-                continue
-            for race in race_results[driver_name]:
-                if race.get("race", 0) >= join_race:
-                    total += race.get("points", 0) + race.get("stage_pts", 0)
+            eligible = [r for r in race_results.get(driver_name, [])
+                        if r.get("race", 0) >= join_race]
+            # race["points"] is total_pts and already includes stage points
+            # and the fastest-lap bonus — adding stage_pts again double-counted.
+            scores = [r.get("points", 0) for r in eligible]
+            window = max(0, races_completed - (join_race - 1))
+            adj, _r, _d, _m = adjusted_driver_total(scores, window)
+            total += adj
         team["points"] = total
     save_reg(reg)
 
@@ -583,6 +647,38 @@ You know everything about:
 - Track types: superspeedways, intermediate ovals, short tracks
 - Points systems, playoff formats, stage racing
 - Real world NASCAR driver history and stats
+
+=== WHO YOU ARE TALKING TO — READ THIS CAREFULLY ===
+
+#ask-dale is a PUBLIC channel with many people in it. You are shown recent
+channel history for context, and it is a crowd, not one conversation.
+
+1. EVERY user message is labelled "Name: message". The LAST message in the
+   conversation is the ONLY one being said to you right now. Reply to that
+   person and that message.
+
+2. THE LABEL TELLS YOU WHO IS SPEAKING. If the last message is from a
+   different person than the messages before it, a NEW conversation has
+   started. Do not continue the previous person's thread. Do not assume the
+   new person knows, agrees with, or is responsible for anything said
+   earlier by someone else.
+
+3. NEVER carry a grievance, apology, argument, joke, or promise from one
+   person's conversation into another person's. If you apologised to Alice,
+   you have NOT apologised to Bob, and telling Bob "I already apologised
+   twice" is wrong and makes you look broken. Each person gets a clean slate.
+
+4. Older messages are BACKGROUND ONLY. Use them to understand what is going
+   on in the room, never as something the current speaker said.
+
+5. NEVER INVENT OR GUESS A QSR DRIVER NAME. Use only names from the LEAGUE
+   ROSTER or STANDINGS in this prompt. If you don't have it, say so:
+   "I don't have that in front of me." Real NASCAR figures are fine to talk
+   about freely — this is about league members.
+
+Stay fully in character. Be as blunt, cocky, and sharp as the persona above
+describes — none of this softens Dale. It only makes sure he is talking to
+the right person about the right thing.
 """
 
 
@@ -840,7 +936,7 @@ def get_rivalry_context() -> str:
     Covers: hottest rivalry, biggest point gap battles, trending drivers.
     """
     data         = load_data()
-    standings    = data.get("standings", {})
+    standings = compute_adjusted_standings(data)
     race_results = data.get("race_results", {})
     rivalries    = load_rivalries()
 
@@ -935,7 +1031,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
     if not ANTHROPIC_API_KEY:
         return None
     data = load_data()
-    standings = data.get("standings", {})
+    standings = compute_adjusted_standings(data)
     schedule  = data.get("schedule", [])
     race_num  = data.get("race_number", 1)
     live_context = ""
@@ -950,6 +1046,37 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
         if upcoming:
             live_context += f"\nNEXT RACE: {upcoming[0]['track']} on {upcoming[0]['date']}"
     live_context += get_rivalry_context()
+
+    # The roster is the single biggest anti-hallucination lever. Without it
+    # Dale has no idea who's actually in the league, so he reaches for
+    # plausible-sounding names and mixes real members up — which is what
+    # made a driver tell him to keep his name out of his mouth.
+    try:
+        reg = load_reg()
+        active = [d for d in reg.get("drivers", [])
+                  if d.get("status") != "Withdrawn" and d.get("name")]
+        if active:
+            roster = ", ".join(
+                f"#{d.get('number','?')} {d['name']}"
+                + (f" [{d['team']}]" if d.get("team") else "")
+                for d in active)
+            live_context += (
+                f"\n\nLEAGUE ROSTER — these are the ONLY real QSR drivers "
+                f"({len(active)} registered). Never use a QSR driver name that "
+                f"is not on this list:\n{roster}"
+            )
+            teams = reg.get("teams", [])
+            if teams:
+                live_context += "\n\nTEAMS: " + "; ".join(
+                    f"{t['name']} ({', '.join(m.get('driver_name','') for m in t.get('members', []))})"
+                    for t in teams)
+        else:
+            live_context += ("\n\nLEAGUE ROSTER: not available right now. Do not "
+                             "name any QSR driver — say you don't have it in front of you.")
+    except Exception:
+        live_context += ("\n\nLEAGUE ROSTER: not available right now. Do not name "
+                         "any QSR driver — say you don't have it in front of you.")
+
     system_prompt = QSR_KNOWLEDGE + live_context + user_context + mood_context()
     messages = []
     if history:
@@ -1246,7 +1373,7 @@ async def race_announcement_scheduler():
     track_clean = track.replace(" — SEASON FINALE", "").strip()
 
     # Pull standings for points leader
-    standings  = data.get("standings", {})
+    standings = compute_adjusted_standings(data)
     leader_line = ""
     if standings:
         leader = max(standings.items(), key=lambda x: x[1]["points"])
@@ -1365,7 +1492,7 @@ async def pre_race_trash_talk():
     if not ch:
         return
     data      = load_data()
-    standings = data.get("standings", {})
+    standings = compute_adjusted_standings(data)
     if len(standings) < 2:
         return
     sorted_s   = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
@@ -1418,14 +1545,33 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
     streak_callouts  = update_streaks(results)
     rivalry_callouts = update_rivalries(results)
     rivalry_ctx      = get_rivalry_context()
+
+    # Team championship. Recalc first so this reflects the race just scored,
+    # and so drops/join-date windows are applied rather than stale totals.
+    try:
+        recalc_team_points()
+    except Exception as e:
+        print(f"⚠️ team recalc before recap failed: {e}")
+    reg_now = load_reg()
+    teams_ranked = sorted(
+        [t for t in reg_now.get("teams", []) if t.get("members")],
+        key=lambda t: t.get("points", 0), reverse=True)
+
+    team_ctx = ""
+    if teams_ranked:
+        team_ctx = ("Team championship after this race: "
+                    + "; ".join(f"{i+1}. {t['name']} {t.get('points',0)}pts"
+                                for i, t in enumerate(teams_ranked[:5])) + ". ")
     prompt = (
         f"You just watched Race {race_num} of the QSR Full Throttle Series. "
         f"Here's what happened: {results_summary} "
         f"{rivalry_ctx} "
+        f"{team_ctx}"
         f"Give a post-race reaction in Dale's voice. "
         f"Comment on the winner, maybe someone who impressed or disappointed you, "
         f"and if there were wreckers, give your honest opinion. "
         f"If there's a hot rivalry brewing, call it out. "
+        f"If the team championship is close at the top, mention it in one line. "
         f"3-5 sentences. Sound like Dale in victory lane or the garage after a race. "
         f"Current mood: {get_dale_mood()}."
     )
@@ -1441,6 +1587,20 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
             embed.add_field(name="🔥 Streak Alert", value="\n".join(streak_callouts), inline=False)
         if rivalry_callouts:
             embed.add_field(name="⚔️ Rivalry Watch", value="\n".join(rivalry_callouts), inline=False)
+        if teams_ranked:
+            medals = ["🥇", "🥈", "🥉"]
+            lines = []
+            for i, t in enumerate(teams_ranked[:6]):
+                tag = medals[i] if i < 3 else f"**{i+1}.**"
+                roster = len(t.get("members", []))
+                lines.append(f"{tag} **{t['name']}** — {t.get('points', 0)} pts "
+                             f"({roster} driver{'s' if roster != 1 else ''})")
+            gap = ""
+            if len(teams_ranked) > 1:
+                d = teams_ranked[0].get("points", 0) - teams_ranked[1].get("points", 0)
+                gap = f"\n\n*{teams_ranked[0]['name']} leads by {d} pt{'s' if d != 1 else ''}.*"
+            embed.add_field(name="🏎️ Team Championship",
+                            value="\n".join(lines) + gap, inline=False)
         embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
         await ch.send(embed=embed)
     total_incidents = sum(r.get("incidents", 0) for r in results)
@@ -1500,7 +1660,7 @@ async def race_prediction():
     if not ch:
         return
     data      = load_data()
-    standings = data.get("standings", {})
+    standings = compute_adjusted_standings(data)
     schedule  = data.get("schedule", [])
     race_num  = data.get("race_number", 1)
     sorted_s   = sorted(standings.items(), key=lambda x: x[1]["points"], reverse=True)
@@ -1620,13 +1780,26 @@ async def on_message(message: discord.Message):
                 channel_id = message.channel.id
                 discord_history = []
                 try:
+                    # Only pull recent history. Reading far back is how a
+                    # conversation with one member bled into the next member's
+                    # question — Dale answered a new person as if they were
+                    # mid-argument with him.
+                    cutoff = message.created_at - timedelta(minutes=HISTORY_MAX_AGE_MIN)
+                    last_human = None
                     async for msg in message.channel.history(limit=15, before=message):
+                        if msg.created_at < cutoff:
+                            break
                         if msg.author.bot and msg.author == bot.user:
                             msg_content = msg.content
                             if msg.embeds:
                                 msg_content = msg.embeds[0].description or msg.content
-                            discord_history.insert(0, {"role": "assistant", "content": msg_content})
+                            # Record who Dale was answering, so a reply can't be
+                            # mistaken for a reply to the current speaker.
+                            who = f" (to {last_human})" if last_human else ""
+                            discord_history.insert(
+                                0, {"role": "assistant", "content": f"[Dale{who}]: {msg_content}"})
                         elif not msg.author.bot:
+                            last_human = msg.author.display_name
                             discord_history.insert(0, {
                                 "role": "user",
                                 "content": f"{msg.author.display_name}: {msg.content}"
@@ -1634,6 +1807,23 @@ async def on_message(message: discord.Message):
                 except Exception as e:
                     print(f"History read error: {e}")
                 combined_history = discord_history[-10:] if discord_history else get_history(channel_id)
+
+                # Flag it explicitly when the person speaking now is not the
+                # person Dale was last talking to.
+                speaker = message.author.display_name
+                prev_speaker = None
+                for h in reversed(combined_history):
+                    if h["role"] == "user" and ":" in h["content"]:
+                        prev_speaker = h["content"].split(":", 1)[0].strip()
+                        break
+                if prev_speaker and prev_speaker != speaker:
+                    combined_history.append({
+                        "role": "user",
+                        "content": (f"[SYSTEM NOTE: {speaker} is a DIFFERENT person from "
+                                    f"{prev_speaker}. A new conversation starts now. Nothing "
+                                    f"above was said by {speaker} — do not hold them to it, "
+                                    f"and do not continue {prev_speaker}'s thread.]")
+                    })
                 if message.reference and message.reference.resolved:
                     ref = message.reference.resolved
                     ref_content = ref.content
@@ -1642,7 +1832,12 @@ async def on_message(message: discord.Message):
                     question = f'[Replying to: "{ref_content}"]\n{question}'
                 user_ctx = get_user_context(message.author.id, message.author.display_name)
                 user_ctx += get_sender_context(message.author)
-                response = await ask_claude(question, channel_id, combined_history, user_ctx)
+                # Label the live question the same way history is labelled.
+                # Sending it bare was the core bug: Dale saw a run of named
+                # messages then an unnamed one, and assumed the previous
+                # speaker was still talking.
+                response = await ask_claude(f"{speaker}: {question}",
+                                            channel_id, combined_history, user_ctx)
                 if response:
                     add_to_history(channel_id, "user", question)
                     add_to_history(channel_id, "assistant", response)
@@ -1762,7 +1957,7 @@ async def dale(ctx, *, question: str = ""):
 @has_arca()
 async def standings(ctx):
     data = load_data()
-    s    = data.get("standings", {})
+    s = compute_adjusted_standings(data)
     if not s:
         await ctx.send("No standings yet — Race 1 incoming! 🏁")
         return
@@ -2789,7 +2984,7 @@ async def free_agents_cmd(ctx):
     other     = sorted([d for d in free if d.get("status") != "Confirmed"], key=sort_key)
 
     data      = load_data()
-    standings = data.get("standings", {})
+    standings = compute_adjusted_standings(data)
 
     embed = discord.Embed(
         title="🔍 Free Agents — Available to Recruit",
@@ -3170,7 +3365,7 @@ async def career_cmd(ctx, *, driver_name: str = ""):
     whatever data Railway has available.
     """
     data            = load_data()
-    standings       = data.get("standings", {})
+    standings = compute_adjusted_standings(data)
     race_results    = data.get("race_results", {})
     driver_profiles = data.get("driver_profiles", {})
 
