@@ -4614,6 +4614,74 @@ class ConfirmDuplicatePollView(discord.ui.View):
         await interaction.response.edit_message(content="Cancelled — no new poll posted.", view=None)
 
 
+async def post_custom_poll(ch, question: str, option_names: list, duration_hours: int,
+                           multiple: bool, race_number=None) -> tuple:
+    """Post an arbitrary Dale poll — question + up to 10 options.
+
+    Shares the exact same storage record shape as Weapon of the Week
+    (type differs, everything else lines up), so the auto-closer task and
+    the app's Polls tab handle it with no extra code: one poll pipeline,
+    two ways to fill in the options.
+    """
+    try:
+        question = question.strip()[:300]
+        options  = [o.strip()[:55] for o in option_names if o.strip()][:10]
+        if len(options) < 2:
+            return False, "Need at least 2 non-empty options, separated by `|`."
+        if len(set(options)) != len(options):
+            return False, "Two options ended up identical after the 55-character trim — make them more distinct."
+        duration_hours = max(1, min(768, duration_hours))   # Discord's allowed range
+
+        poll = discord.Poll(question=question, duration=timedelta(hours=duration_hours),
+                            multiple=multiple)
+        for opt in options:
+            poll.add_answer(text=opt)
+
+        msg = await ch.send(poll=poll)
+
+        data = load_data()
+        data.setdefault("polls", []).append({
+            "id":           f"custom_{int(datetime.utcnow().timestamp())}",
+            "type":         "custom",
+            "race_number":  race_number,
+            "channel_id":   str(ch.id),
+            "message_id":   str(msg.id),
+            "question":     question,
+            "options":      [{"name": o} for o in options],
+            "created_at":   datetime.utcnow().isoformat(),
+            "updated_at":   datetime.utcnow().isoformat(),
+            "closes_at":    (datetime.utcnow() + timedelta(hours=duration_hours)).isoformat(),
+            "closed":       False,
+            "results":      None,
+        })
+        save_data(data)
+        return True, f"Posted \"{question}\" with {len(options)} option(s), closes in {duration_hours}h."
+    except Exception as e:
+        return False, f"Failed to post: {e}"
+
+
+@bot.hybrid_command(name="createpoll", description="Post a custom Dale poll (admin)")
+@is_admin()
+async def create_poll_cmd(ctx, question: str, options: str,
+                          duration_hours: int = 48, multiple: bool = False,
+                          channel: discord.TextChannel = None):
+    """Post any poll, not just Weapon of the Week.
+
+    options: separate choices with | — e.g. "Daytona | Talladega | Bristol"
+    duration_hours: 1 to 768 (32 days), defaults to 48
+    multiple: allow voters to pick more than one option
+    channel: defaults to wherever you run the command
+
+    Uses the same storage as Weapon of the Week, so it auto-closes on
+    schedule and shows up in the app's Polls tab with zero extra setup.
+    """
+    ch = channel or ctx.channel
+    ok, msg = await post_custom_poll(ch, question, options.split("|"),
+                                     duration_hours, multiple)
+    target = f" in {ch.mention}" if channel else ""
+    await ctx.send(("✅ " if ok else "⚠️ ") + msg + target)
+
+
 @bot.hybrid_command(name="weaponpoll", description="Post the Weapon of the Week poll for a past race (admin)")
 @is_admin()
 async def weapon_poll_cmd(ctx, race_number: int):
