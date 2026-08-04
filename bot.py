@@ -453,11 +453,34 @@ def compute_adjusted_standings(data: dict) -> dict:
     race_results    = data.get("race_results", {})
     standings       = data.get("standings", {})
     races_completed = max(0, data.get("race_number", 1) - 1)
+    # Penalties are a season-long deduction, not a race score, so they're
+    # applied AFTER drops — a driver can't drop their way out of a penalty.
+    # This was silently broken: penalties reduced standings["points"], but
+    # that field is overwritten here by a value derived from race_results,
+    # so every penalty ever applied had zero effect on what anyone saw.
+    penalty_by_driver = {}
+    for pen in data.get("penalties", []) or []:
+        who = (pen.get("driver", "") or "").strip()
+        if not who:
+            continue
+        try:
+            amount = int(pen.get("points", 0) or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount:
+            penalty_by_driver[who] = penalty_by_driver.get(who, 0) + amount
+
     out = {}
     for name, info in standings.items():
         entries = race_results.get(name, [])
         scores  = [e.get("points", 0) for e in entries]
         adj, raw, dropped, missed = adjusted_driver_total(scores, races_completed)
+        # Penalty names come from admin typing, so match them tolerantly.
+        penalty_pts = penalty_by_driver.get(name, 0)
+        if not penalty_pts and penalty_by_driver:
+            pkey = resolve_result_key(name, penalty_by_driver)
+            penalty_pts = penalty_by_driver.get(pkey, 0) if pkey else 0
+        adj = max(0, adj - penalty_pts)
         finishes = [e.get("finish") for e in entries if e.get("finish")]
         rec = dict(info)
         rec["top5"]       = sum(1 for f in finishes if f <= 5)
@@ -1678,10 +1701,74 @@ async def pre_race_trash_talk():
 #  POST-RACE REACTION & RECAP
 # ─────────────────────────────────────────────────────────────────
 
+WEAPON_POLL_HOURS = 48   # voting window before auto-close
+
+def _poll_answer_text(name: str, incidents: int) -> str:
+    """Discord poll answers cap at 55 characters — truncate defensively."""
+    label = f"{name} — {incidents}x"
+    return label if len(label) <= 55 else label[:52] + "..."
+
+
+async def post_weapon_of_week_poll(ch, race_num: int, results: list):
+    """Post a 'Weapon of the Week' poll — top 4 by incident count.
+
+    Fully best-effort and isolated from the rest of the recap. A poll
+    failure (permissions, a discord.py version without Poll support, a
+    Discord outage) must never block Dale's text reaction or the
+    standings/team fields from posting — those matter more and are already
+    working. Everything here is wrapped so a failure just skips the poll.
+    """
+    try:
+        ranked = sorted(
+            [r for r in results if r.get("incidents", 0) > 0],
+            key=lambda r: r.get("incidents", 0), reverse=True)
+        if len(ranked) < 2:
+            print(f"Weapon of the Week skipped for Race {race_num} — "
+                  f"fewer than 2 drivers had incidents.")
+            return
+        top4 = ranked[:4]
+
+        poll = discord.Poll(
+            question=f"🚨 Race {race_num} Weapon of the Week",
+            duration=timedelta(hours=WEAPON_POLL_HOURS),
+            multiple=False,
+        )
+        for r in top4:
+            poll.add_answer(text=_poll_answer_text(r["name"], r.get("incidents", 0)))
+
+        msg = await ch.send(content="Who was driving the demolition derby tonight? 👀",
+                            poll=poll)
+
+        data = load_data()
+        data.setdefault("polls", []).append({
+            "id":          f"weapon_{race_num}_{int(datetime.utcnow().timestamp())}",
+            "type":        "weapon_of_the_week",
+            "race_number": race_num,
+            "channel_id":  str(ch.id),
+            "message_id":  str(msg.id),
+            "question":    f"Race {race_num} Weapon of the Week",
+            "options":     [{"name": r["name"], "incidents": r.get("incidents", 0)}
+                            for r in top4],
+            "created_at":  datetime.utcnow().isoformat(),
+            "updated_at":  datetime.utcnow().isoformat(),
+            "closes_at":   (datetime.utcnow() + timedelta(hours=WEAPON_POLL_HOURS)).isoformat(),
+            "closed":      False,
+            "results":     None,
+        })
+        save_data(data)
+        print(f"✅ Weapon of the Week poll posted for Race {race_num}")
+    except Exception as e:
+        print(f"⚠️ Weapon of the Week poll failed for Race {race_num}: {e}")
+
+
 async def post_race_reaction(guild: discord.Guild, race_num: int, results: list, sub_id: str):
     if not ANTHROPIC_API_KEY or not results:
         return
-    ch = discord.utils.get(guild.text_channels, name="race-results")
+    # Was "race-results" — a channel that doesn't match the app's own
+    # CH_RECAP constant ("dales-post-race"), the restructure command's
+    # channel list, or the project's own documentation. Dale's reaction was
+    # landing somewhere nobody was looking for it.
+    ch = discord.utils.get(guild.text_channels, name="dales-post-race")
     if not ch:
         return
     top3      = results[:3]
@@ -1757,6 +1844,7 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
                             value="\n".join(lines) + gap, inline=False)
         embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
         await ch.send(embed=embed)
+    await post_weapon_of_week_poll(ch, race_num, results)
     total_incidents = sum(r.get("incidents", 0) for r in results)
     avg_incidents   = total_incidents / len(results) if results else 0
     if avg_incidents > 10:
@@ -1859,6 +1947,60 @@ async def race_prediction():
 
 # ─────────────────────────────────────────────────────────────────
 
+@tasks.loop(minutes=30)
+async def close_expired_polls():
+    """Finalise any poll past its closing time, record final vote counts,
+    announce the winner. Runs independently of race night — safe to fire
+    any time, and skips cleanly if the bot isn't fully ready yet."""
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return
+    data  = load_data()
+    polls = data.get("polls", [])
+    if not polls:
+        return
+
+    now = datetime.utcnow()
+    changed = False
+    for p in polls:
+        if p.get("closed"):
+            continue
+        try:
+            closes_at = datetime.fromisoformat(p["closes_at"])
+        except Exception:
+            continue
+        if now < closes_at:
+            continue
+        try:
+            ch = guild.get_channel(int(p["channel_id"]))
+            if not ch:
+                continue
+            msg = await ch.fetch_message(int(p["message_id"]))
+            if not msg.poll:
+                continue
+            try:
+                await msg.end_poll()
+            except Exception:
+                pass   # Discord may have already closed it on schedule
+
+            results = [{"name": a.text, "votes": a.vote_count} for a in msg.poll.answers]
+            p["results"]    = results
+            p["closed"]     = True
+            p["updated_at"] = datetime.utcnow().isoformat()
+            changed = True
+
+            if results and max(r["votes"] for r in results) > 0:
+                winner = max(results, key=lambda r: r["votes"])
+                driver_name = winner["name"].split(" — ")[0]
+                await ch.send(f"🏆 **Weapon of the Week** goes to... "
+                             f"**{driver_name}**! ({winner['votes']} votes) 💀")
+        except Exception as e:
+            print(f"⚠️ Could not close poll {p.get('id')}: {e}")
+
+    if changed:
+        save_data(data)
+
+
 @bot.event
 async def on_ready():
     bot.add_view(RoleSelectView())      # Re-register persistent views on restart
@@ -1888,6 +2030,7 @@ async def on_ready():
     pre_race_trash_talk.start()
     race_prediction.start()
     race_announcement_scheduler.start()
+    close_expired_polls.start()
     await bot.change_presence(activity=discord.Game("QSR Full Throttle Series 🏁"))
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
@@ -4541,10 +4684,17 @@ def guard_destructive(current: dict, payload: dict, force: bool) -> list:
 
 @sync_app.route("/sync/data", methods=["POST"])
 def post_data():
-    """Accept a data.json push — guarded, backed up, and logged.
+    """Accept a data.json push — guarded, merged, backed up, and logged.
 
-    Was a straight overwrite. A stale client could silently destroy
-    standings and race history; add ?force=1 to override deliberately."""
+    Was a straight overwrite for everything except the count-based
+    guard_destructive check. That check protects standings/race_results/
+    race_number from shrinking, but "polls" and "race_history" got no
+    protection at all — a stale app push (pulled before a poll was created,
+    or before /fixrace corrected a race) would silently delete the poll or
+    revert the correction. Exactly the bug class that hit registration.json's
+    teams earlier. Same fix: merge those two by key, server-authoritative on
+    existence, rather than blind-copy the client's stale snapshot.
+    """
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
     try:
@@ -4568,10 +4718,51 @@ def post_data():
                 "hint": "Pull from Railway first, or re-send with ?force=1 to override.",
             }), 409
 
+        def _record_ts(rec: dict):
+            """Best available 'last modified' marker on a record, for
+            deciding which side of a merge conflict is newer. Missing/
+            unparseable timestamps sort as very old, so an established
+            server-side record beats an untimestamped stray one by default
+            — the safer direction when in doubt."""
+            for key in ("updated_at", "posted_at", "created_at"):
+                raw = rec.get(key)
+                if raw:
+                    try:
+                        return datetime.fromisoformat(str(raw).replace("Z", ""))
+                    except Exception:
+                        continue
+            return datetime.min
+
+        def _merge_by_key(cur_map: dict, new_map: dict) -> dict:
+            """Last-write-wins merge. Keys on only one side always survive —
+            that's what stops a stale push from deleting a poll or a race
+            entry the other side doesn't know about yet. Keys on BOTH sides
+            (e.g. /fixrace corrected a race the app also has a copy of, or a
+            poll closed server-side while the app's payload still carries
+            it open) are resolved by timestamp, not by which side is doing
+            the pushing — either side can be the legitimate correction."""
+            out = dict(cur_map)
+            for k, new_rec in new_map.items():
+                if k not in out or _record_ts(new_rec) >= _record_ts(out[k]):
+                    out[k] = new_rec
+            return out
+
+        merged = dict(current)
+        merged.update(payload)   # scalar fields: client wins, as before
+
+        # "polls" — list of dicts keyed by "id".
+        cur_polls = {p.get("id"): p for p in current.get("polls", []) if p.get("id")}
+        new_polls = {p.get("id"): p for p in payload.get("polls", []) if p.get("id")}
+        merged["polls"] = list(_merge_by_key(cur_polls, new_polls).values())
+
+        # "race_history" — dict keyed by "race_N".
+        merged["race_history"] = _merge_by_key(
+            current.get("race_history", {}) or {}, payload.get("race_history", {}) or {})
+
         if os.path.exists(DATA_FILE):
             backup_dir = os.path.join(_DATA_DIR, "backups")
             os.makedirs(backup_dir, exist_ok=True)
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
             shutil.copy2(DATA_FILE, os.path.join(backup_dir, f"data_{ts}.json"))
             backups = sorted([f for f in os.listdir(backup_dir) if f.startswith("data_")],
                              reverse=True)
@@ -4582,13 +4773,14 @@ def post_data():
                     pass
 
         with open(DATA_FILE, "w") as f:
-            json.dump(payload, f, indent=2)
+            json.dump(merged, f, indent=2)
         log_sync("data_push", {
-            "standings": len(payload.get("standings", {}) or {}),
-            "race_number": payload.get("race_number"),
+            "standings": len(merged.get("standings", {}) or {}),
+            "race_number": merged.get("race_number"),
+            "polls": len(merged.get("polls", [])),
             "forced": force,
         })
-        return jsonify({"status": "ok", "forced": force}), 200
+        return jsonify({"status": "ok", "forced": force, "data": merged}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
