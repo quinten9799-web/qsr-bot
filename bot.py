@@ -307,6 +307,84 @@ async def apply_team_role(guild, member, team: dict, add: bool):
     except Exception:
         pass
 
+# Championship points scale — mirrors qsr_app.py and Rulebook 5.1.1
+# (55 for the win, 35 second, 34 third, declining by 1 to a 1-point floor).
+NASCAR_PTS = [
+    55,35,34,33,32,31,30,29,28,27,
+    26,25,24,23,22,21,20,19,18,17,
+    16,15,14,13,12,11,10, 9, 8, 7,
+     6, 5, 4, 3, 2, 1, 1, 1, 1, 1
+]
+
+
+def rescore_race(data: dict, race_num: int) -> tuple:
+    """Re-score an already-posted race from its stored finishing order.
+
+    Exists because Race 1 was scored with an off-by-one: iRacing's
+    `Position` field is already 1-based and the app added 1 to it, so the
+    winner was awarded 2nd-place points (35 instead of 55) and every driver
+    behind them inherited the same one-place shift.
+
+    The stored finishing ORDER is correct — only the points attached to it
+    are wrong. So this re-ranks the existing order 1..N and recomputes race
+    points from NASCAR_PTS, preserving each driver's stage points and
+    fastest-lap bonus. Standings hold cumulative season totals, so this
+    race's old contribution is subtracted before the corrected one is
+    added; every other race is untouched.
+
+    Returns (changes, corrected_rows) where changes is a list of
+    (name, old_total, new_total) for anything that moved.
+    """
+    race_results = data.setdefault("race_results", {})
+    standings    = data.setdefault("standings", {})
+
+    # Rebuild this race's field from per-driver history
+    field = []
+    for name, entries in race_results.items():
+        entry = next((e for e in entries if e.get("race") == race_num), None)
+        if entry:
+            field.append((name, entry))
+    if not field:
+        return [], []
+
+    field.sort(key=lambda kv: kv[1].get("finish", 999))
+
+    changes, corrected = [], []
+    for i, (name, old) in enumerate(field, start=1):
+        old_total = old.get("points", 0)
+        stage_pts = old.get("stage_pts", 0)
+        fl_bonus  = 1 if old.get("fastest_lap_bonus") else 0
+        race_pts  = NASCAR_PTS[i-1] if i <= len(NASCAR_PTS) else 1
+        new_total = race_pts + stage_pts + fl_bonus
+
+        s = standings.setdefault(name, {"points": 0, "wins": 0, "races": 0, "incidents": 0})
+        s["points"] = s.get("points", 0) - old_total + new_total
+        # Win credit follows the corrected order, not the old one.
+        was_win, is_win = old.get("finish") == 1, i == 1
+        if was_win and not is_win:
+            s["wins"] = max(0, s.get("wins", 0) - 1)
+        elif is_win and not was_win:
+            s["wins"] = s.get("wins", 0) + 1
+
+        old["finish"] = i
+        old["points"] = new_total
+        if old_total != new_total or old.get("finish") != i:
+            changes.append((name, old_total, new_total))
+        corrected.append({"pos": i, "name": name, "race_pts": race_pts,
+                          "stage_pts": stage_pts, "fastest_lap_bonus": fl_bonus,
+                          "total_pts": new_total,
+                          "incidents": old.get("incidents", 0)})
+
+    track = SCHEDULE[race_num-1]["track"] if race_num <= len(SCHEDULE) else "Unknown"
+    data.setdefault("race_history", {})[f"race_{race_num}"] = {
+        "race_number": race_num, "track": track,
+        "date": SCHEDULE[race_num-1]["date"] if race_num <= len(SCHEDULE) else "",
+        "posted_at": datetime.utcnow().isoformat(),
+        "corrected": True, "results": corrected,
+    }
+    return changes, corrected
+
+
 SEASON_DROPS = 2   # each driver's 2 worst results are discarded
 
 def adjusted_driver_total(scores: list, races_completed: int,
@@ -2954,6 +3032,105 @@ async def join_team_cmd(ctx, *, team_name: str = ""):
         await staff_ch.send(
             f"🤝 **{driver['name']}** joined **{team['name']}** via /jointeam "
             f"— {len(team['members'])}/{TEAM_MAX_MEMBERS}")
+
+
+class ConfirmRescoreView(discord.ui.View):
+    """Preview-then-apply guard on /fixrace. Rewriting championship points
+    with real money on the line shouldn't be one click."""
+    def __init__(self, race_num: int, invoker_id: int):
+        super().__init__(timeout=180)
+        self.race_num = race_num
+        self.invoker_id = invoker_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.invoker_id:
+            await interaction.response.send_message("Not your command.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Apply Correction", style=discord.ButtonStyle.danger, emoji="🛠")
+    async def apply(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = load_data()
+        changes, corrected = rescore_race(data, self.race_num)
+        if not corrected:
+            await interaction.response.edit_message(
+                content=f"❌ No stored results found for Race {self.race_num}.", view=None)
+            return
+        save_data(data)
+        try:
+            recalc_team_points()
+        except Exception as e:
+            print(f"⚠️ team recalc after rescore failed: {e}")
+
+        lines = [f"**{i+1}.** {r['name']} — {r['race_pts']}"
+                 + (f" +{r['stage_pts']}S" if r['stage_pts'] else "")
+                 + (" ⚡" if r['fastest_lap_bonus'] else "")
+                 + f" = **{r['total_pts']}**"
+                 for i, r in enumerate(corrected[:15])]
+        embed = discord.Embed(
+            title=f"✅ Race {self.race_num} Re-scored",
+            description="\n".join(lines) + (f"\n…and {len(corrected)-15} more"
+                                            if len(corrected) > 15 else ""),
+            color=0x2ECC71)
+        embed.add_field(name="Drivers corrected", value=str(len(changes)), inline=True)
+        embed.add_field(name="Winner", value=f"{corrected[0]['name']} — "
+                                             f"{corrected[0]['total_pts']} pts", inline=True)
+        embed.set_footer(text="Standings updated · run /standings to verify")
+        await interaction.response.edit_message(content=None, embed=embed, view=None)
+
+        staff = discord.utils.get(interaction.guild.text_channels, name=STAFF_CH)
+        if staff:
+            await staff.send(
+                f"🛠 **Race {self.race_num} re-scored** by {interaction.user} — "
+                f"{len(changes)} driver(s) corrected. Winner {corrected[0]['name']} "
+                f"now {corrected[0]['total_pts']} pts.\n"
+                f"⚠️ **Pull in the desktop app before your next push**, or its older "
+                f"copy of data.json will overwrite this.")
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Correction cancelled.",
+                                                embed=None, view=None)
+
+
+@bot.hybrid_command(name="fixrace", description="Re-score a past race's points (admin)")
+@is_admin()
+async def fix_race_cmd(ctx, race_number: int):
+    """Recompute a posted race's points from its stored finishing order.
+
+    Fixes the off-by-one that scored Race 1's winner as second place. The
+    finishing ORDER stays exactly as recorded — only the points attached to
+    each position are recalculated.
+    """
+    data = load_data()
+    preview = json.loads(json.dumps(data))       # deep copy, preview only
+    changes, corrected = rescore_race(preview, race_number)
+
+    if not corrected:
+        await ctx.send(f"❌ No stored results found for Race {race_number}. "
+                       f"Nothing to re-score.", ephemeral=True)
+        return
+
+    if not changes:
+        await ctx.send(f"✅ Race {race_number} already scores correctly — "
+                       f"no changes needed.", ephemeral=True)
+        return
+
+    lines = []
+    for name, old, new in changes[:15]:
+        arrow = "🔺" if new > old else "🔻"
+        lines.append(f"{arrow} **{name}** {old} → **{new}** ({new-old:+d})")
+
+    embed = discord.Embed(
+        title=f"🛠 Preview — Re-score Race {race_number}",
+        description="\n".join(lines) + (f"\n…and {len(changes)-15} more"
+                                        if len(changes) > 15 else ""),
+        color=0xF1C40F)
+    embed.add_field(name="Corrected winner",
+                    value=f"{corrected[0]['name']} — {corrected[0]['total_pts']} pts",
+                    inline=False)
+    embed.set_footer(text="Nothing has changed yet — press Apply to commit.")
+    await ctx.send(embed=embed, view=ConfirmRescoreView(race_number, ctx.author.id))
 
 
 @bot.hybrid_command(name="freeagents", description="Drivers available to recruit — not on a team")
