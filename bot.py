@@ -1709,7 +1709,7 @@ def _poll_answer_text(name: str, incidents: int) -> str:
     return label if len(label) <= 55 else label[:52] + "..."
 
 
-async def post_weapon_of_week_poll(ch, race_num: int, results: list):
+async def post_weapon_of_week_poll(ch, race_num: int, results: list) -> tuple:
     """Post a 'Weapon of the Week' poll — top 4 by incident count.
 
     Fully best-effort and isolated from the rest of the recap. A poll
@@ -1717,15 +1717,21 @@ async def post_weapon_of_week_poll(ch, race_num: int, results: list):
     Discord outage) must never block Dale's text reaction or the
     standings/team fields from posting — those matter more and are already
     working. Everything here is wrapped so a failure just skips the poll.
+
+    Returns (posted: bool, message: str) so a manual trigger (/weaponpoll)
+    can tell the admin exactly what happened rather than the result only
+    showing up in Railway's console logs where nobody watching Discord
+    would ever see it.
     """
     try:
         ranked = sorted(
             [r for r in results if r.get("incidents", 0) > 0],
             key=lambda r: r.get("incidents", 0), reverse=True)
         if len(ranked) < 2:
-            print(f"Weapon of the Week skipped for Race {race_num} — "
-                  f"fewer than 2 drivers had incidents.")
-            return
+            msg = (f"Skipped — fewer than 2 drivers had incidents in Race {race_num} "
+                  f"({len(ranked)} qualifying). Nothing to vote on.")
+            print(f"Weapon of the Week: {msg}")
+            return False, msg
         top4 = ranked[:4]
 
         poll = discord.Poll(
@@ -1756,9 +1762,13 @@ async def post_weapon_of_week_poll(ch, race_num: int, results: list):
             "results":     None,
         })
         save_data(data)
+        msg = f"Posted for Race {race_num}: {', '.join(a['name'] for a in poll.answers) if hasattr(poll,'answers') else ', '.join(r['name'] for r in top4)}"
         print(f"✅ Weapon of the Week poll posted for Race {race_num}")
+        return True, msg
     except Exception as e:
+        msg = f"Failed to post: {e}"
         print(f"⚠️ Weapon of the Week poll failed for Race {race_num}: {e}")
+        return False, msg
 
 
 async def post_race_reaction(guild: discord.Guild, race_num: int, results: list, sub_id: str):
@@ -4577,6 +4587,69 @@ async def dale_recap_cmd(ctx):
     await ctx.send("⏳ Dale is processing the race...")
     await post_race_reaction(guild, race_num - 1, results, last_sub)
     await ctx.send("✅ Dale's reaction posted!")
+
+class ConfirmDuplicatePollView(discord.ui.View):
+    """A poll already exists for this race — confirm before posting a
+    second one, mirroring the duplicate-post guard used everywhere else
+    this season (Race Control's Post Results, /fixrace)."""
+    def __init__(self, race_num: int, results: list, ch, invoker_id: int):
+        super().__init__(timeout=120)
+        self.race_num, self.results, self.ch = race_num, results, ch
+        self.invoker_id = invoker_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.invoker_id:
+            await interaction.response.send_message("Not your command.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Post Anyway", style=discord.ButtonStyle.danger)
+    async def post_anyway(self, interaction: discord.Interaction, button: discord.ui.Button):
+        ok, msg = await post_weapon_of_week_poll(self.ch, self.race_num, self.results)
+        await interaction.response.edit_message(
+            content=("✅ " if ok else "⚠️ ") + msg, view=None)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="Cancelled — no new poll posted.", view=None)
+
+
+@bot.hybrid_command(name="weaponpoll", description="Post the Weapon of the Week poll for a past race (admin)")
+@is_admin()
+async def weapon_poll_cmd(ctx, race_number: int):
+    """Manually post just the incident poll for a race — without re-posting
+    Dale's whole text reaction, which /dalerecap would do. Built for exactly
+    this: the automatic pipeline posted the reaction already (or ran before
+    the poll feature existed), and only the poll needs to go out."""
+    data    = load_data()
+    record  = data.get("race_history", {}).get(f"race_{race_number}")
+    results = record.get("results", []) if record else []
+    if not results:
+        await ctx.send(f"❌ No stored results for Race {race_number}. "
+                       f"Nothing to build a poll from.", ephemeral=True)
+        return
+
+    guild = ctx.guild
+    ch = discord.utils.get(guild.text_channels, name="dales-post-race")
+    if not ch:
+        await ctx.send("❌ #dales-post-race channel not found.", ephemeral=True)
+        return
+
+    existing = [p for p in data.get("polls", [])
+                if p.get("race_number") == race_number
+                and p.get("type") == "weapon_of_the_week"]
+    if existing:
+        state = "closed" if existing[-1].get("closed") else "still open"
+        await ctx.send(
+            f"⚠️ A Weapon of the Week poll for Race {race_number} already exists "
+            f"({state}). Post another one anyway?",
+            view=ConfirmDuplicatePollView(race_number, results, ch, ctx.author.id),
+            ephemeral=True)
+        return
+
+    ok, msg = await post_weapon_of_week_poll(ch, race_number, results)
+    await ctx.send(("✅ " if ok else "⚠️ ") + msg)
+
 
 @bot.hybrid_command(name="dalemood", description="Set or view Dale's mood (admin)")
 @is_admin()
