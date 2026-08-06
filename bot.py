@@ -4075,9 +4075,14 @@ async def career_cmd(ctx, *, driver_name: str = ""):
 
 
 
+
+
 # ─────────────────────────────────────────────────────────────────
 #  STATS CARD — Pillow-generated driver graphic
-#  Broadcast wedge + telemetry readout. 1200x640 PNG.
+#  Broadcast wedge + telemetry readout, 1200x640 PNG. Wedge treatment
+#  (grid texture, layered glow seam, checkered accent, speed lines) is
+#  deliberately built to match generate_winner_graphic()'s visual language
+#  in qsr_app.py, so the two graphics read as the same product.
 # ─────────────────────────────────────────────────────────────────
 
 _SC_FONT_DIRS = [
@@ -4130,15 +4135,34 @@ def _sc_auto(d, t, max_w, start, weight="bold", min_size=12, step=2):
     return _sc_font(min_size, weight)
 
 def _sc_num(v, dash="—"):
-    """Render a stat that may legitimately be the em-dash placeholder."""
     return dash if v is None or v == "—" else str(v)
 
 def _sc_float(v):
-    """Best-effort float, or None."""
     try:
         return float(v)
     except (TypeError, ValueError):
         return None
+
+def _sc_strip_dark_bg(img, threshold=35):
+    """Remove near-black pixels from a logo for transparent composite —
+    same technique as _wg_strip_dark_bg in qsr_app.py's winner graphic."""
+    from PIL import Image
+    import numpy as np
+    img = img.convert("RGBA")
+    arr = np.array(img)
+    r, g, b, a = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
+    mask = (r < threshold) & (g < threshold) & (b < threshold)
+    arr[:, :, 3] = np.where(mask, 0, a)
+    return Image.fromarray(arr)
+
+def _sc_checkered(draw, x1, y1, x2, y2, sq=20):
+    cols = (x2 - x1) // sq + 1
+    rows = (y2 - y1) // sq + 1
+    for row in range(rows):
+        for col in range(cols):
+            color = (26, 26, 26) if (row + col) % 2 == 0 else (16, 16, 16)
+            rx, ry = x1 + col * sq, y1 + row * sq
+            draw.rectangle([rx, ry, min(rx + sq - 1, x2), min(ry + sq - 1, y2)], fill=color)
 
 
 def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
@@ -4160,32 +4184,49 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         return b""
 
     W, H = 1200, 640
-    BG       = (10,  12,  13)
-    PANEL    = (16,  19,  21)
+    BG       = (8,   8,   8)
+    PANEL    = (15,  15,  15)
     ORANGE   = (232, 82,  10)
-    ORANGE_L = (255, 130, 70)
-    WEDGE_TX = (120, 42,  10)     # dark text that sits on the orange wedge
+    ORANGE_D = (150, 52,   6)
+    WEDGE_TX = (120, 42,  10)
     WEDGE_HI = (15,  12,  10)
-    GOLD     = (255, 200, 60)
+    GOLD     = (255, 215,  0)
     WHITE    = (245, 245, 245)
     DIM      = (125, 132, 134)
     DIM2     = (78,  85,  87)
-    LINE     = (32,  38,  40)
+    LINE     = (42,  42,  42)
     GREEN    = (72,  199, 116)
     RED      = (235, 87,  87)
 
-    img  = Image.new("RGB", (W, H), BG)
-    d    = ImageDraw.Draw(img)
+    img = Image.new("RGB", (W, H), BG)
+    d   = ImageDraw.Draw(img)
 
-    # ── technical grid ────────────────────────────────────────────
     for x in range(0, W, 40):
-        d.line([(x, 0), (x, H)], fill=(14, 17, 18))
+        d.line([(x, 0), (x, H)], fill=(14, 14, 14))
     for y in range(0, H, 40):
-        d.line([(0, y), (W, y)], fill=(14, 17, 18))
+        d.line([(0, y), (W, y)], fill=(14, 14, 14))
 
-    # ══ BROADCAST WEDGE ═══════════════════════════════════════════
-    d.polygon([(0, 0), (340, 0), (250, H), (0, H)], fill=ORANGE)
-    d.polygon([(340, 0), (358, 0), (268, H), (250, H)], fill=ORANGE_L)
+    # ══ WEDGE — layered to match generate_winner_graphic()'s treatment ═══
+    cut_top, cut_bot = 340, 250
+
+    d.polygon([(0, 0), (cut_top, 0), (cut_bot, H), (0, H)], fill=ORANGE)
+
+    for gx in range(0, cut_top, 68):
+        d.line([(gx, 0), (gx, H)], fill=ORANGE_D, width=1)
+    for gy in range(0, H, 68):
+        d.line([(0, gy), (cut_top, gy)], fill=ORANGE_D, width=1)
+
+    d.polygon([(cut_top - 26, 0), (W, 0), (W, H), (cut_bot - 26, H)], fill=PANEL)
+    d.polygon([(cut_top - 10, 0), (cut_top + 6, 0),
+               (cut_bot + 6, H), (cut_bot - 10, H)], fill=ORANGE)
+
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    for i, a in enumerate([90, 55, 30, 14]):
+        off = 6 + i * 9
+        gd.polygon([(cut_top + off, 0), (cut_top + off + 9, 0),
+                    (cut_bot + off, H), (cut_bot + off - 9, H)], fill=(255, 110, 40, a))
+    img.paste(glow, (0, 0), glow)
 
     num_str = str(car_number) if car_number not in (None, "") else "?"
     d.text((48, 62), "CAR", font=_sc_font(20, "monob"), fill=WEDGE_TX)
@@ -4199,17 +4240,34 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
 
     if archetype:
         at = archetype.upper()
-        d.text((44, 508), at, font=_sc_auto(d, at, 200, 17, "monob", 10),
-               fill=WEDGE_TX)
-    d.text((44, 536), "QSR HHPS  //  SEASON 1",
-           font=_sc_font(12, "mono"), fill=WEDGE_TX)
+        d.text((44, 508), at, font=_sc_auto(d, at, 200, 17, "monob", 10), fill=WEDGE_TX)
+    d.text((44, 536), "QSR HHPS  //  SEASON 1", font=_sc_font(12, "mono"), fill=WEDGE_TX)
+
+    # speed lines bleeding off the seam
+    for ly, al in [(18, 140), (34, 90), (50, 45)]:
+        ln = Image.new("RGBA", (W, 1), (0, 0, 0, 0))
+        ld = ImageDraw.Draw(ln)
+        ld.line([(cut_top + 40, 0), (W, 0)], fill=(*ORANGE, al), width=1)
+        img.paste(ln, (0, ly), ln)
+
+    # checkered corner accent, dimmed, bottom-right
+    try:
+        ck = Image.new("RGB", (170, 60), PANEL)
+        ckd = ImageDraw.Draw(ck)
+        _sc_checkered(ckd, 0, 0, 170, 60, sq=20)
+        dark_overlay = Image.new("RGBA", ck.size, (0, 0, 0, 150))
+        ck = Image.composite(Image.new("RGB", ck.size, (0, 0, 0)), ck, dark_overlay)
+        img.paste(ck, (W - 170, H - 100))
+    except Exception:
+        pass
 
     # ══ RIGHT SIDE ════════════════════════════════════════════════
     X0, XR = 400, W - 44
     RW = XR - X0
 
-    # QSR logo, top right — reserves space so the name never collides
-    LOGO_W = 150
+    # QSR logo, top right — same dark-strip technique as the winner graphic.
+    # Reserves space so the name auto-shrinks around it instead of colliding.
+    LOGO_W = 130
     logo_ok = False
     logo_candidates = [
         os.path.join(_DATA_DIR, "qsr_league_logo.png"),
@@ -4220,15 +4278,11 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     for logo_path in logo_candidates:
         if os.path.exists(logo_path):
             try:
-                import numpy as _np
                 raw = Image.open(logo_path).convert("RGBA")
-                lh  = int(raw.height * (LOGO_W / raw.width))
-                raw = raw.resize((LOGO_W, lh), Image.LANCZOS)
-                arr = _np.array(raw)
-                r, g, b, a = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
-                arr[:, :, 3] = _np.where((r < 40) & (g < 40) & (b < 40), 0, a)
-                clean = Image.fromarray(arr)
-                img.paste(clean, (XR - LOGO_W, 40), clean)
+                clean = _sc_strip_dark_bg(raw, threshold=35)
+                lh = int(clean.height * (LOGO_W / clean.width))
+                clean = clean.resize((LOGO_W, lh), Image.LANCZOS)
+                img.paste(clean, (XR - LOGO_W, 36), clean)
                 logo_ok = True
             except Exception:
                 logo_ok = False
@@ -4275,26 +4329,41 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     trace = [p for p in (recent_finishes or []) if isinstance(p, int)][:5][::-1]
     px0, py0 = CX + 52, CY + 44
     pw_, ph_ = CW - 72, CH - 70
-    if trace:
+    if len(trace) >= 2:
         maxp = max(max(trace), 20)
         span = max(1, maxp - 1)
         for gv in sorted({1, maxp // 2, maxp}):
             gy = py0 + (gv - 1) / span * ph_
-            d.line([(px0, gy), (px0 + pw_, gy)], fill=(26, 31, 33))
+            d.line([(px0, gy), (px0 + pw_, gy)], fill=(24, 24, 24))
             d.text((CX + 14, gy - 7), f"P{gv}", font=_sc_font(10, "mono"), fill=DIM2)
         n = len(trace)
         co = []
         for i, pv in enumerate(trace):
-            x = px0 + ((i / (n - 1)) if n > 1 else 0.5) * pw_
+            x = px0 + (i / (n - 1)) * pw_
             y = py0 + (pv - 1) / span * ph_
             co.append((x, y))
-        if len(co) > 1:
-            d.line(co, fill=ORANGE, width=3, joint="curve")
+        d.line(co, fill=ORANGE, width=3, joint="curve")
         for (x, y), pv in zip(co, trace):
             c = GOLD if pv == 1 else ORANGE if pv <= 5 else WHITE
             d.ellipse([x - 5, y - 5, x + 5, y + 5], fill=BG, outline=c, width=3)
             lf = _sc_font(11, "monob")
             d.text((x - _sc_tw(d, str(pv), lf) / 2, y - 24), str(pv), font=lf, fill=c)
+    elif len(trace) == 1:
+        # A single point on a full P1-P20 grid reads as broken, not sparse —
+        # a purpose-built layout for the very-early-season case instead.
+        pv = trace[0]
+        cxm, cym = CX + CW // 2, CY + CH // 2 + 6
+        d.text((CX + 14, CY + 34), "1 RACE ON THE BOARD",
+               font=_sc_font(11, "mono"), fill=DIM2)
+        c = GOLD if pv == 1 else ORANGE if pv <= 5 else WHITE
+        big = _sc_font(46, "bold")
+        label = f"P{pv}"
+        lw = _sc_tw(d, label, big)
+        d.ellipse([cxm - 46, cym - 46, cxm + 46, cym + 46], outline=c, width=3)
+        d.text((cxm - lw / 2, cym - 26), label, font=big, fill=c)
+        msg = "Trace builds as races come in"
+        mf = _sc_font(12, "regular")
+        d.text((cxm - _sc_tw(d, msg, mf) / 2, cym + 58), msg, font=mf, fill=DIM2)
     else:
         nf = _sc_font(14, "monob")
         d.text((CX + (CW - _sc_tw(d, "NO RACE DATA", nf)) / 2, CY + CH / 2 - 8),
@@ -4311,7 +4380,7 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         d.text((BX + 14, by), lbl, font=_sc_font(11, "monob"), fill=DIM)
         d.text((XR - 14 - _sc_tw(d, str(v), vf), by - 3), str(v), font=vf, fill=WHITE)
         d.rectangle([BX + 14, by + 20, XR - 14, by + 28],
-                    fill=(22, 26, 28), outline=(30, 36, 38))
+                    fill=(20, 20, 20), outline=(32, 32, 32))
         fw = int((XR - 28 - BX) * min(1.0, (v or 0) / denom))
         if fw > 2:
             d.rectangle([BX + 14, by + 20, BX + 14 + fw, by + 28], fill=c)
@@ -4349,7 +4418,7 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     stf = _sc_font(11, "monob")
     d.text((XR - _sc_tw(d, st_t, stf), sy), st_t, font=stf, fill=st_c)
 
-    d.rectangle([X0, sy + 18, XR, sy + 30], fill=(22, 26, 28), outline=(30, 36, 38))
+    d.rectangle([X0, sy + 18, XR, sy + 30], fill=(20, 20, 20), outline=(32, 32, 32))
     fw = int(RW * run / 14)
     if fw > 2:
         d.rectangle([X0, sy + 18, X0 + fw, sy + 30], fill=ORANGE)
@@ -4359,7 +4428,7 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
 
     # ══ TICKER ════════════════════════════════════════════════════
     TB = H - 62
-    d.rectangle([0, TB, W, H], fill=(15, 18, 20))
+    d.rectangle([0, TB, W, H], fill=(13, 13, 13))
     d.rectangle([0, TB, W, TB + 3], fill=ORANGE)
     d.text((44, TB + 24), "RECENT FORM", font=_sc_font(13, "monob"), fill=DIM)
 
@@ -4369,7 +4438,7 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         for pos in chips:
             c = (GOLD if pos == 1 else ORANGE if pos <= 3 else
                  (150, 110, 40) if pos <= 5 else
-                 (40, 90, 70) if pos <= 10 else (44, 50, 52))
+                 (40, 90, 70) if pos <= 10 else (36, 36, 36))
             d.rounded_rectangle([bx, TB + 14, bx + 52, TB + 48], radius=6, fill=c)
             pf = _sc_font(17, "monob")
             d.text((bx + (52 - _sc_tw(d, str(pos), pf)) / 2, TB + 22), str(pos),
@@ -4392,6 +4461,7 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     img.save(buf, format="PNG", optimize=True)
     buf.seek(0)
     return buf.getvalue()
+
 
 
 
