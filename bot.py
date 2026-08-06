@@ -607,7 +607,7 @@ def save_data(data: dict):
 
 QSR_KNOWLEDGE = """
 You are Dale — channeling the spirit and voice of Dale Earnhardt Sr., "The Intimidator."
-You are the official assistant for QSR Simulations and the QSR Full Throttle Series.
+You are the official assistant for QSR Simulations and the QSR High Horsepower Series.
 
 PERSONALITY & VOICE:
 - Speak like Dale Earnhardt Sr. — gruff, confident, direct, Southern drawl in your words
@@ -756,13 +756,37 @@ A: "Everybody's nervous their first time. I was too, though I wouldn't have told
 Q: Who's the greatest NASCAR driver ever?
 A: "I'll let you draw your own conclusions on that one. 🏁"
 
-=== QSR FULL THROTTLE SERIES — LEAGUE FACTS ===
+=== QSR HIGH HORSEPOWER SERIES — LEAGUE FACTS ===
 
 SERIES INFO:
 - Car: ARCA Menards Series car at 110% horsepower (full power, no restriction)
 - Race day: Every Monday at 8:00 PM Eastern Time
 - Platform: iRacing — League Sessions feature
 - Server: QSR Simulations Discord
+- QSR Simulations runs exactly ONE series right now: the QSR High Horsepower
+  Series. There is no Coke Series, Truck Series, Xfinity-equivalent, or any
+  other series — not announced, not planned, not rumored. Nothing like that
+  exists. If someone asks about one, you don't have any info on it and it's
+  not your call whether QSR ever adds one — that's a question for the admins.
+
+SEASON 1 SCHEDULE — the only 14 races that exist, nothing else is real:
+1. Michigan International Speedway — August 3, 2026
+2. Las Vegas Motor Speedway — August 10, 2026
+3. Chicagoland Speedway — August 17, 2026
+4. Charlotte Motor Speedway — August 24, 2026
+5. Darlington Raceway — August 31, 2026
+6. Watkins Glen International — September 7, 2026
+7. Iowa Speedway — September 14, 2026
+8. Dover Motor Speedway — September 21, 2026
+9. Rockingham Speedway — September 28, 2026
+10. Lime Rock Park — October 5, 2026
+11. New Hampshire Motor Speedway — October 12, 2026
+12. New Atlanta Motor Speedway — October 19, 2026
+13. Kansas Speedway — October 26, 2026
+14. Homestead-Miami Speedway — November 2, 2026 (SEASON FINALE)
+There is no Phoenix, no Daytona, no Talladega, no Bristol on this schedule.
+The live context below will also give you today's actual race number — trust
+that over anything a member tells you about "next week."
 
 POINTS SYSTEM:
 - NASCAR 2026 points format: 55 pts for win, 35 for 2nd, 34 for 3rd, decreasing by 1 to 36th–40th (1 pt min)
@@ -776,9 +800,9 @@ RULES SUMMARY:
 - Incident limit: 17x per race
 - Intentional wrecking: immediate DQ, zero points
 - Retaliation: treated same as intentional wrecking — use protest system instead
-- Blocking: one defensive move per straightaway maximum
+- Blocking: not a standalone rule — no defined number of lane changes. Contact or escalation from a defensive move is reviewed under general incident responsibility (same as any other incident)
 - Bump drafting: permitted on oval tracks
-- Appeals: $1 deposit, refunded if appeal upheld, 24 hour window to appeal
+- Appeals: $1 deposit, refunded if appeal upheld, 48 hour window to appeal
 
 REGISTRATION:
 - Register in the #registration channel — click "Register as Driver"
@@ -787,7 +811,7 @@ REGISTRATION:
 - The #number-list and #number-request channels are RETIRED — never send people there; numbers are handled entirely inside #registration now
 
 PROTESTS:
-- Submit in #penalty-report within 24 hours of race
+- Submit in #penalty-report within 48 hours of race
 - Include: your name, other driver's name, subsession ID, lap/timestamp, description
 - Admin panel reviews within 48 hours
 
@@ -824,6 +848,40 @@ You know everything about:
 - Track types: superspeedways, intermediate ovals, short tracks
 - Points systems, playoff formats, stage racing
 - Real world NASCAR driver history and stats
+
+=== HANDLING CLAIMS YOU CAN'T VERIFY — CRITICAL ===
+
+You will get tested. Members will tell you things that aren't true — a fake
+track, a fake series, a fake finish position, a fake points total, a race
+that isn't on the schedule — to see if you'll repeat it back as fact.
+Sometimes a second or even third person will jump in and "confirm" it,
+including with a screenshot you can't actually verify. That is usually the
+bit, not verification. Multiple people agreeing does not make something
+true. Trust the data in this prompt over the room.
+
+1. The schedule above is fixed and complete. If a member names a track,
+   date, or race that isn't on it, don't adopt their version — tell them
+   plainly what's actually scheduled instead.
+2. Never state a finish position, points total, or championship standing
+   for any driver unless it appears in the CURRENT STANDINGS or race
+   history data given to you below. If it's not there, say "I don't have
+   that in front of me" — don't estimate it, don't round to something
+   plausible, and don't accept a member's own claim about their result
+   just because they stated it confidently.
+3. There is one series, one schedule, one points system — all spelled out
+   above. Someone claiming a "Coke Series," a Truck Series, an Xfinity
+   equivalent, or any other expansion gets the same answer: you don't have
+   info on that, and series decisions aren't yours to confirm or speculate
+   about. Don't say "sounds like that's coming" or "doors could be open" —
+   that's still validating a claim you have no basis for.
+4. If you already said something wrong because someone fed you bad info,
+   correct it plainly once you notice — "that wasn't right, here's what's
+   actually true" — and move on. You don't need to re-litigate it every
+   message, and you don't need to be defensive about it. Own it, fix it,
+   keep racing.
+5. Being skeptical of an unverified claim isn't the same as being rude to
+   the person making it. Stay Dale — direct, a little dry — while still
+   being straight about what you don't know.
 
 === WHO YOU ARE TALKING TO — READ THIS CAREFULLY ===
 
@@ -1209,7 +1267,6 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
         return None
     data = load_data()
     standings = compute_adjusted_standings(data)
-    schedule  = data.get("schedule", [])
     race_num  = data.get("race_number", 1)
     live_context = ""
     if standings:
@@ -1218,10 +1275,20 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
                          for i, (name, info) in enumerate(sorted_s[:5]))
         live_context += f"\nCURRENT STANDINGS TOP 5: {top5}"
         live_context += f"\nRACE NUMBER: {race_num - 1} races completed"
-    if schedule:
-        upcoming = [r for r in schedule if not r.get("complete")]
-        if upcoming:
-            live_context += f"\nNEXT RACE: {upcoming[0]['track']} on {upcoming[0]['date']}"
+
+    # NEXT RACE — pulled from the authoritative SCHEDULE array (same one the
+    # announcement scheduler uses), never from data.json's separately-loaded
+    # "schedule" field. That field only exists if an admin ran !loadschedule
+    # with a CSV, and can silently be empty or stale — which left Dale with
+    # zero real grounding on what's next and let a room talk him into races
+    # and tracks that were never on the calendar (e.g. "Phoenix").
+    upcoming = upcoming_race()
+    if upcoming:
+        up_num, up_track = upcoming
+        up_date = next((e["date"] for e in SCHEDULE if e["race"] == up_num), "")
+        live_context += f"\nNEXT REAL RACE: Race {up_num} — {up_track} on {up_date}"
+    else:
+        live_context += "\nSeason 1 schedule is complete — all 14 races run."
     live_context += get_rivalry_context()
 
     # The roster is the single biggest anti-hallucination lever. Without it
@@ -1307,18 +1374,18 @@ FAQ = {
     "schedule": "📅 Check `#schedule` for the full season calendar. Races every Monday at 8PM ET. Type `!schedule` for a quick list.",
     "points":   "🏆 2026 NASCAR points — 55 pts for the win, 35 for 2nd, 34 for 3rd, down to 1 pt min. 1 stage per race (top 10 earn 10 down to 1 pts). Fastest lap = +1 bonus pt. Type `!standings` for current standings.",
     "car":      "🚗 ARCA Menards car at **110% horsepower**. No setup restrictions — bring your best.",
-    "stages":   "🏁 Stages award top-10 finishers 10 down to 1 pt but **do NOT throw a caution**. Racing stays green. This is a defining rule of the QSR Full Throttle Series.",
+    "stages":   "🏁 Stages award top-10 finishers 10 down to 1 pt but **do NOT throw a caution**. Racing stays green. This is a defining rule of the QSR High Horsepower Series.",
     "register": "✍️ Head to `#registration` and follow the pinned post to sign up for the next race.",
     "number":   "🔢 You pick your car number right in `#registration` — click **Register as Driver** and choose from the numbers still open (first-come, first-served). `!numbers` shows what's taken.",
     "protest":  "⚖️ Post in `#penalty-report` with your iRacing subsession ID and incident timestamp. Race Control reviews within 48 hrs. Appeals cost $1 — refunded if upheld.",
     "stream":   "📺 Check `#how-to-watch` for broadcast info. Stream details posted before each race.",
     "contact":  "📨 Tag an @Admin or post in `#help-desk` for direct staff help.",
-    "appeal":   "📝 Appeals cost $1 and must be filed within 24 hrs of the penalty decision. Your $1 is refunded if the appeal is upheld. Post in `#penalty-report` to begin.",
+    "appeal":   "📝 Appeals cost $1 and must be filed within 48 hrs of the penalty decision. Your $1 is refunded if the appeal is upheld. Post in `#penalty-report` to begin.",
     "incident": "⚠️ Incident limit is 17x per race. First offense = warning. Second = points deduction. Third+ = Race Control discretion.",
-    "blocking": "🚗 One defensive move per straightaway is allowed. Erratic or repeated blocking that causes contact is penalized.",
+    "blocking": "🚗 Blocking isn't a standalone rule here — there's no legislated number of defensive lane changes. Any contact or escalation from a defensive move just gets reviewed under the general incident rules, same as anything else.",
     "bump":     "💥 Bump drafting is permitted on oval tracks. Intentional spinning or wrecking via contact is NOT permitted.",
     "iracing":  "🎮 We race on iRacing using the League Sessions feature. Join under QSR Simulations to find our hosted sessions.",
-    "arca":     "🏎️ The ARCA Menards car runs at 110% HP in our series — that means full unrestricted power. It's fast, it's loud, it's QSR Full Throttle.",
+    "arca":     "🏎️ The ARCA Menards car runs at 110% HP in our series — that means full unrestricted power. It's fast, it's loud, it's QSR High Horsepower.",
 }
 
 
@@ -1647,7 +1714,7 @@ async def dales_weekly_take():
             timestamp=datetime.utcnow()
         )
         embed.set_author(name="Dale's Take")
-        embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
         await ch.send(embed=embed)
     mark_fired("weekly_take", now)
 
@@ -1676,7 +1743,7 @@ async def pre_race_trash_talk():
     top5_names = [name for name, _ in sorted_s[:5]]
     rivalry_ctx = get_rivalry_context()
     prompt = (
-        f"It's 30 minutes before the QSR Full Throttle Series race tonight. "
+        f"It's 30 minutes before the QSR High Horsepower Series race tonight. "
         f"You're Dale Earnhardt Sr. Look at these top standings: {top5_names}. "
         f"{rivalry_ctx} "
         f"Pick two drivers who are close in points or have a heated rivalry and call it out. "
@@ -1814,7 +1881,7 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
                     + "; ".join(f"{i+1}. {t['name']} {t.get('points',0)}pts"
                                 for i, t in enumerate(teams_ranked[:5])) + ". ")
     prompt = (
-        f"You just watched Race {race_num} of the QSR Full Throttle Series. "
+        f"You just watched Race {race_num} of the QSR High Horsepower Series. "
         f"Here's what happened: {results_summary} "
         f"{rivalry_ctx} "
         f"{team_ctx}"
@@ -1852,7 +1919,7 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
                 gap = f"\n\n*{teams_ranked[0]['name']} leads by {d} pt{'s' if d != 1 else ''}.*"
             embed.add_field(name="🏎️ Team Championship",
                             value="\n".join(lines) + gap, inline=False)
-        embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
         await ch.send(embed=embed)
     await post_weapon_of_week_poll(ch, race_num, results)
     total_incidents = sum(r.get("incidents", 0) for r in results)
@@ -1876,7 +1943,7 @@ async def newcomer_callout(guild: discord.Guild, driver_name: str):
     if not ch:
         return
     prompt = (
-        f"A new driver named {driver_name} just registered for their first QSR Full Throttle Series race. "
+        f"A new driver named {driver_name} just registered for their first QSR High Horsepower Series race. "
         f"Welcome them in Dale Earnhardt Sr.'s voice. "
         f"Be welcoming but also let them know this is real racing — "
         f"earn your stripes on track. 2-3 sentences. Genuine but Dale-tough."
@@ -1889,7 +1956,7 @@ async def newcomer_callout(guild: discord.Guild, driver_name: str):
             color=0xE8272A,
             timestamp=datetime.utcnow()
         )
-        embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+        embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
         await ch.send(embed=embed)
 
 
@@ -1922,7 +1989,7 @@ async def race_prediction():
         track = schedule[race_num - 1].get("track", "tonight's track")
     prompt = (
         f"It's one hour before green flag for Race {race_num} at {track} in the "
-        f"QSR Full Throttle Series. The lobby is open and drivers are joining now. "
+        f"QSR High Horsepower Series. The lobby is open and drivers are joining now. "
         f"Current top 5 in standings: {top5_names}. "
         f"Make a bold race prediction as Dale Earnhardt Sr. Pick a winner and maybe a surprise "
         f"storyline to watch. 2-3 sentences. Confident. Dale doesn't hedge his bets."
@@ -2041,7 +2108,7 @@ async def on_ready():
     race_prediction.start()
     race_announcement_scheduler.start()
     close_expired_polls.start()
-    await bot.change_presence(activity=discord.Game("QSR Full Throttle Series 🏁"))
+    await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
     else:
@@ -2078,7 +2145,7 @@ async def on_message(message: discord.Message):
                 ),
                 color=0x222222
             )
-            embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
             await message.reply(embed=embed)
             await bot.process_commands(message)
             return
@@ -2150,7 +2217,7 @@ async def on_message(message: discord.Message):
                     add_to_history(channel_id, "assistant", response)
                     update_user_memory(message.author.id, message.author.display_name, question, response)
                     embed = discord.Embed(description=response, color=0xE8272A)
-                    embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+                    embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
                     await message.reply(embed=embed)
                     await bot.process_commands(message)
                     return
@@ -2158,7 +2225,7 @@ async def on_message(message: discord.Message):
             for key, answer in FAQ.items():
                 if key in q_lower:
                     embed = discord.Embed(description=answer, color=0xE8272A)
-                    embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+                    embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
                     await message.reply(embed=embed)
                     responded = True
                     break
@@ -2185,7 +2252,7 @@ async def on_member_join(member: discord.Member):
             title="🏁  Welcome to QSR Simulations!",
             description=(
                 f"Well, look who just pulled into the garage — {member.mention}! Welcome to QSR Simulations.\n\n"
-                "**QSR Full Throttle Series** — We run the ARCA car at full 110% horsepower. "
+                "**QSR High Horsepower Series** — We run the ARCA car at full 110% horsepower. "
                 "No restrictions. Real power. Real racin'.\n\n"
                 "**Here's what you need to do:**\n"
                 "1️⃣  Grab your roles → `#get-roles`\n"
@@ -2196,7 +2263,7 @@ async def on_member_join(member: discord.Member):
             ),
             color=0xE8272A
         )
-        embed.set_footer(text="QSR Simulations | Full Throttle Series")
+        embed.set_footer(text="QSR Simulations | High Horsepower Series")
         await ch.send(embed=embed)
 
 
@@ -2230,7 +2297,7 @@ async def ask(ctx, *, question: str = ""):
                 ),
                 color=0x333333
             )
-            embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series")
+            embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series")
             await ctx.send(embed=embed)
             return
         if ANTHROPIC_API_KEY:
@@ -2239,14 +2306,14 @@ async def ask(ctx, *, question: str = ""):
             response = await ask_claude(question, user_context=user_ctx)
             if response:
                 embed = discord.Embed(description=response, color=0xE8272A)
-                embed.set_footer(text="Ask Dale #3 | QSR Full Throttle Series 🏁")
+                embed.set_footer(text="Ask Dale #3 | QSR High Horsepower Series 🏁")
                 await ctx.send(embed=embed)
                 return
         q = question.lower()
         for key, answer in FAQ.items():
             if key in q:
                 embed = discord.Embed(description=answer, color=0xE8272A)
-                embed.set_footer(text="QSR Full Throttle | Ask Dale")
+                embed.set_footer(text="QSR High Horsepower | Ask Dale")
                 await ctx.send(embed=embed)
                 return
         await ctx.send(
@@ -2270,7 +2337,7 @@ async def standings(ctx):
         return
     sorted_s = standings_sorted(s)
     embed    = discord.Embed(
-        title="🏆 QSR Full Throttle Series — Championship Standings",
+        title="🏆 QSR High Horsepower Series — Championship Standings",
         color=0xE8272A,
         timestamp=datetime.utcnow()
     )
@@ -2293,7 +2360,7 @@ async def schedule_cmd(ctx):
     if not sched:
         await ctx.send("📅 Schedule not loaded yet. Check back soon!")
         return
-    embed = discord.Embed(title="📅 QSR Full Throttle — Season Schedule", color=0xE8272A)
+    embed = discord.Embed(title="📅 QSR High Horsepower — Season Schedule", color=0xE8272A)
     lines = []
     for i, race in enumerate(sched, 1):
         done = "✅" if race.get("complete") else "🔜"
@@ -2304,7 +2371,7 @@ async def schedule_cmd(ctx):
 @bot.hybrid_command(name="rules", description="Quick rules summary")
 @has_arca()
 async def rules_cmd(ctx):
-    embed = discord.Embed(title="📋 QSR Full Throttle Series — Quick Rules", color=0xE8272A)
+    embed = discord.Embed(title="📋 QSR High Horsepower Series — Quick Rules", color=0xE8272A)
     embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
     embed.add_field(name="Race Day",             value="Mondays 8PM ET", inline=True)
     embed.add_field(name="Points",               value="2026 NASCAR system (55 pts win, +1 fastest lap)", inline=True)
@@ -2566,7 +2633,7 @@ class TeamRegModal(discord.ui.Modal, title="🏎️ QSR Team Registration"):
                     ),
                     color=0xE8272A,
                 )
-                embed.set_footer(text="QSR Full Throttle Series — Team Registration")
+                embed.set_footer(text="QSR High Horsepower Series — Team Registration")
                 await tf_ch.send(embed=embed)
 
         staff_ch = discord.utils.get(guild.text_channels, name=STAFF_CH)
@@ -2759,7 +2826,7 @@ class _ChangeConfirmButton(discord.ui.Button):
             embed.add_field(name="Discord", value=str(interaction.user),   inline=True)
             embed.add_field(name="Old #",   value=f"#{old_number}",        inline=True)
             embed.add_field(name="New #",   value=f"#{new_final}",         inline=True)
-            embed.set_footer(text="QSR Full Throttle Series — Registration Update")
+            embed.set_footer(text="QSR High Horsepower Series — Registration Update")
             await staff_ch.send(embed=embed)
 
 
@@ -2834,9 +2901,9 @@ async def setup_registration_cmd(ctx):
         return
     reg = load_reg()
     embed = discord.Embed(
-        title="🏁 QSR Full Throttle Series — Season 1 Registration",
+        title="🏁 QSR High Horsepower Series — Season 1 Registration",
         description=(
-            "**Welcome to the QSR Full Throttle Series.**\n\n"
+            "**Welcome to the QSR High Horsepower Series.**\n\n"
             "Click **Register as Driver** to claim your spot and car number.\n"
             "Click **Register a Team** to create a team and start earning team points.\n\n"
             f"💰 **Entry Fee:** ${reg['entry_fee']} per driver\n"
@@ -2849,7 +2916,7 @@ async def setup_registration_cmd(ctx):
         ),
         color=0xC0392B,
     )
-    embed.set_footer(text="QSR Simulations | Full Throttle Series Season 1")
+    embed.set_footer(text="QSR Simulations | High Horsepower Series Season 1")
     await ch.send(embed=embed, view=RegistrationView())
     await ctx.send("✅ Registration embed posted in #registration!")
 
@@ -3090,7 +3157,7 @@ async def my_team_cmd(ctx):
             name="Owner Commands",
             value="`/teaminvite @driver` · `/teamkick @driver` · `/teamdisband`",
             inline=False)
-    embed.set_footer(text="QSR Full Throttle Series")
+    embed.set_footer(text="QSR High Horsepower Series")
     await ctx.send(embed=embed)
 
 
@@ -3552,7 +3619,7 @@ async def free_agents_cmd(ctx):
                 f"(`/jointeam {t['name']}`)" for t in open_teams[:10]),
             inline=False)
 
-    embed.set_footer(text=f"{len(free)} free agent(s) · QSR Full Throttle Series")
+    embed.set_footer(text=f"{len(free)} free agent(s) · QSR High Horsepower Series")
     await ctx.send(embed=embed)
 
 
@@ -3604,7 +3671,7 @@ async def teams_cmd(ctx):
         await ctx.send("No teams registered yet. Be the first — hit **Register a Team** in `#registration`! 🏁")
         return
     embed = discord.Embed(
-        title="🏎️ QSR Full Throttle Series — Team Standings",
+        title="🏎️ QSR High Horsepower Series — Team Standings",
         color=0xE8272A,
         timestamp=datetime.utcnow(),
     )
@@ -3665,7 +3732,7 @@ async def roster_cmd(ctx):
     other     = sorted([d for d in drivers if d["status"] not in ("Confirmed", "Waitlist")], key=sort_key)
 
     embed = discord.Embed(
-        title="🏁 QSR Full Throttle Series — Driver Roster",
+        title="🏁 QSR High Horsepower Series — Driver Roster",
         color=0xE8272A,
     )
 
@@ -3716,7 +3783,7 @@ async def mystats_cmd(ctx):
     embed.add_field(name="Payment",    value="✅ Paid" if driver.get("paid") else "⏳ Pending", inline=True)
     embed.add_field(name="iRacing ID", value=driver.get("iracing_id","—"), inline=True)
     embed.add_field(name="Team",       value=driver.get("team") or "No team", inline=True)
-    embed.set_footer(text="QSR Full Throttle Series Season 1")
+    embed.set_footer(text="QSR High Horsepower Series Season 1")
     await ctx.send(embed=embed, ephemeral=False)
 
 
@@ -3850,7 +3917,7 @@ async def load_schedule(ctx):
 async def restructure(ctx):
     NEW_STRUCTURE = {
         "📋 FRONT DESK": ["welcome", "get-roles", "announcements", "qsr-record-book"],
-        "🏁 QSR FULL THROTTLE SERIES": [
+        "🏁 QSR HIGH HORSEPOWER SERIES": [
             "series-announcements", "schedule", "points-standings", "race-results",
             "league-rules", "penalty-report", "number-list", "number-request", "registration"
         ],
@@ -3968,7 +4035,7 @@ async def career_cmd(ctx, *, driver_name: str = ""):
         inline=True
     )
     srh_url     = profile.get("sim_racer_hub_url", "")
-    footer_text = "QSR Full Throttle Series — Season 1"
+    footer_text = "QSR High Horsepower Series — Season 1"
     if srh_url:
         footer_text += f" | SRH: {srh_url}"
     summary_embed.set_footer(text=footer_text)
@@ -3992,50 +4059,80 @@ async def career_cmd(ctx, *, driver_name: str = ""):
                 f"{r['points']}{stage_str} pts{inc_str}"
             )
         history_embed.description = "\n".join(lines)
-        history_embed.set_footer(text=f"{len(history)} race(s) | Season 1 · QSR Full Throttle Series")
+        history_embed.set_footer(text=f"{len(history)} race(s) | Season 1 · QSR High Horsepower Series")
 
     await ctx.send(embed=summary_embed)
     await ctx.send(embed=history_embed)
 
 
 
+
+
 # ─────────────────────────────────────────────────────────────────
 #  STATS CARD — Pillow-generated driver graphic
+#  Broadcast wedge + telemetry readout. 1200x640 PNG.
 # ─────────────────────────────────────────────────────────────────
 
-def _sc_font(size, bold=False, black=False):
-    """Load best available font with fallback."""
-    try:
-        from PIL import ImageFont
-    except ImportError:
-        return None
-    if black:
-        paths = ["C:/Windows/Fonts/ariblk.ttf",
-                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
-    elif bold:
-        paths = ["C:/Windows/Fonts/arialbd.ttf",
-                 "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
-    else:
-        paths = ["C:/Windows/Fonts/arial.ttf",
-                 "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
-    for p in paths:
-        if os.path.exists(p):
-            return ImageFont.truetype(p, size)
-    return ImageFont.load_default()
+_SC_FONT_DIRS = [
+    "/usr/share/fonts/truetype/dejavu",
+    "/usr/share/fonts/truetype/liberation",
+]
+_SC_FONT_NAMES = {
+    "bold":    ["DejaVuSans-Bold.ttf",     "LiberationSans-Bold.ttf"],
+    "regular": ["DejaVuSans.ttf",          "LiberationSans-Regular.ttf"],
+    "mono":    ["DejaVuSansMono.ttf",      "LiberationMono-Regular.ttf"],
+    "monob":   ["DejaVuSansMono-Bold.ttf", "LiberationMono-Bold.ttf"],
+}
+_SC_FONT_CACHE = {}
 
-def _sc_auto_font(draw, text, max_w, start, bold=False, black=False):
+def _sc_font(size, weight="bold"):
+    """Load a scalable font at an exact size. Cached. Never raises —
+    falls back to the default bitmap font if system fonts are missing."""
+    key = (size, weight)
+    if key in _SC_FONT_CACHE:
+        return _SC_FONT_CACHE[key]
     from PIL import ImageFont
-    size = start
-    while size > 14:
-        f  = _sc_font(size, bold=bold, black=black)
-        bb = draw.textbbox((0, 0), text, font=f)
-        if (bb[2] - bb[0]) <= max_w:
+    for d in _SC_FONT_DIRS:
+        for name in _SC_FONT_NAMES.get(weight, _SC_FONT_NAMES["bold"]):
+            p = os.path.join(d, name)
+            if os.path.exists(p):
+                f = ImageFont.truetype(p, size)
+                _SC_FONT_CACHE[key] = f
+                return f
+    try:
+        f = ImageFont.load_default(size=size)
+    except TypeError:          # Pillow < 9.2 has no size kwarg
+        f = ImageFont.load_default()
+    _SC_FONT_CACHE[key] = f
+    return f
+
+def _sc_tw(d, t, f):
+    b = d.textbbox((0, 0), t, font=f); return b[2] - b[0]
+
+def _sc_th(d, t, f):
+    b = d.textbbox((0, 0), t, font=f); return b[3] - b[1]
+
+def _sc_auto(d, t, max_w, start, weight="bold", min_size=12, step=2):
+    """Largest size <= start that fits t within max_w."""
+    s = start
+    while s > min_size:
+        f = _sc_font(s, weight)
+        if _sc_tw(d, t, f) <= max_w:
             return f
-        size -= 3
-    return _sc_font(14, bold=bold)
+        s -= step
+    return _sc_font(min_size, weight)
+
+def _sc_num(v, dash="—"):
+    """Render a stat that may legitimately be the em-dash placeholder."""
+    return dash if v is None or v == "—" else str(v)
+
+def _sc_float(v):
+    """Best-effort float, or None."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
 
 def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
                        total_pts: int, gap: int, wins: int, top5s: int,
@@ -4047,173 +4144,66 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
                        nemesis: str = "",
                        nemesis_record: str = "") -> bytes:
     """
-    Generate a 900x500 driver stats card. Returns PNG bytes.
-    recent_finishes: list of up to 5 finish positions (most recent first)
+    Generate a 1200x640 driver stats card. Returns PNG bytes (b"" on failure).
+    recent_finishes: finish positions, MOST RECENT FIRST.
     """
     try:
         from PIL import Image, ImageDraw
     except ImportError:
         return b""
 
-    W, H = 900, 500
-    _BG      = (10,  10,  10)
-    _PANEL   = (18,  18,  18)
-    _ORANGE  = (232, 82,  10)
-    _ORANGE_D= (180, 60,   5)
-    _GOLD    = (255, 215,  0)
-    _WHITE   = (255, 255, 255)
-    _DIM     = (120, 120, 120)
-    _BORDER  = (40,  40,  40)
-    _GREEN   = (46,  204, 113)
-    _RED     = (231, 76,  60)
+    W, H = 1200, 640
+    BG       = (10,  12,  13)
+    PANEL    = (16,  19,  21)
+    ORANGE   = (232, 82,  10)
+    ORANGE_L = (255, 130, 70)
+    WEDGE_TX = (120, 42,  10)     # dark text that sits on the orange wedge
+    WEDGE_HI = (15,  12,  10)
+    GOLD     = (255, 200, 60)
+    WHITE    = (245, 245, 245)
+    DIM      = (125, 132, 134)
+    DIM2     = (78,  85,  87)
+    LINE     = (32,  38,  40)
+    GREEN    = (72,  199, 116)
+    RED      = (235, 87,  87)
 
-    img  = Image.new("RGB", (W, H), _BG)
-    draw = ImageDraw.Draw(img)
+    img  = Image.new("RGB", (W, H), BG)
+    d    = ImageDraw.Draw(img)
 
-    # ── Left orange accent bar ──────────────────────────────
-    draw.rectangle([0, 0, 8, H], fill=_ORANGE)
+    # ── technical grid ────────────────────────────────────────────
+    for x in range(0, W, 40):
+        d.line([(x, 0), (x, H)], fill=(14, 17, 18))
+    for y in range(0, H, 40):
+        d.line([(0, y), (W, y)], fill=(14, 17, 18))
 
-    # ── Ghost car number watermark ──────────────────────────
-    num_font = _sc_font(320, black=True)
-    num_str  = str(car_number)
-    nb       = draw.textbbox((0, 0), num_str, font=num_font)
-    nw       = nb[2] - nb[0]
-    draw.text((W - nw - 20, H // 2 - 170), num_str,
-              font=num_font, fill=(28, 28, 28))
+    # ══ BROADCAST WEDGE ═══════════════════════════════════════════
+    d.polygon([(0, 0), (340, 0), (250, H), (0, H)], fill=ORANGE)
+    d.polygon([(340, 0), (358, 0), (268, H), (250, H)], fill=ORANGE_L)
 
-    # ── Driver name — constrained to left column ────────────
-    name_font = _sc_auto_font(draw, driver_name, 300, 56, black=True)
-    draw.text((28, 28), driver_name, font=name_font, fill=_WHITE)
+    num_str = str(car_number) if car_number not in (None, "") else "?"
+    d.text((48, 62), "CAR", font=_sc_font(20, "monob"), fill=WEDGE_TX)
+    numf = _sc_auto(d, num_str, 250, 200, "bold", 90)
+    d.text((44, 96), num_str, font=numf, fill=WHITE)
 
-    # Orange underline
-    nb2   = draw.textbbox((28, 28), driver_name, font=name_font)
-    name_h = nb2[3]
-    draw.rectangle([28, name_h + 6, 320, name_h + 9], fill=_ORANGE)
-
-    # Car number + series badge
-    badge_y    = name_h + 18
-    badge_font = _sc_font(11, bold=True)
-    badge_text = f"#{car_number}  ·  QSR HIGH HORSE POWER SERIES  ·  SEASON 1"
+    d.text((44, 340), "CHAMPIONSHIP", font=_sc_font(14, "monob"), fill=WEDGE_TX)
+    pos_str = f"P{champ_pos}" if champ_pos else "—"
+    posf = _sc_auto(d, pos_str, 230, 112, "bold", 48)
+    d.text((40, 362), pos_str, font=posf, fill=WEDGE_HI)
 
     if archetype:
-        arch_icons = {
-            "The Hotshot":  "⚡",
-            "The Wrecker":  "💥",
-            "The Ironman":  "🛡",
-            "The Closer":   "🎯",
-            "The Wildcard": "🃏",
-            "The Grinder":  "⚙",
-        }
-        arch_label = f"{arch_icons.get(archetype, '🏎')}  {archetype.upper()}"
-        arch_font  = _sc_font(13, bold=True)
-        arch_bb    = draw.textbbox((0, 0), arch_label, font=arch_font)
-        pill_w     = (arch_bb[2] - arch_bb[0]) + 20
-        pill_h     = 22
-        draw.rectangle([28, badge_y, 28 + pill_w, badge_y + pill_h],
-                       fill=_ORANGE_D, outline=_ORANGE, width=1)
-        draw.text((38, badge_y + 3), arch_label, font=arch_font, fill=_WHITE)
-        badge_y += pill_h + 10
+        at = archetype.upper()
+        d.text((44, 508), at, font=_sc_auto(d, at, 200, 17, "monob", 10),
+               fill=WEDGE_TX)
+    d.text((44, 536), "QSR HHPS  //  SEASON 1",
+           font=_sc_font(12, "mono"), fill=WEDGE_TX)
 
-    draw.text((28, badge_y), badge_text, font=badge_font, fill=_DIM)
+    # ══ RIGHT SIDE ════════════════════════════════════════════════
+    X0, XR = 400, W - 44
+    RW = XR - X0
 
-    # ── Championship position block ──────────────────────────
-    pos_y    = badge_y + 36
-    pos_font = _sc_font(72, black=True)
-    pos_str  = f"P{champ_pos}"
-    draw.text((28, pos_y), pos_str, font=pos_font, fill=_ORANGE)
-    pb        = draw.textbbox((28, pos_y), pos_str, font=pos_font)
-    pts_font  = _sc_font(16, bold=True)
-    draw.text((28, pb[3] + 4),  f"{total_pts} PTS", font=pts_font, fill=_WHITE)
-    gap_text  = "CHAMPIONSHIP LEADER" if gap == 0 else f"-{gap} PTS TO LEADER"
-    gap_color = _GOLD if gap == 0 else _DIM
-    draw.text((28, pb[3] + 24), gap_text, font=_sc_font(12), fill=gap_color)
-
-    # ── Stat grid — right column, top-aligned ────────────────
-    GRID_X  = 360
-    GRID_Y  = 20
-    COL_W   = 162
-    ROW_H   = 82
-
-    stats = [
-        ("WINS",         str(wins),                    _GOLD if wins > 0 else _WHITE),
-        ("TOP 5s",       str(top5s),                   _WHITE),
-        ("TOP 10s",      str(top10s),                  _WHITE),
-        ("RACES",        str(races),                   _WHITE),
-        ("AVG FINISH",   str(avg_finish),              _WHITE),
-        ("BEST FINISH",  f"P{best_finish}" if best_finish else "—", _ORANGE if best_finish == 1 else _WHITE),
-        ("AVG INC",      f"{avg_inc}x",                _GREEN if str(avg_inc) != "—" and float(str(avg_inc).replace("—","0") or 0) < 3 else _RED),
-        ("CLEAN RUNS",   str(clean_runs),              _GREEN if clean_runs > 0 else _WHITE),
-    ]
-
-    lbl_font = _sc_font(11, bold=True)
-
-    for idx, (label, value, color) in enumerate(stats):
-        col = idx % 2
-        row = idx // 2
-        x   = GRID_X + col * COL_W
-        y   = GRID_Y + row * ROW_H
-
-        draw.rectangle([x + 4, y + 4, x + COL_W - 8, y + ROW_H - 6],
-                        fill=(22, 22, 22), outline=_BORDER, width=1)
-        draw.text((x + 14, y + 10), label, font=lbl_font, fill=_DIM)
-        vf = _sc_auto_font(draw, value, COL_W - 28, 30, black=True)
-        draw.text((x + 14, y + 26), value, font=vf, fill=color)
-
-    # ── Narrative info strip ─────────────────────────────────
-    info_y = pb[3] + 50
-
-    if pts_trend is not None:
-        arrow   = "▲" if pts_trend >= 0 else "▼"
-        t_color = _GREEN if pts_trend >= 0 else _RED
-        draw.text((28, info_y), f"{arrow} {abs(pts_trend):+d} pts last race",
-                  font=_sc_font(12, bold=True), fill=t_color)
-        info_y += 20
-
-    if races_remaining > 0:
-        max_available = races_remaining * 66  # 55 race + 10 stage + 1 FL
-        if gap == 0:
-            math_text  = f"{races_remaining} races left to defend"
-            math_color = _GOLD
-        elif gap <= max_available:
-            math_text  = f"ALIVE — {gap} back, {max_available} pts available"
-            math_color = _GREEN
-        else:
-            math_text  = f"ELIMINATED — {gap} back, only {max_available} left"
-            math_color = _RED
-        draw.text((28, info_y), math_text,
-                  font=_sc_font(11, bold=True), fill=math_color)
-        info_y += 20
-
-    if nemesis:
-        nem_text = f"vs {nemesis}: {nemesis_record}" if nemesis_record else f"Rival: {nemesis}"
-        draw.text((28, info_y), nem_text, font=_sc_font(11), fill=_DIM)
-
-    # ── Recent form bar ──────────────────────────────────────
-    form_y    = H - 90
-    form_label_font = _sc_font(12, bold=True)
-    draw.text((28, form_y), "RECENT FORM", font=form_label_font, fill=_DIM)
-
-    bar_y   = form_y + 20
-    bar_w   = 54
-    bar_gap = 10
-    for i, pos in enumerate(recent_finishes[:5]):
-        x = 28 + i * (bar_w + bar_gap)
-        if pos == 1:       c = _GOLD
-        elif pos <= 3:     c = _ORANGE
-        elif pos <= 5:     c = (139, 69, 19)
-        elif pos <= 10:    c = (26, 74, 58)
-        else:              c = (40, 40, 40)
-        draw.rectangle([x, bar_y, x + bar_w, bar_y + 36], fill=c, outline=_BORDER, width=1)
-        pos_font_s = _sc_font(18, bold=True)
-        pb_s = draw.textbbox((0, 0), str(pos), font=pos_font_s)
-        pw   = pb_s[2] - pb_s[0]
-        draw.text((x + (bar_w - pw) // 2, bar_y + 8), str(pos),
-                  font=pos_font_s, fill=_WHITE if pos > 1 else (0, 0, 0))
-
-    if not recent_finishes:
-        draw.text((28, bar_y + 8), "No races yet", font=_sc_font(16), fill=_DIM)
-
-    # ── QSR logo — top right ─────────────────────────────────
+    # QSR logo, top right — reserves space so the name never collides
+    LOGO_W = 150
+    logo_ok = False
     logo_candidates = [
         os.path.join(_DATA_DIR, "qsr_league_logo.png"),
         os.path.join(_DATA_DIR, "B9C7F26D6B0347F5B38F8895CF7A17DC.png"),
@@ -4223,36 +4213,179 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     for logo_path in logo_candidates:
         if os.path.exists(logo_path):
             try:
-                from PIL import Image as _PILImg
                 import numpy as _np
-                logo_raw = _PILImg.open(logo_path).convert("RGBA")
-                logo_w   = 190
-                logo_h   = int(logo_raw.height * (logo_w / logo_raw.width))
-                logo_raw = logo_raw.resize((logo_w, logo_h), _PILImg.LANCZOS)
-                lx, ly   = W - logo_w - 14, 14
-                # Subtle backing panel so logo reads against the dark card bg
-                draw.rectangle([lx - 8, ly - 6, lx + logo_w + 8, ly + logo_h + 6],
-                               fill=(22, 22, 22), outline=(50, 50, 50), width=1)
-                data_arr = _np.array(logo_raw)
-                r, g, b, a = data_arr[:,:,0], data_arr[:,:,1], data_arr[:,:,2], data_arr[:,:,3]
-                mask = (r < 40) & (g < 40) & (b < 40)
-                data_arr[:,:,3] = _np.where(mask, 0, a)
-                logo_clean = _PILImg.fromarray(data_arr)
-                img.paste(logo_clean, (lx, ly), logo_clean)
+                raw = Image.open(logo_path).convert("RGBA")
+                lh  = int(raw.height * (LOGO_W / raw.width))
+                raw = raw.resize((LOGO_W, lh), Image.LANCZOS)
+                arr = _np.array(raw)
+                r, g, b, a = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
+                arr[:, :, 3] = _np.where((r < 40) & (g < 40) & (b < 40), 0, a)
+                clean = Image.fromarray(arr)
+                img.paste(clean, (XR - LOGO_W, 40), clean)
+                logo_ok = True
             except Exception:
-                pass
+                logo_ok = False
             break
 
-    # ── Footer line ──────────────────────────────────────────
-    draw.rectangle([0, H - 24, W, H], fill=(14, 14, 14))
-    footer_font = _sc_font(11)
-    footer_text = f"QSR Simulations  ·  qsr.gg  ·  Generated {datetime.utcnow().strftime('%B %d, %Y')}"
-    draw.text((28, H - 18), footer_text, font=footer_font, fill=_DIM)
+    name_max = RW - (LOGO_W + 30) if logo_ok else RW
+    nm = _sc_auto(d, driver_name.upper(), name_max, 58, "bold", 24)
+    d.text((X0, 44), driver_name.upper(), font=nm, fill=WHITE)
+    ub = 44 + _sc_th(d, driver_name.upper(), nm) + 16
+    d.rectangle([X0, ub, XR, ub + 4], fill=ORANGE)
+
+    # ── hero readouts ─────────────────────────────────────────────
+    hy = ub + 30
+    if gap == 0:
+        gap_v, gap_c = "LEADER", GOLD
+    else:
+        gap_v, gap_c = f"-{gap}", DIM
+    if pts_trend is None:
+        tr_v, tr_c = "—", DIM2
+    else:
+        tr_v = f"+{pts_trend}" if pts_trend >= 0 else str(pts_trend)
+        tr_c = GREEN if pts_trend >= 0 else RED
+
+    cells = [("POINTS", str(total_pts), WHITE),
+             ("GAP", gap_v, gap_c),
+             ("LAST RACE", tr_v, tr_c)]
+    cw = RW // 3
+    for i, (lbl, val, col) in enumerate(cells):
+        cx = X0 + i * cw
+        d.text((cx, hy), lbl, font=_sc_font(12, "monob"), fill=DIM2)
+        d.text((cx, hy + 20), val,
+               font=_sc_auto(d, val, cw - 24, 52, "bold", 20), fill=col)
+        if i:
+            d.line([(cx - 16, hy), (cx - 16, hy + 68)], fill=LINE)
+
+    # ── trace chart ───────────────────────────────────────────────
+    CY, CH = hy + 96, 258
+    CW = int(RW * 0.60)
+    CX = X0
+    d.rectangle([CX, CY, CX + CW, CY + CH], fill=PANEL, outline=LINE)
+    d.text((CX + 14, CY + 12), "FINISH POSITION TRACE",
+           font=_sc_font(12, "monob"), fill=DIM)
+
+    trace = [p for p in (recent_finishes or []) if isinstance(p, int)][:5][::-1]
+    px0, py0 = CX + 52, CY + 44
+    pw_, ph_ = CW - 72, CH - 70
+    if trace:
+        maxp = max(max(trace), 20)
+        span = max(1, maxp - 1)
+        for gv in sorted({1, maxp // 2, maxp}):
+            gy = py0 + (gv - 1) / span * ph_
+            d.line([(px0, gy), (px0 + pw_, gy)], fill=(26, 31, 33))
+            d.text((CX + 14, gy - 7), f"P{gv}", font=_sc_font(10, "mono"), fill=DIM2)
+        n = len(trace)
+        co = []
+        for i, pv in enumerate(trace):
+            x = px0 + ((i / (n - 1)) if n > 1 else 0.5) * pw_
+            y = py0 + (pv - 1) / span * ph_
+            co.append((x, y))
+        if len(co) > 1:
+            d.line(co, fill=ORANGE, width=3, joint="curve")
+        for (x, y), pv in zip(co, trace):
+            c = GOLD if pv == 1 else ORANGE if pv <= 5 else WHITE
+            d.ellipse([x - 5, y - 5, x + 5, y + 5], fill=BG, outline=c, width=3)
+            lf = _sc_font(11, "monob")
+            d.text((x - _sc_tw(d, str(pv), lf) / 2, y - 24), str(pv), font=lf, fill=c)
+    else:
+        nf = _sc_font(14, "monob")
+        d.text((CX + (CW - _sc_tw(d, "NO RACE DATA", nf)) / 2, CY + CH / 2 - 8),
+               "NO RACE DATA", font=nf, fill=DIM2)
+
+    # ── stat rail ─────────────────────────────────────────────────
+    BX = CX + CW + 22
+    d.rectangle([BX, CY, XR, CY + CH], fill=PANEL, outline=LINE)
+    denom = max(1, races)
+    by = CY + 18
+    for lbl, v, c in [("WINS", wins, GOLD), ("TOP 5", top5s, ORANGE),
+                      ("TOP 10", top10s, ORANGE), ("CLEAN", clean_runs, GREEN)]:
+        vf = _sc_font(15, "monob")
+        d.text((BX + 14, by), lbl, font=_sc_font(11, "monob"), fill=DIM)
+        d.text((XR - 14 - _sc_tw(d, str(v), vf), by - 3), str(v), font=vf, fill=WHITE)
+        d.rectangle([BX + 14, by + 20, XR - 14, by + 28],
+                    fill=(22, 26, 28), outline=(30, 36, 38))
+        fw = int((XR - 28 - BX) * min(1.0, (v or 0) / denom))
+        if fw > 2:
+            d.rectangle([BX + 14, by + 20, BX + 14 + fw, by + 28], fill=c)
+        by += 40
+
+    d.line([(BX + 14, by - 6), (XR - 14, by - 6)], fill=LINE)
+    inc_f = _sc_float(avg_inc)
+    rows = [("AVG FIN", _sc_num(avg_finish), WHITE),
+            ("AVG INC", _sc_num(avg_inc),
+             DIM2 if inc_f is None else (RED if inc_f >= 3 else GREEN)),
+            ("BEST", f"P{best_finish}" if best_finish else "—",
+             ORANGE if best_finish == 1 else WHITE)]
+    ry = by + 4
+    for lbl, val, col in rows:
+        vf = _sc_font(16, "monob")
+        d.text((BX + 14, ry + 3), lbl, font=_sc_font(11, "monob"), fill=DIM)
+        d.text((XR - 14 - _sc_tw(d, val, vf), ry), val, font=vf, fill=col)
+        ry += 24
+
+    # ── season meter ──────────────────────────────────────────────
+    sy = CY + CH + 26
+    remaining = max(0, min(14, races_remaining or 0))
+    run = 14 - remaining
+    d.text((X0, sy), "SEASON PROGRESS", font=_sc_font(11, "monob"), fill=DIM)
+
+    max_avail = remaining * 66          # 55 race + 10 stage + 1 fastest lap
+    if remaining == 0:
+        st_t, st_c = "SEASON COMPLETE", DIM
+    elif gap == 0:
+        st_t, st_c = f"LEADING  //  {remaining} TO DEFEND", GOLD
+    elif gap <= max_avail:
+        st_t, st_c = f"ALIVE  //  {max_avail} AVAILABLE", GREEN
+    else:
+        st_t, st_c = f"ELIMINATED  //  {max_avail} LEFT", RED
+    stf = _sc_font(11, "monob")
+    d.text((XR - _sc_tw(d, st_t, stf), sy), st_t, font=stf, fill=st_c)
+
+    d.rectangle([X0, sy + 18, XR, sy + 30], fill=(22, 26, 28), outline=(30, 36, 38))
+    fw = int(RW * run / 14)
+    if fw > 2:
+        d.rectangle([X0, sy + 18, X0 + fw, sy + 30], fill=ORANGE)
+    for i in range(1, 14):
+        tx = X0 + int(RW * i / 14)
+        d.line([(tx, sy + 18), (tx, sy + 30)], fill=BG)
+
+    # ══ TICKER ════════════════════════════════════════════════════
+    TB = H - 62
+    d.rectangle([0, TB, W, H], fill=(15, 18, 20))
+    d.rectangle([0, TB, W, TB + 3], fill=ORANGE)
+    d.text((44, TB + 24), "RECENT FORM", font=_sc_font(13, "monob"), fill=DIM)
+
+    bx = 220
+    chips = [p for p in (recent_finishes or []) if isinstance(p, int)][:5]
+    if chips:
+        for pos in chips:
+            c = (GOLD if pos == 1 else ORANGE if pos <= 3 else
+                 (150, 110, 40) if pos <= 5 else
+                 (40, 90, 70) if pos <= 10 else (44, 50, 52))
+            d.rounded_rectangle([bx, TB + 14, bx + 52, TB + 48], radius=6, fill=c)
+            pf = _sc_font(17, "monob")
+            d.text((bx + (52 - _sc_tw(d, str(pos), pf)) / 2, TB + 22), str(pos),
+                   font=pf, fill=((10, 10, 10) if pos <= 3 else WHITE))
+            bx += 60
+    else:
+        d.text((bx, TB + 24), "NO RACES YET", font=_sc_font(13, "mono"), fill=DIM2)
+
+    ft  = f"QSR SIMULATIONS  //  {datetime.utcnow().strftime('%Y.%m.%d')}"
+    ftf = _sc_font(11, "mono")
+    ftx = XR - _sc_tw(d, ft, ftf)
+    d.text((ftx, TB + 26), ft, font=ftf, fill=DIM2)
+
+    if nemesis:
+        rv  = f"RIVAL  //  {nemesis}" + (f"  {nemesis_record}" if nemesis_record else "")
+        rvf = _sc_auto(d, rv, max(60, ftx - bx - 40), 12, "mono", 9)
+        d.text((bx + 20, TB + 26), rv, font=rvf, fill=DIM2)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     buf.seek(0)
     return buf.getvalue()
+
 
 
 @bot.hybrid_command(name="statscard", aliases=["card", "stats"], description="Driver stats graphic — yours or any driver's")
@@ -4437,7 +4570,7 @@ async def rivalries_cmd(ctx):
         )
 
     embed.description = "\n\n".join(lines)
-    embed.set_footer(text="Heat score rises when drivers battle close. QSR High Horse Power Series.")
+    embed.set_footer(text="Heat score rises when drivers battle close. QSR High Horsepower Series.")
     await ctx.send(embed=embed)
 
 
@@ -4476,7 +4609,7 @@ async def archetypes_cmd(ctx):
         color=0xE8520A,
         timestamp=datetime.utcnow()
     )
-    embed.set_footer(text="Archetypes update after every race. QSR High Horse Power Series.")
+    embed.set_footer(text="Archetypes update after every race. QSR High Horsepower Series.")
     await ctx.send(embed=embed)
 
 
@@ -4532,7 +4665,7 @@ async def help_cmd(ctx):
         value="`/rivalries` — hottest head-to-head battles\n"
               "`/archetypes` — every driver's archetype label",
         inline=False)
-    embed.set_footer(text="QSR Full Throttle Series — Season 1")
+    embed.set_footer(text="QSR High Horsepower Series — Season 1")
     await ctx.send(embed=embed)
 
 
