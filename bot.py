@@ -794,6 +794,13 @@ POINTS SYSTEM:
 - Fastest lap bonus: +1 pt to the driver with the fastest lap (excluded if car visited garage)
 - IMPORTANT: Stages run GREEN FLAG — no caution is thrown at stage end
 - No playoffs — full season points champion only
+- DROP RACES: each driver's 2 worst results of the season are dropped. This kicks
+  in once 3+ races have run — standings count your best (races completed − 2)
+  results, not a raw season sum. A driver who's missed races has effectively
+  already used their drops on those absences, so a bad finish still counts for
+  them. This is real and intentional — if a member says their total looks lower
+  than they expected, this is almost always why. Team points use the same rule
+  per driver, from that driver's join race forward.
 - Tiebreaker: most wins → most top 5s → most top 10s → best avg finish
 
 RULES SUMMARY:
@@ -1372,7 +1379,7 @@ def add_to_history(channel_id: int, role: str, content: str):
 FAQ = {
     "rules":    "📋 Full rulebook in `#league-rules`. Bump-drafting allowed. Intentional wrecking = immediate DQ. All incidents reviewed within 48 hrs.",
     "schedule": "📅 Check `#schedule` for the full season calendar. Races every Monday at 8PM ET. Type `!schedule` for a quick list.",
-    "points":   "🏆 2026 NASCAR points — 55 pts for the win, 35 for 2nd, 34 for 3rd, down to 1 pt min. 1 stage per race (top 10 earn 10 down to 1 pts). Fastest lap = +1 bonus pt. Type `!standings` for current standings.",
+    "points":   "🏆 2026 NASCAR points — 55 pts for the win, 35 for 2nd, 34 for 3rd, down to 1 pt min. 1 stage per race (top 10 earn 10 down to 1 pts). Fastest lap = +1 bonus pt. Once 3+ races are in, everyone's 2 worst results get dropped — standings run on your best (races − 2), not a raw sum. Type `!standings` for current standings.",
     "car":      "🚗 ARCA Menards car at **110% horsepower**. No setup restrictions — bring your best.",
     "stages":   "🏁 Stages award top-10 finishers 10 down to 1 pt but **do NOT throw a caution**. Racing stays green. This is a defining rule of the QSR High Horsepower Series.",
     "register": "✍️ Head to `#registration` and follow the pinned post to sign up for the next race.",
@@ -2374,7 +2381,7 @@ async def rules_cmd(ctx):
     embed = discord.Embed(title="📋 QSR High Horsepower Series — Quick Rules", color=0xE8272A)
     embed.add_field(name="Car",                  value="ARCA Menards @ 110% HP", inline=True)
     embed.add_field(name="Race Day",             value="Mondays 8PM ET", inline=True)
-    embed.add_field(name="Points",               value="2026 NASCAR system (55 pts win, +1 fastest lap)", inline=True)
+    embed.add_field(name="Points",               value="2026 NASCAR system (55 pts win, +1 fastest lap) · 2 worst results dropped", inline=True)
     embed.add_field(name="Stages",               value="1 stage per race, green flag — no caution", inline=True)
     embed.add_field(name="Incident Limit",       value="17x per race", inline=True)
     embed.add_field(name="Intentional Wrecking", value="Immediate DQ", inline=True)
