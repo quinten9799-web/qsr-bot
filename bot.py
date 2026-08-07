@@ -4188,8 +4188,6 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     PANEL    = (15,  15,  15)
     ORANGE   = (232, 82,  10)
     ORANGE_D = (150, 52,   6)
-    WEDGE_TX = (120, 42,  10)
-    WEDGE_HI = (15,  12,  10)
     GOLD     = (255, 215,  0)
     WHITE    = (245, 245, 245)
     DIM      = (125, 132, 134)
@@ -4216,6 +4214,20 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     for gy in range(0, H, 68):
         d.line([(0, gy), (cut_top, gy)], fill=ORANGE_D, width=1)
 
+    # Ghost car-number watermark — same recipe as generate_winner_graphic():
+    # dark-orange on orange, drawn BEFORE the dark panel so the panel/seam
+    # naturally clip whatever bleeds past the wedge. This has to stay a
+    # background layer, never a bright foreground number — a bright white
+    # number here was the single biggest gap against the winner graphic,
+    # where the number is texture and the driver identity is the hero.
+    GHOST = (183, 61, 7)
+    num_str = str(car_number) if car_number not in (None, "") else "?"
+    gf = _sc_font(300, "bold")
+    gb = d.textbbox((0, 0), num_str, font=gf)
+    gw, gh = gb[2] - gb[0], gb[3] - gb[1]
+    d.text((cut_top // 2 - gw // 2 - gb[0], H // 2 - gh // 2 - gb[1] + 40),
+           num_str, font=gf, fill=GHOST)
+
     d.polygon([(cut_top - 26, 0), (W, 0), (W, H), (cut_bot - 26, H)], fill=PANEL)
     d.polygon([(cut_top - 10, 0), (cut_top + 6, 0),
                (cut_bot + 6, H), (cut_bot - 10, H)], fill=ORANGE)
@@ -4227,21 +4239,23 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         gd.polygon([(cut_top + off, 0), (cut_top + off + 9, 0),
                     (cut_bot + off, H), (cut_bot + off - 9, H)], fill=(255, 110, 40, a))
     img.paste(glow, (0, 0), glow)
+    d = ImageDraw.Draw(img)
 
-    num_str = str(car_number) if car_number not in (None, "") else "?"
-    d.text((48, 62), "CAR", font=_sc_font(20, "monob"), fill=WEDGE_TX)
-    numf = _sc_auto(d, num_str, 250, 200, "bold", 90)
-    d.text((44, 96), num_str, font=numf, fill=WHITE)
+    # ── foreground wedge content — this is the hero layer ──────────
+    d.text((48, 44), "CAR", font=_sc_font(16, "monob"), fill=WHITE)
+    car_lbl = f"#{num_str}"
+    d.text((48, 64), car_lbl, font=_sc_font(30, "bold"), fill=WHITE)
+    d.rectangle([48, 104, 48 + 120, 107], fill=GOLD)
 
-    d.text((44, 340), "CHAMPIONSHIP", font=_sc_font(14, "monob"), fill=WEDGE_TX)
+    d.text((44, 320), "CHAMPIONSHIP", font=_sc_font(14, "monob"), fill=WHITE)
     pos_str = f"P{champ_pos}" if champ_pos else "—"
-    posf = _sc_auto(d, pos_str, 230, 112, "bold", 48)
-    d.text((40, 362), pos_str, font=posf, fill=WEDGE_HI)
+    posf = _sc_auto(d, pos_str, 230, 108, "bold", 48)
+    d.text((40, 342), pos_str, font=posf, fill=(20, 15, 10))
 
     if archetype:
         at = archetype.upper()
-        d.text((44, 508), at, font=_sc_auto(d, at, 200, 17, "monob", 10), fill=WEDGE_TX)
-    d.text((44, 536), "QSR HHPS  //  SEASON 1", font=_sc_font(12, "mono"), fill=WEDGE_TX)
+        d.text((44, 508), at, font=_sc_auto(d, at, 200, 17, "monob", 10), fill=WHITE)
+    d.text((44, 536), "QSR HHPS  //  SEASON 1", font=_sc_font(12, "mono"), fill=WHITE)
 
     # speed lines bleeding off the seam
     for ly, al in [(18, 140), (34, 90), (50, 45)]:
