@@ -4077,20 +4077,26 @@ async def career_cmd(ctx, *, driver_name: str = ""):
 
 
 
+
+
 # ─────────────────────────────────────────────────────────────────
 #  STATS CARD — Pillow-generated driver graphic
-#  Broadcast wedge + telemetry readout, 1200x640 PNG. Wedge treatment
-#  (grid texture, layered glow seam, checkered accent, speed lines) is
-#  deliberately built to match generate_winner_graphic()'s visual language
-#  in qsr_app.py, so the two graphics read as the same product.
+#  Broadcast wedge + telemetry readout, 1200x640 PNG, rounded corners.
+#  Gradient wedge, glow accents, drop shadows, real QSR logo composite.
+#  Visual language matches generate_winner_graphic() in qsr_app.py.
 # ─────────────────────────────────────────────────────────────────
 
 _SC_FONT_DIRS = [
+    "/usr/share/fonts/opentype/bebas-neue",
     "/usr/share/fonts/truetype/dejavu",
     "/usr/share/fonts/truetype/liberation",
 ]
 _SC_FONT_NAMES = {
-    "bold":    ["DejaVuSans-Bold.ttf",     "LiberationSans-Bold.ttf"],
+    # Bebas Neue first for "bold" — condensed display font used for every
+    # headline/hero number on the card (name, position, points, car #).
+    # Falls back to DejaVu/Liberation bold if the apt package isn't
+    # installed, so the card never breaks — it just looks plainer.
+    "bold":    ["BebasNeue-Bold.otf", "DejaVuSans-Bold.ttf",     "LiberationSans-Bold.ttf"],
     "regular": ["DejaVuSans.ttf",          "LiberationSans-Regular.ttf"],
     "mono":    ["DejaVuSansMono.ttf",      "LiberationMono-Regular.ttf"],
     "monob":   ["DejaVuSansMono-Bold.ttf", "LiberationMono-Bold.ttf"],
@@ -4134,14 +4140,50 @@ def _sc_auto(d, t, max_w, start, weight="bold", min_size=12, step=2):
         s -= step
     return _sc_font(min_size, weight)
 
-def _sc_num(v, dash="—"):
-    return dash if v is None or v == "—" else str(v)
-
 def _sc_float(v):
     try:
         return float(v)
     except (TypeError, ValueError):
         return None
+
+def _sc_gradient(w, h, c1, c2, x0, y0, x1, y1):
+    """Linear gradient projected along an arbitrary direction."""
+    import numpy as np
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    dx, dy = x1 - x0, y1 - y0
+    length2 = max(1.0, dx * dx + dy * dy)
+    t = ((xx - x0) * dx + (yy - y0) * dy) / length2
+    t = np.clip(t, 0, 1)
+    c1 = np.array(c1, dtype=np.float32); c2 = np.array(c2, dtype=np.float32)
+    out = c1[None, None, :] + t[:, :, None] * (c2 - c1)[None, None, :]
+    return out.astype("uint8")
+
+def _sc_radial_glow(w, h, cx, cy, radius, color, max_alpha):
+    import numpy as np
+    from PIL import Image
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    dist = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2) / max(1, radius)
+    a = np.clip(1 - dist, 0, 1) ** 1.8 * max_alpha
+    layer = np.zeros((h, w, 4), dtype="uint8")
+    layer[:, :, 0], layer[:, :, 1], layer[:, :, 2] = color
+    layer[:, :, 3] = a.astype("uint8")
+    return Image.fromarray(layer, "RGBA")
+
+def _sc_shadow_text(img, xy, text, font, fill, blur=4, offset=(0, 3), alpha=110,
+                    shadow_color=(0, 0, 0)):
+    """Draw text with a soft drop shadow for depth."""
+    from PIL import Image, ImageDraw, ImageFilter
+    x, y = xy
+    d = ImageDraw.Draw(img)
+    bbox = d.textbbox((0, 0), text, font=font)
+    pad = blur * 3 + 2
+    layer = Image.new("RGBA", (bbox[2] - bbox[0] + pad * 2, bbox[3] - bbox[1] + pad * 2), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    ld.text((pad - bbox[0], pad - bbox[1]), text, font=font, fill=(*shadow_color, alpha))
+    if blur > 0:
+        layer = layer.filter(ImageFilter.GaussianBlur(blur))
+    img.paste(layer, (x - pad + offset[0], y - pad + offset[1]), layer)
+    ImageDraw.Draw(img).text((x, y), text, font=font, fill=fill)
 
 def _sc_strip_dark_bg(img, threshold=35):
     """Remove near-black pixels from a logo for transparent composite —
@@ -4155,14 +4197,11 @@ def _sc_strip_dark_bg(img, threshold=35):
     arr[:, :, 3] = np.where(mask, 0, a)
     return Image.fromarray(arr)
 
-def _sc_checkered(draw, x1, y1, x2, y2, sq=20):
-    cols = (x2 - x1) // sq + 1
-    rows = (y2 - y1) // sq + 1
-    for row in range(rows):
-        for col in range(cols):
-            color = (26, 26, 26) if (row + col) % 2 == 0 else (16, 16, 16)
-            rx, ry = x1 + col * sq, y1 + row * sq
-            draw.rectangle([rx, ry, min(rx + sq - 1, x2), min(ry + sq - 1, y2)], fill=color)
+def _sc_rounded_mask(w, h, r):
+    from PIL import Image, ImageDraw
+    m = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(m).rounded_rectangle([0, 0, w - 1, h - 1], radius=r, fill=255)
+    return m
 
 
 def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
@@ -4179,48 +4218,56 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     recent_finishes: finish positions, MOST RECENT FIRST.
     """
     try:
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFilter
     except ImportError:
         return b""
 
     W, H = 1200, 640
-    BG       = (8,   8,   8)
-    PANEL    = (15,  15,  15)
-    ORANGE   = (232, 82,  10)
+    RADIUS   = 22
+    BG       = (7,   7,   8)
+    BG2      = (13,  13,  14)
+    PANEL    = (16,  16,  17)
+    PANEL_HI = (21,  21,  22)
+    ORANGE   = (237, 92,  17)
+    ORANGE2  = (255, 138, 40)
     ORANGE_D = (150, 52,   6)
-    GOLD     = (255, 215,  0)
-    WHITE    = (245, 245, 245)
-    DIM      = (125, 132, 134)
-    DIM2     = (78,  85,  87)
-    LINE     = (42,  42,  42)
-    GREEN    = (72,  199, 116)
-    RED      = (235, 87,  87)
+    GOLD     = (255, 200, 40)
+    WHITE    = (248, 248, 248)
+    DIM      = (140, 144, 148)
+    DIM2     = (88,  92,  96)
+    LINE     = (36,  36,  38)
+    GREEN    = (86,  214, 130)
+    RED      = (240, 95,  95)
 
-    img = Image.new("RGB", (W, H), BG)
-    d   = ImageDraw.Draw(img)
+    base = _sc_gradient(W, H, BG, BG2, 0, 0, 0, H)
+    img  = Image.fromarray(base, "RGB").convert("RGBA")
+    d    = ImageDraw.Draw(img)
 
     for x in range(0, W, 40):
-        d.line([(x, 0), (x, H)], fill=(14, 14, 14))
+        d.line([(x, 0), (x, H)], fill=(13, 13, 14))
     for y in range(0, H, 40):
-        d.line([(0, y), (W, y)], fill=(14, 14, 14))
+        d.line([(0, y), (W, y)], fill=(13, 13, 14))
 
-    # ══ WEDGE — layered to match generate_winner_graphic()'s treatment ═══
+    # ══ WEDGE ═══════════════════════════════════════════════════════
     cut_top, cut_bot = 340, 250
 
-    d.polygon([(0, 0), (cut_top, 0), (cut_bot, H), (0, H)], fill=ORANGE)
+    wedge_grad = _sc_gradient(cut_top + 40, H, (255, 150, 60), (200, 58, 8), 0, 0, cut_top, H)
+    wedge_layer = Image.fromarray(wedge_grad, "RGB").convert("RGBA")
+    wmask = Image.new("L", (cut_top + 40, H), 0)
+    ImageDraw.Draw(wmask).polygon([(0, 0), (cut_top, 0), (cut_bot, H), (0, H)], fill=255)
+    img.paste(wedge_layer, (0, 0), wmask)
+    d = ImageDraw.Draw(img)
 
     for gx in range(0, cut_top, 68):
         d.line([(gx, 0), (gx, H)], fill=ORANGE_D, width=1)
     for gy in range(0, H, 68):
         d.line([(0, gy), (cut_top, gy)], fill=ORANGE_D, width=1)
 
-    # Ghost car-number watermark — same recipe as generate_winner_graphic():
-    # dark-orange on orange, drawn BEFORE the dark panel so the panel/seam
-    # naturally clip whatever bleeds past the wedge. This has to stay a
-    # background layer, never a bright foreground number — a bright white
-    # number here was the single biggest gap against the winner graphic,
-    # where the number is texture and the driver identity is the hero.
-    GHOST = (183, 61, 7)
+    # Ghost car-number watermark — dark-orange on the gradient, drawn
+    # BEFORE the dark panel so the panel/seam naturally clip whatever
+    # bleeds past the wedge. Stays a background layer, never a bright
+    # foreground number — the driver identity is the hero, not the digit.
+    GHOST = (200, 80, 20)
     num_str = str(car_number) if car_number not in (None, "") else "?"
     gf = _sc_font(300, "bold")
     gb = d.textbbox((0, 0), num_str, font=gf)
@@ -4228,60 +4275,64 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     d.text((cut_top // 2 - gw // 2 - gb[0], H // 2 - gh // 2 - gb[1] + 40),
            num_str, font=gf, fill=GHOST)
 
-    d.polygon([(cut_top - 26, 0), (W, 0), (W, H), (cut_bot - 26, H)], fill=PANEL)
+    pmask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(pmask).polygon(
+        [(cut_top - 26, 0), (W, 0), (W, H), (cut_bot - 26, H)], fill=255)
+    full_panel = Image.fromarray(
+        _sc_gradient(W, H, (19, 19, 20), (9, 9, 10), 0, 0, 0, H), "RGB").convert("RGBA")
+    img.paste(full_panel, (0, 0), pmask)
+    d = ImageDraw.Draw(img)
+
     d.polygon([(cut_top - 10, 0), (cut_top + 6, 0),
                (cut_bot + 6, H), (cut_bot - 10, H)], fill=ORANGE)
 
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
-    for i, a in enumerate([90, 55, 30, 14]):
-        off = 6 + i * 9
-        gd.polygon([(cut_top + off, 0), (cut_top + off + 9, 0),
-                    (cut_bot + off, H), (cut_bot + off - 9, H)], fill=(255, 110, 40, a))
+    for i, a in enumerate([100, 65, 38, 18, 8]):
+        off = 6 + i * 8
+        gd.polygon([(cut_top + off, 0), (cut_top + off + 8, 0),
+                    (cut_bot + off, H), (cut_bot + off - 8, H)], fill=(255, 120, 45, a))
     img.paste(glow, (0, 0), glow)
     d = ImageDraw.Draw(img)
 
-    # ── foreground wedge content — this is the hero layer ──────────
-    d.text((48, 44), "CAR", font=_sc_font(16, "monob"), fill=WHITE)
+    tl_glow = _sc_radial_glow(W, H, 60, 20, 420, (255, 190, 110), 70)
+    img.paste(tl_glow, (0, 0), tl_glow)
+    d = ImageDraw.Draw(img)
+
+    # ── foreground wedge content — the hero layer ───────────────────
+    _sc_shadow_text(img, (48, 44), "CAR", _sc_font(16, "monob"), WHITE, blur=3, offset=(0, 2), alpha=120)
     car_lbl = f"#{num_str}"
-    d.text((48, 64), car_lbl, font=_sc_font(30, "bold"), fill=WHITE)
+    _sc_shadow_text(img, (48, 64), car_lbl, _sc_font(30, "bold"), WHITE, blur=5, offset=(0, 3), alpha=150)
+    d = ImageDraw.Draw(img)
     d.rectangle([48, 104, 48 + 120, 107], fill=GOLD)
 
-    d.text((44, 320), "CHAMPIONSHIP", font=_sc_font(14, "monob"), fill=WHITE)
+    _sc_shadow_text(img, (44, 320), "CHAMPIONSHIP", _sc_font(14, "monob"), WHITE, blur=3, offset=(0, 2), alpha=110)
+    d = ImageDraw.Draw(img)
     pos_str = f"P{champ_pos}" if champ_pos else "—"
     posf = _sc_auto(d, pos_str, 230, 108, "bold", 48)
-    d.text((40, 342), pos_str, font=posf, fill=(20, 15, 10))
+    d.text((40, 342), pos_str, font=posf, fill=(12, 9, 6))
 
     if archetype:
         at = archetype.upper()
-        d.text((44, 508), at, font=_sc_auto(d, at, 200, 17, "monob", 10), fill=WHITE)
-    d.text((44, 536), "QSR HHPS  //  SEASON 1", font=_sc_font(12, "mono"), fill=WHITE)
+        _sc_shadow_text(img, (44, 508), at, _sc_auto(d, at, 200, 17, "monob", 10),
+                        WHITE, blur=3, offset=(0, 2), alpha=110)
+        d = ImageDraw.Draw(img)
+    d.text((44, 536), "QSR HHPS  //  SEASON 1", font=_sc_font(12, "mono"), fill=(230, 230, 230))
 
-    # speed lines bleeding off the seam
     for ly, al in [(18, 140), (34, 90), (50, 45)]:
         ln = Image.new("RGBA", (W, 1), (0, 0, 0, 0))
-        ld = ImageDraw.Draw(ln)
-        ld.line([(cut_top + 40, 0), (W, 0)], fill=(*ORANGE, al), width=1)
+        ImageDraw.Draw(ln).line([(cut_top + 40, 0), (W, 0)], fill=(*ORANGE, al), width=1)
         img.paste(ln, (0, ly), ln)
-
-    # checkered corner accent, dimmed, bottom-right
-    try:
-        ck = Image.new("RGB", (170, 60), PANEL)
-        ckd = ImageDraw.Draw(ck)
-        _sc_checkered(ckd, 0, 0, 170, 60, sq=20)
-        dark_overlay = Image.new("RGBA", ck.size, (0, 0, 0, 150))
-        ck = Image.composite(Image.new("RGB", ck.size, (0, 0, 0)), ck, dark_overlay)
-        img.paste(ck, (W - 170, H - 100))
-    except Exception:
-        pass
+    d = ImageDraw.Draw(img)
 
     # ══ RIGHT SIDE ════════════════════════════════════════════════
     X0, XR = 400, W - 44
     RW = XR - X0
 
-    # QSR logo, top right — same dark-strip technique as the winner graphic.
-    # Reserves space so the name auto-shrinks around it instead of colliding.
-    LOGO_W = 130
+    # QSR logo, top right — real PNG if the repo has it, dark-strip
+    # composited with a soft backing glow. Silently skipped if missing,
+    # same graceful-degradation as before.
+    LOGO_W = 138
     logo_ok = False
     logo_candidates = [
         os.path.join(_DATA_DIR, "qsr_league_logo.png"),
@@ -4296,7 +4347,12 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
                 clean = _sc_strip_dark_bg(raw, threshold=35)
                 lh = int(clean.height * (LOGO_W / clean.width))
                 clean = clean.resize((LOGO_W, lh), Image.LANCZOS)
-                img.paste(clean, (XR - LOGO_W, 36), clean)
+                lx, ly = XR - LOGO_W, 34
+                lglow = _sc_radial_glow(W, H, lx + LOGO_W // 2, ly + lh // 2, 110, (255, 140, 60), 55)
+                img.paste(lglow, (0, 0), lglow)
+                d = ImageDraw.Draw(img)
+                img.paste(clean, (lx, ly), clean)
+                d = ImageDraw.Draw(img)
                 logo_ok = True
             except Exception:
                 logo_ok = False
@@ -4304,12 +4360,17 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
 
     name_max = RW - (LOGO_W + 30) if logo_ok else RW
     nm = _sc_auto(d, driver_name.upper(), name_max, 58, "bold", 24)
-    d.text((X0, 44), driver_name.upper(), font=nm, fill=WHITE)
+    _sc_shadow_text(img, (X0, 44), driver_name.upper(), nm, WHITE, blur=4, offset=(0, 3), alpha=110)
+    d = ImageDraw.Draw(img)
     ub = 44 + _sc_th(d, driver_name.upper(), nm) + 16
     d.rectangle([X0, ub, XR, ub + 4], fill=ORANGE)
+    ubg = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(ubg).rectangle([X0, ub + 4, XR, ub + 10], fill=(*ORANGE, 60))
+    img.paste(ubg, (0, 0), ubg)
+    d = ImageDraw.Draw(img)
 
     # ── hero readouts ─────────────────────────────────────────────
-    hy = ub + 30
+    hy = ub + 26
     if gap == 0:
         gap_v, gap_c = "LEADER", GOLD
     else:
@@ -4327,49 +4388,51 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     for i, (lbl, val, col) in enumerate(cells):
         cx = X0 + i * cw
         d.text((cx, hy), lbl, font=_sc_font(12, "monob"), fill=DIM2)
-        d.text((cx, hy + 20), val,
-               font=_sc_auto(d, val, cw - 24, 52, "bold", 20), fill=col)
+        vf = _sc_auto(d, val, cw - 24, 52, "bold", 20)
+        _sc_shadow_text(img, (cx, hy + 20), val, vf, col, blur=5, offset=(0, 3), alpha=100)
+        d = ImageDraw.Draw(img)
         if i:
             d.line([(cx - 16, hy), (cx - 16, hy + 68)], fill=LINE)
 
     # ── trace chart ───────────────────────────────────────────────
-    CY, CH = hy + 96, 258
-    CW = int(RW * 0.60)
+    CY, CH = hy + 90, 240
+    CW = int(RW * 0.58)
     CX = X0
-    d.rectangle([CX, CY, CX + CW, CY + CH], fill=PANEL, outline=LINE)
-    d.text((CX + 14, CY + 12), "FINISH POSITION TRACE",
-           font=_sc_font(12, "monob"), fill=DIM)
+    d.rounded_rectangle([CX, CY, CX + CW, CY + CH], radius=10, fill=PANEL, outline=LINE)
+    d.text((CX + 16, CY + 14), "FINISH POSITION TRACE", font=_sc_font(12, "monob"), fill=DIM)
 
     trace = [p for p in (recent_finishes or []) if isinstance(p, int)][:5][::-1]
-    px0, py0 = CX + 52, CY + 44
-    pw_, ph_ = CW - 72, CH - 70
+    px0, py0 = CX + 52, CY + 46
+    pw_, ph_ = CW - 72, CH - 74
     if len(trace) >= 2:
         maxp = max(max(trace), 20)
         span = max(1, maxp - 1)
         for gv in sorted({1, maxp // 2, maxp}):
             gy = py0 + (gv - 1) / span * ph_
-            d.line([(px0, gy), (px0 + pw_, gy)], fill=(24, 24, 24))
-            d.text((CX + 14, gy - 7), f"P{gv}", font=_sc_font(10, "mono"), fill=DIM2)
+            d.line([(px0, gy), (px0 + pw_, gy)], fill=(26, 26, 27))
+            d.text((CX + 16, gy - 7), f"P{gv}", font=_sc_font(10, "mono"), fill=DIM2)
         n = len(trace)
-        co = []
-        for i, pv in enumerate(trace):
-            x = px0 + (i / (n - 1)) * pw_
-            y = py0 + (pv - 1) / span * ph_
-            co.append((x, y))
-        d.line(co, fill=ORANGE, width=3, joint="curve")
+        co = [(px0 + (i / (n - 1)) * pw_, py0 + (pv - 1) / span * ph_) for i, pv in enumerate(trace)]
+        glow_line = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        gld = ImageDraw.Draw(glow_line)
+        gld.line(co, fill=(*ORANGE, 90), width=8, joint="curve")
+        glow_line = glow_line.filter(ImageFilter.GaussianBlur(4))
+        img.paste(glow_line, (0, 0), glow_line)
+        d = ImageDraw.Draw(img)
+        d.line(co, fill=ORANGE2, width=3, joint="curve")
         for (x, y), pv in zip(co, trace):
-            c = GOLD if pv == 1 else ORANGE if pv <= 5 else WHITE
-            d.ellipse([x - 5, y - 5, x + 5, y + 5], fill=BG, outline=c, width=3)
+            c = GOLD if pv == 1 else ORANGE2 if pv <= 5 else WHITE
+            d.ellipse([x - 5, y - 5, x + 5, y + 5], fill=(9, 9, 10), outline=c, width=3)
             lf = _sc_font(11, "monob")
             d.text((x - _sc_tw(d, str(pv), lf) / 2, y - 24), str(pv), font=lf, fill=c)
     elif len(trace) == 1:
-        # A single point on a full P1-P20 grid reads as broken, not sparse —
-        # a purpose-built layout for the very-early-season case instead.
         pv = trace[0]
-        cxm, cym = CX + CW // 2, CY + CH // 2 + 6
-        d.text((CX + 14, CY + 34), "1 RACE ON THE BOARD",
-               font=_sc_font(11, "mono"), fill=DIM2)
-        c = GOLD if pv == 1 else ORANGE if pv <= 5 else WHITE
+        cxm, cym = CX + CW // 2, CY + CH // 2 + 8
+        d.text((CX + 16, CY + 34), "1 RACE ON THE BOARD", font=_sc_font(11, "mono"), fill=DIM2)
+        c = GOLD if pv == 1 else ORANGE2 if pv <= 5 else WHITE
+        rglow = _sc_radial_glow(W, H, cxm, cym, 70, c, 70)
+        img.paste(rglow, (0, 0), rglow)
+        d = ImageDraw.Draw(img)
         big = _sc_font(46, "bold")
         label = f"P{pv}"
         lw = _sc_tw(d, label, big)
@@ -4383,42 +4446,41 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
         d.text((CX + (CW - _sc_tw(d, "NO RACE DATA", nf)) / 2, CY + CH / 2 - 8),
                "NO RACE DATA", font=nf, fill=DIM2)
 
-    # ── stat rail ─────────────────────────────────────────────────
-    BX = CX + CW + 22
-    d.rectangle([BX, CY, XR, CY + CH], fill=PANEL, outline=LINE)
-    denom = max(1, races)
-    by = CY + 18
-    for lbl, v, c in [("WINS", wins, GOLD), ("TOP 5", top5s, ORANGE),
-                      ("TOP 10", top10s, ORANGE), ("CLEAN", clean_runs, GREEN)]:
-        vf = _sc_font(15, "monob")
-        d.text((BX + 14, by), lbl, font=_sc_font(11, "monob"), fill=DIM)
-        d.text((XR - 14 - _sc_tw(d, str(v), vf), by - 3), str(v), font=vf, fill=WHITE)
-        d.rectangle([BX + 14, by + 20, XR - 14, by + 28],
-                    fill=(20, 20, 20), outline=(32, 32, 32))
-        fw = int((XR - 28 - BX) * min(1.0, (v or 0) / denom))
-        if fw > 2:
-            d.rectangle([BX + 14, by + 20, BX + 14 + fw, by + 28], fill=c)
-        by += 40
+    # ── stat cards ────────────────────────────────────────────────
+    BX = CX + CW + 20
+    stats = [("WINS", wins, GOLD if wins > 0 else WHITE),
+             ("TOP 5", top5s, WHITE),
+             ("TOP 10", top10s, WHITE),
+             ("CLEAN", clean_runs, GREEN if clean_runs > 0 else WHITE)]
+    sh = (CH - 12 * 3) // 4
+    sy = CY
+    for lbl, v, c in stats:
+        d.rounded_rectangle([BX, sy, XR, sy + sh], radius=8, fill=PANEL_HI, outline=LINE)
+        d.text((BX + 14, sy + sh // 2 - 16), lbl, font=_sc_font(11, "monob"), fill=DIM)
+        vf = _sc_font(24, "bold")
+        _sc_shadow_text(img, (XR - 14 - _sc_tw(d, str(v), vf), sy + sh // 2 - 14),
+                        str(v), vf, c, blur=4, offset=(0, 2), alpha=90)
+        d = ImageDraw.Draw(img)
+        sy += sh + 12
 
-    d.line([(BX + 14, by - 6), (XR - 14, by - 6)], fill=LINE)
+    # ── secondary readouts ───────────────────────────────────────
+    ry2 = CY + CH + 16
     inc_f = _sc_float(avg_inc)
-    rows = [("AVG FIN", _sc_num(avg_finish), WHITE),
-            ("AVG INC", _sc_num(avg_inc),
-             DIM2 if inc_f is None else (RED if inc_f >= 3 else GREEN)),
-            ("BEST", f"P{best_finish}" if best_finish else "—",
-             ORANGE if best_finish == 1 else WHITE)]
-    ry = by + 4
-    for lbl, val, col in rows:
-        vf = _sc_font(16, "monob")
-        d.text((BX + 14, ry + 3), lbl, font=_sc_font(11, "monob"), fill=DIM)
-        d.text((XR - 14 - _sc_tw(d, val, vf), ry), val, font=vf, fill=col)
-        ry += 24
+    ic = DIM2 if inc_f is None else (RED if inc_f >= 3 else GREEN)
+    best_str = f"P{best_finish}" if best_finish else "—"
+    trio = [("AVG FIN", str(avg_finish), WHITE), ("AVG INC", str(avg_inc), ic),
+            ("BEST", best_str, ORANGE2 if best_finish == 1 else WHITE)]
+    tcw = RW // 3
+    for i, (lbl, val, col) in enumerate(trio):
+        cx = X0 + i * tcw
+        d.text((cx, ry2), lbl, font=_sc_font(10, "monob"), fill=DIM2)
+        d.text((cx, ry2 + 16), val, font=_sc_font(16, "monob"), fill=col)
 
     # ── season meter ──────────────────────────────────────────────
-    sy = CY + CH + 26
+    sy2 = ry2 + 46
     remaining = max(0, min(14, races_remaining or 0))
     run = 14 - remaining
-    d.text((X0, sy), "SEASON PROGRESS", font=_sc_font(11, "monob"), fill=DIM)
+    d.text((X0, sy2), "SEASON PROGRESS", font=_sc_font(11, "monob"), fill=DIM)
 
     max_avail = remaining * 66          # 55 race + 10 stage + 1 fastest lap
     if remaining == 0:
@@ -4430,54 +4492,67 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     else:
         st_t, st_c = f"ELIMINATED  //  {max_avail} LEFT", RED
     stf = _sc_font(11, "monob")
-    d.text((XR - _sc_tw(d, st_t, stf), sy), st_t, font=stf, fill=st_c)
+    d.text((XR - _sc_tw(d, st_t, stf), sy2 - 24), st_t, font=stf, fill=st_c)
 
-    d.rectangle([X0, sy + 18, XR, sy + 30], fill=(20, 20, 20), outline=(32, 32, 32))
+    d.rounded_rectangle([X0, sy2 + 18, XR, sy2 + 30], radius=6, fill=(20, 20, 21), outline=(32, 32, 34))
     fw = int(RW * run / 14)
-    if fw > 2:
-        d.rectangle([X0, sy + 18, X0 + fw, sy + 30], fill=ORANGE)
+    if fw > 10:
+        mgl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        mgld = ImageDraw.Draw(mgl)
+        mgld.rounded_rectangle([X0, sy2 + 16, X0 + fw, sy2 + 32], radius=8, fill=(*ORANGE, 60))
+        mgl = mgl.filter(ImageFilter.GaussianBlur(3))
+        img.paste(mgl, (0, 0), mgl)
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle([X0, sy2 + 18, X0 + fw, sy2 + 30], radius=6, fill=ORANGE)
     for i in range(1, 14):
         tx = X0 + int(RW * i / 14)
-        d.line([(tx, sy + 18), (tx, sy + 30)], fill=BG)
+        d.line([(tx, sy2 + 18), (tx, sy2 + 30)], fill=(9, 9, 10))
 
     # ══ TICKER ════════════════════════════════════════════════════
-    TB = H - 62
-    d.rectangle([0, TB, W, H], fill=(13, 13, 13))
+    TB = H - 64
+    d.rectangle([0, TB, W, H], fill=(11, 11, 12))
     d.rectangle([0, TB, W, TB + 3], fill=ORANGE)
-    d.text((44, TB + 24), "RECENT FORM", font=_sc_font(13, "monob"), fill=DIM)
+    d.text((44, TB + 25), "RECENT FORM", font=_sc_font(13, "monob"), fill=DIM)
 
     bx = 220
     chips = [p for p in (recent_finishes or []) if isinstance(p, int)][:5]
     if chips:
         for pos in chips:
-            c = (GOLD if pos == 1 else ORANGE if pos <= 3 else
+            c = (GOLD if pos == 1 else ORANGE2 if pos <= 3 else
                  (150, 110, 40) if pos <= 5 else
-                 (40, 90, 70) if pos <= 10 else (36, 36, 36))
-            d.rounded_rectangle([bx, TB + 14, bx + 52, TB + 48], radius=6, fill=c)
+                 (40, 90, 70) if pos <= 10 else (34, 34, 36))
+            d.rounded_rectangle([bx, TB + 14, bx + 52, TB + 50], radius=7, fill=c)
             pf = _sc_font(17, "monob")
-            d.text((bx + (52 - _sc_tw(d, str(pos), pf)) / 2, TB + 22), str(pos),
+            d.text((bx + (52 - _sc_tw(d, str(pos), pf)) / 2, TB + 23), str(pos),
                    font=pf, fill=((10, 10, 10) if pos <= 3 else WHITE))
             bx += 60
     else:
-        d.text((bx, TB + 24), "NO RACES YET", font=_sc_font(13, "mono"), fill=DIM2)
+        d.text((bx, TB + 25), "NO RACES YET", font=_sc_font(13, "mono"), fill=DIM2)
 
     ft  = f"QSR SIMULATIONS  //  {datetime.utcnow().strftime('%Y.%m.%d')}"
     ftf = _sc_font(11, "mono")
     ftx = XR - _sc_tw(d, ft, ftf)
-    d.text((ftx, TB + 26), ft, font=ftf, fill=DIM2)
+    d.text((ftx, TB + 27), ft, font=ftf, fill=DIM2)
 
     if nemesis:
-        rv  = f"RIVAL  //  {nemesis}" + (f"  {nemesis_record}" if nemesis_record else "")
+        rv = f"RIVAL  //  {nemesis}" + (f"  {nemesis_record}" if nemesis_record else "")
         rvf = _sc_auto(d, rv, max(60, ftx - bx - 40), 12, "mono", 9)
-        d.text((bx + 20, TB + 26), rv, font=rvf, fill=DIM2)
+        d.text((bx + 20, TB + 27), rv, font=rvf, fill=DIM2)
+
+    # ── round the corners + thin outer edge ──────────────────────
+    mask = _sc_rounded_mask(W, H, RADIUS)
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    out.paste(img, (0, 0), mask)
+    ImageDraw.Draw(out).rounded_rectangle([0, 0, W - 1, H - 1], radius=RADIUS,
+                                          outline=(0, 0, 0, 120), width=2)
+
+    final = Image.new("RGB", (W, H), (5, 5, 5))
+    final.paste(out, (0, 0), out)
 
     buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
+    final.save(buf, format="PNG", optimize=True)
     buf.seek(0)
     return buf.getvalue()
-
-
-
 
 @bot.hybrid_command(name="statscard", aliases=["card", "stats"], description="Driver stats graphic — yours or any driver's")
 @has_arca()
