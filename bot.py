@@ -4330,16 +4330,28 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
     RW = XR - X0
 
     # QSR logo, top right — real PNG if the repo has it, dark-strip
-    # composited with a soft backing glow. Silently skipped if missing,
-    # same graceful-degradation as before.
+    # composited with a soft backing glow. Silently skipped if missing.
+    #
+    # Candidate order matters: _DATA_DIR is Railway's persistent /data
+    # volume — that's where data.json etc. live, but it is NOT where a
+    # git-committed file like the logo ends up. The repo checkout lives
+    # next to bot.py itself, so that's resolved via __file__ first — this
+    # works regardless of the container's working directory, which a bare
+    # relative filename does not.
     LOGO_W = 138
     logo_ok = False
+    _sc_module_dir = os.path.dirname(os.path.abspath(__file__))
     logo_candidates = [
+        os.path.join(_sc_module_dir, "qsr_league_logo.png"),
+        os.path.join(_sc_module_dir, "B9C7F26D6B0347F5B38F8895CF7A17DC.png"),
         os.path.join(_DATA_DIR, "qsr_league_logo.png"),
         os.path.join(_DATA_DIR, "B9C7F26D6B0347F5B38F8895CF7A17DC.png"),
         "qsr_league_logo.png",
         "B9C7F26D6B0347F5B38F8895CF7A17DC.png",
     ]
+    _sc_logo_found = next((p for p in logo_candidates if os.path.exists(p)), None)
+    if not _sc_logo_found:
+        print(f"[statscard] logo not found. Checked: {logo_candidates}")
     for logo_path in logo_candidates:
         if os.path.exists(logo_path):
             try:
@@ -4354,8 +4366,10 @@ def generate_statscard(driver_name: str, car_number: str, champ_pos: int,
                 img.paste(clean, (lx, ly), clean)
                 d = ImageDraw.Draw(img)
                 logo_ok = True
-            except Exception:
+                print(f"[statscard] logo loaded from {logo_path}")
+            except Exception as e:
                 logo_ok = False
+                print(f"[statscard] logo found at {logo_path} but failed to composite: {e}")
             break
 
     name_max = RW - (LOGO_W + 30) if logo_ok else RW
