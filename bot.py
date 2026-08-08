@@ -617,6 +617,9 @@ def save_data(data: dict):
 STARTING_BALANCE = 100
 PROP_ODDS        = "+100"   # flat even-money line on both sides of a two-outcome prop
 MIN_STAKE        = 1
+MIN_RACES_FOR_PRIZE = 6   # must have placed a bet in at least this many races
+                          # to be eligible for the season-end prize — otherwise
+                          # someone who never plays just sits on $100 and "wins"
 N_SIMULATIONS    = 8000     # Monte Carlo draws for the Plackett-Luce field simulation
 MANUFACTURER_MAX_STAKE      = 5
 MANUFACTURER_COVERAGE_FLOOR = 0.7   # need manufacturer data for ≥70% of the confirmed field
@@ -640,6 +643,15 @@ def record_ledger(data: dict, discord_id: str, race_num: int, delta: int, reason
     hist = econ.setdefault("history", {})
     did  = str(discord_id)
     hist.setdefault(did, []).append({"race": race_num, "delta": delta, "reason": reason})
+
+def races_bet_on(data: dict, discord_id: str) -> int:
+    """Count of distinct races a driver has placed at least one bet in —
+    win/loss doesn't matter, only participation. This is what gates season-
+    prize eligibility: sitting on the untouched starting balance shouldn't
+    be able to win over someone who actually played and took some losses."""
+    did = str(discord_id)
+    return sum(1 for race_bets in data.get("bets", {}).values()
+               if any(b.get("discord_id") == did for b in race_bets))
 
 def resolve_driver_by_name(reg: dict, name: str):
     """Fuzzy-match a typed name against the CONFIRMED roster, same
@@ -1006,7 +1018,7 @@ def format_odds_embed(board: dict) -> discord.Embed:
     ml       = sorted(board.get("moneyline", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)
     embed = discord.Embed(
         title=f"🎰 Dale's Book — Race {race_num} at {track}",
-        description="For fun only — no real money, no real stakes. Season bankroll leader wins free entry next series.",
+        description="For fun only — no real money, no real stakes. Open all week, locks at lobby-up. Season bankroll leader wins free entry next series.",
         color=0x2ECC71,
     )
     if ml:
@@ -1035,7 +1047,8 @@ def format_odds_embed(board: dict) -> discord.Embed:
         name="How to play",
         value="`/wager` to place a pick · `/balance` to check your stack · `/moneyboard` for the season leaderboard.\n"
               "Stake caps scale with how likely the pick is — favorites cap low, longshots cap higher.\n"
-              "You can't bet on yourself or a teammate — everybody's picks have to be clean.",
+              "You can't bet on yourself or a teammate — everybody's picks have to be clean.\n"
+              f"Bet in {MIN_RACES_FOR_PRIZE}+ races to be eligible for the season prize.",
         inline=False)
     embed.set_footer(text="Dale Dollars have no cash value and can't be purchased.")
     return embed
@@ -1943,6 +1956,7 @@ FAQ = {
 
 ANNOUNCEMENT_CHANNEL_ID = 1173977366117232731
 ARCA_ROLE_ID            = 1173980377279377538
+SPORTSBOOK_CHANNEL      = "dales-sportsbook"   # Dale's Book odds/settlement posts live here
 
 SCHEDULE = [
     {"race":1,  "date":"August 3, 2026",        "track":"Michigan International Speedway"},
@@ -2560,20 +2574,29 @@ async def race_prediction():
         f"Hop in and get your laps. See you out there. 🏁"
     )
 
-    # Part 2 — Dale's Book odds board. Pure math, no AI dependency, so it
-    # posts even if ANTHROPIC_API_KEY is unset. If the board fails its own
-    # consistency check, it does NOT get posted — a wrong board is worse
-    # than no board.
-    reg = load_reg()
-    board, problems = build_odds_board(data, reg)
+    # Part 2 — lock Dale's Book. The board itself now opens on Tuesday (see
+    # weekly_settlement below) and stays open all week, so by the time this
+    # fires — 1 hour before green flag — the job here is just to close it
+    # before anyone can bet with live-race knowledge. We still read the
+    # existing board (not rebuild it) to grab the favorite for Dale's
+    # prediction below.
+    reg   = load_reg()
+    board = data.get("odds_board") or {}
     favorite = None
-    if problems:
-        print(f"⚠️ Dale's Book validation FAILED for Race {race_num}, not posting: {problems}")
+    if board.get("race_number") == race_num and board.get("moneyline"):
+        favorite = max(board["moneyline"].items(), key=lambda kv: kv[1]["prob"])[0]
+        if board.get("open"):
+            board["open"] = False
+            save_data(data)
+            sb_ch = discord.utils.get(guild.text_channels, name=SPORTSBOOK_CHANNEL)
+            if sb_ch:
+                await sb_ch.send(
+                    f"🔒 **Dale's Book is closed** for Race {race_num}. "
+                    f"Good luck out there — settlement posts Tuesday at noon ET."
+                )
     else:
-        save_data(data)
-        if board.get("moneyline"):
-            favorite = max(board["moneyline"].items(), key=lambda kv: kv[1]["prob"])[0]
-        await ch.send(embed=format_odds_embed(board))
+        print(f"⚠️ No open Dale's Book board found for Race {race_num} at lock time — "
+              f"nothing to close (was it opened Tuesday?).")
 
     # Part 3 — Dale's narrative prediction, grounded in the actual favorite
     # from the odds engine rather than pure vibes.
@@ -2631,12 +2654,17 @@ async def weekly_settlement():
         return   # results not posted yet — try again next tick today
     save_data(data)
 
-    ch = discord.utils.get(guild.text_channels, name="pitlane")
+    ch = discord.utils.get(guild.text_channels, name=SPORTSBOOK_CHANNEL)
     if ch:
         winners = sum(1 for c in changes if c[3] == "won")
         bal = data.get("economy", {}).get("balances", {})
-        ranked = sorted(bal.items(), key=lambda kv: kv[1], reverse=True)[:5]
         id_to_name = {str(d.get("discord_id")): d.get("name") for d in reg.get("drivers", [])}
+        # Only drivers who've actually bet in MIN_RACES_FOR_PRIZE+ races count
+        # toward the "leading" board — otherwise someone parked on the
+        # untouched starting balance shows up as the leader.
+        eligible = [(did, amt) for did, amt in bal.items()
+                    if races_bet_on(data, did) >= MIN_RACES_FOR_PRIZE]
+        ranked = sorted(eligible, key=lambda kv: kv[1], reverse=True)[:5]
         lead_lines = [f"**{i+1}.** {id_to_name.get(did, f'<@{did}>')} — ${amt}"
                       for i, (did, amt) in enumerate(ranked)]
         embed = discord.Embed(
@@ -2644,8 +2672,35 @@ async def weekly_settlement():
             description=f"{winners}/{len(changes)} bets cashed. Here's the money board:",
             color=0x2ECC71,
         )
-        embed.add_field(name="Top 5", value="\n".join(lead_lines) or "—", inline=False)
+        embed.add_field(
+            name=f"Top 5 (eligible — {MIN_RACES_FOR_PRIZE}+ races bet)",
+            value="\n".join(lead_lines) or "Nobody's eligible yet.", inline=False)
         await ch.send(embed=embed)
+
+    # Open next week's board right after settling — Dale's Book runs
+    # Tuesday-through-lobby, so this is the start of that window. Only
+    # fires if race_number has actually moved past the race we just
+    # settled (i.e. Race Control has pushed results); if it hasn't,
+    # opening now would just re-open a board for the race that already
+    # happened, so we skip and leave it for a manual /postodds once
+    # results are in.
+    next_race = data.get("race_number", race_num)
+    if next_race > race_num:
+        new_board, problems = build_odds_board(data, reg)
+        if problems:
+            print(f"⚠️ Dale's Book validation FAILED opening Race {next_race}, not posting: {problems}")
+        else:
+            save_data(data)
+            if ch:
+                await ch.send(
+                    f"🟢 **Dale's Book is OPEN** for Race {next_race} — bet all week, "
+                    f"closes at lobby-up next race night."
+                )
+                await ch.send(embed=format_odds_embed(new_board))
+    else:
+        print(f"ℹ️ Dale's Book not reopened yet — race_number still {race_num} "
+              f"(results not pushed from Race Control). Run !postodds once they are.")
+
     mark_fired("settlement", now)
 
 
@@ -4554,7 +4609,8 @@ async def restructure(ctx):
             "meme-central", "hot-takes", "nascar-fan-chat", "qsr-race-polls"
         ],
         "📺 BROADCAST & EVENTS": [
-            "how-to-watch", "hosted-sessions", "qsr-live", "league-socials", "team-forming", "dales-post-race"
+            "how-to-watch", "hosted-sessions", "qsr-live", "league-socials", "team-forming",
+            "dales-post-race", "dales-sportsbook"
         ],
         "🔒 STAFF ONLY": ["staff-chat", "staff-docs"],
     }
@@ -4572,6 +4628,64 @@ async def restructure(ctx):
                 await existing[ch_name].edit(category=category)
         await asyncio.sleep(1)
     await ctx.send("✅ Server restructured! Manually delete any old channels you no longer need.")
+
+@bot.command(name="setupsportsbook")
+@is_admin()
+async def setup_sportsbook(ctx):
+    """One-off setup: creates #dales-sportsbook (under 📺 BROADCAST & EVENTS,
+    same as !restructure would) and drops a pinned how-to-play post. Safe to
+    run more than once — reuses the channel/category if they already exist."""
+    guild = ctx.guild
+    cat_name = "📺 BROADCAST & EVENTS"
+    category = discord.utils.get(guild.categories, name=cat_name)
+    if not category:
+        category = await guild.create_category(cat_name)
+
+    ch = discord.utils.get(guild.text_channels, name=SPORTSBOOK_CHANNEL)
+    if not ch:
+        ch = await guild.create_text_channel(SPORTSBOOK_CHANNEL, category=category)
+        created = True
+    else:
+        if ch.category != category:
+            await ch.edit(category=category)
+        created = False
+
+    embed = discord.Embed(
+        title="🎰 Welcome to Dale's Book",
+        description=(
+            "For-fun Dale Dollars sportsbook — no real money, no real stakes. "
+            "Season's top bankroll wins free entry to the next series.\n\n"
+            "**The book opens every Tuesday** (the day after race night) and stays "
+            "open all week, locking at lobby-up on the next race night."
+        ),
+        color=0x2ECC71,
+    )
+    embed.add_field(
+        name="Commands",
+        value="`/odds` — this week's board\n"
+              "`/wager` — place a pick\n"
+              "`/balance` — your Dale Dollars + open bets\n"
+              "`/moneyboard` — season leaderboard",
+        inline=False,
+    )
+    embed.add_field(
+        name="Season prize eligibility",
+        value=f"You need to have placed a bet in **{MIN_RACES_FOR_PRIZE}+ races** to be "
+              f"eligible for the season-end prize — sitting on your starting ${STARTING_BALANCE} "
+              f"without playing doesn't count. Check your progress with `/balance`.",
+        inline=False,
+    )
+    embed.set_footer(text="Dale Dollars have no cash value and can't be purchased.")
+    msg = await ch.send(embed=embed)
+    try:
+        await msg.pin()
+    except discord.HTTPException:
+        pass
+
+    await ctx.send(
+        f"{'✅ Created' if created else 'ℹ️ Already existed —'} #{SPORTSBOOK_CHANNEL}"
+        f"{' and pinned the how-to-play post.' if created else ', posted a fresh how-to-play there.'}"
+    )
 
 @bot.hybrid_command(name="career", description="Driver career summary + race-by-race history")
 @has_arca()
@@ -5423,8 +5537,28 @@ async def odds_cmd(ctx):
     data  = load_data()
     board = data.get("odds_board") or {}
     if not board.get("moneyline"):
-        await ctx.send("Dale's Book opens up shortly before lobby. Check back Monday afternoon. 🎰")
+        await ctx.send("Dale's Book opens Tuesday, the day after race night. Check back then. 🎰")
         return
+    await ctx.send(embed=format_odds_embed(board))
+
+
+@bot.hybrid_command(name="postodds", description="Manually build and post this week's odds board (admin)")
+@is_admin()
+async def post_odds_cmd(ctx):
+    """Manual trigger for testing — race_prediction() only builds the board
+    automatically at 7PM ET on race day. This runs the exact same
+    build_odds_board() path on demand, so /wager can be tested any time
+    without waiting for that window. If the board fails its own
+    consistency check it is NOT posted — same rule as the automatic path."""
+    data = load_data()
+    reg  = load_reg()
+    board, problems = build_odds_board(data, reg)
+    if problems:
+        await ctx.send(
+            "⚠️ Board failed validation, not posted:\n" + "\n".join(f"• {p}" for p in problems),
+            ephemeral=True)
+        return
+    save_data(data)
     await ctx.send(embed=format_odds_embed(board))
 
 
@@ -5465,7 +5599,7 @@ async def wager_cmd(ctx, bet_type: str, pick: str, amount: int, double_down: boo
     reg   = load_reg()
     board = data.get("odds_board") or {}
     if not board.get("open") or not board.get("moneyline"):
-        await ctx.send("Dale's Book isn't open right now. Check `/odds` closer to race time.")
+        await ctx.send("Dale's Book isn't open right now — it runs Tuesday through lobby-up on race night. Check `/odds`.")
         return
     race_num = board["race_number"]
     did      = str(ctx.author.id)
@@ -5591,6 +5725,9 @@ async def balance_cmd(ctx):
                  if b.get("discord_id") == did and not b.get("settled")]
     embed = discord.Embed(title="💵 Your Dale Dollars", color=0x2ECC71)
     embed.add_field(name="Balance", value=f"${bal}", inline=True)
+    races = races_bet_on(data, did)
+    elig  = "✅ Eligible" if races >= MIN_RACES_FOR_PRIZE else f"{races}/{MIN_RACES_FOR_PRIZE} races"
+    embed.add_field(name="Season prize eligibility", value=elig, inline=True)
     if open_bets:
         lines = [f"${b['stake']} {b['type']} — {b.get('target') or (b.get('side','')+' '+str(b.get('line','')))} @ {b['odds']}"
                  for b in open_bets]
@@ -5604,18 +5741,32 @@ async def moneyboard_cmd(ctx):
     bal  = data.get("economy", {}).get("balances", {})
     reg  = load_reg()
     id_to_name = {str(d.get("discord_id")): d.get("name") for d in reg.get("drivers", [])}
-    ranked = sorted(bal.items(), key=lambda kv: kv[1], reverse=True)[:15]
-    if not ranked:
+    if not bal:
         await ctx.send("Nobody's placed a bet yet. Type `/odds` to see this week's board.")
         return
+
+    ranked = sorted(bal.items(), key=lambda kv: kv[1], reverse=True)
+    eligible, ineligible = [], []
+    for did, amt in ranked:
+        races = races_bet_on(data, did)
+        (eligible if races >= MIN_RACES_FOR_PRIZE else ineligible).append((did, amt, races))
+
     lines = [f"**{i+1}.** {id_to_name.get(did, f'<@{did}>')} — ${amt}"
-             for i, (did, amt) in enumerate(ranked)]
+             for i, (did, amt, _races) in enumerate(eligible[:15])]
     embed = discord.Embed(
         title="🏆 Dale's Book — Season Money Board",
-        description="\n".join(lines),
+        description="\n".join(lines) or
+                     f"Nobody's eligible yet — place bets in {MIN_RACES_FOR_PRIZE}+ races to qualify.",
         color=0xFFD700,
     )
-    embed.set_footer(text="Top bankroll at season's end wins free entry to the next series.")
+    if ineligible:
+        watch = sorted(ineligible, key=lambda t: -t[1])[:5]
+        watch_lines = [f"{id_to_name.get(did, f'<@{did}>')} — ${amt} ({races}/{MIN_RACES_FOR_PRIZE} races)"
+                       for did, amt, races in watch]
+        embed.add_field(name=f"Not yet eligible (< {MIN_RACES_FOR_PRIZE} races bet)",
+                        value="\n".join(watch_lines), inline=False)
+    embed.set_footer(text=f"Top bankroll among drivers who've bet in {MIN_RACES_FOR_PRIZE}+ races "
+                          f"wins free entry to the next series.")
     await ctx.send(embed=embed)
 
 
@@ -6208,6 +6359,117 @@ def post_registration():
                         "removed": dropped}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@sync_app.route("/sync/betting", methods=["GET"])
+def get_betting():
+    """Read-only view for the desktop app's Sportsbook tab — just the three
+    keys it needs instead of the whole data.json."""
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    data = load_data()
+    return jsonify({
+        "economy":     data.get("economy", {"balances": {}, "history": {}, "double_down_used": {}}),
+        "bets":        data.get("bets", {}),
+        "odds_board":  data.get("odds_board", {}),
+        "race_number": data.get("race_number", 1),
+    }), 200
+
+
+@sync_app.route("/sync/betting/action", methods=["POST"])
+def post_betting_action():
+    """Admin control actions for Dale's Book, called from the desktop app's
+    Sportsbook tab. Deliberately NOT a whole-file /sync/data push: balances
+    and open bets change continuously from live /wager calls on Discord, so
+    a push built from a possibly-stale local snapshot could silently
+    clobber a bet placed seconds earlier. Every action here reads the
+    CURRENT server-side data.json fresh, applies one targeted change, and
+    saves — the same pattern the bot's own commands use.
+
+    Body: {"action": "...", ...action-specific fields}
+      adjust_balance  {discord_id, delta, reason}
+      void_bet        {race_number, index}    — refunds stake, marks voided
+      set_window      {open: true|false}
+      settle          {race_number?}          — defaults to the open board's race
+      rebuild_board   {}                      — regenerates data['odds_board']
+      reset_economy   {}                      — every balance back to STARTING_BALANCE
+    """
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        payload = request.get_json(force=True) or {}
+        action  = payload.get("action")
+        data    = load_data()
+        reg     = load_reg()
+
+        if action == "adjust_balance":
+            did    = str(payload.get("discord_id", "")).strip()
+            delta  = int(payload.get("delta", 0))
+            reason = payload.get("reason") or "Admin adjustment"
+            if not did:
+                return jsonify({"error": "discord_id required"}), 400
+            ensure_balance(data, did)
+            data["economy"]["balances"][did] += delta
+            record_ledger(data, did, data.get("race_number", 1), delta, reason)
+            save_data(data)
+            return jsonify({"status": "ok", "balance": data["economy"]["balances"][did]}), 200
+
+        elif action == "void_bet":
+            race_key = str(payload.get("race_number", ""))
+            idx      = payload.get("index")
+            bets     = data.get("bets", {}).get(race_key, [])
+            if idx is None or not isinstance(idx, int) or not (0 <= idx < len(bets)):
+                return jsonify({"error": "bet not found"}), 404
+            bet = bets[idx]
+            if bet.get("settled"):
+                return jsonify({"error": "already settled, can't void"}), 400
+            did = bet["discord_id"]
+            ensure_balance(data, did)
+            data["economy"]["balances"][did] += bet["stake"]
+            record_ledger(data, did, int(race_key) if race_key.isdigit() else 0,
+                           bet["stake"], "Bet voided by admin (refund)")
+            bet["settled"] = True
+            bet["won"]     = None
+            bet["voided"]  = True
+            save_data(data)
+            return jsonify({"status": "ok"}), 200
+
+        elif action == "set_window":
+            board = data.get("odds_board")
+            if not board:
+                return jsonify({"error": "no board posted yet"}), 400
+            board["open"] = bool(payload.get("open", False))
+            save_data(data)
+            return jsonify({"status": "ok", "open": board["open"]}), 200
+
+        elif action == "settle":
+            race_num = payload.get("race_number") or (data.get("odds_board") or {}).get("race_number")
+            if not race_num:
+                return jsonify({"error": "no race to settle"}), 400
+            changes = grade_and_settle_race(data, reg, int(race_num))
+            save_data(data)
+            return jsonify({"status": "ok", "settled": len(changes)}), 200
+
+        elif action == "rebuild_board":
+            board, problems = build_odds_board(data, reg)
+            if problems:
+                return jsonify({"error": "Board failed validation", "problems": problems}), 400
+            save_data(data)
+            return jsonify({"status": "ok", "board": board}), 200
+
+        elif action == "reset_economy":
+            econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
+            for did in list(econ.get("balances", {}).keys()):
+                econ["balances"][did] = STARTING_BALANCE
+            econ["double_down_used"] = {}
+            save_data(data)
+            return jsonify({"status": "ok"}), 200
+
+        else:
+            return jsonify({"error": f"unknown action '{action}'"}), 400
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 def run_sync_server():
     """Run Flask in a daemon thread — dies when the bot dies."""
