@@ -5,6 +5,7 @@ import os
 import csv
 import io
 import shutil
+import random
 import aiohttp
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -578,6 +579,9 @@ def load_data():
     # Migrate existing files that don't have these keys yet
     d.setdefault("race_results", {})
     d.setdefault("driver_profiles", {})
+    d.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
+    d.setdefault("odds_board", {})
+    d.setdefault("bets", {})
     return d
 
 def save_data(data: dict):
@@ -599,6 +603,541 @@ def save_data(data: dict):
             os.remove(os.path.join(backup_dir, old))
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+
+# ─────────────────────────────────────────────────────────────────
+#  VIRTUAL ECONOMY — "DALE DOLLARS"
+#  No-stakes-for-real fantasy sportsbook. Fake currency only: it can't be
+#  bought with real money and can't be redeemed for anything but the
+#  season-end prize (free entry to the next series), which is funded by
+#  QSR itself, not by other drivers' losses. That keeps this a free
+#  fantasy-contest structure rather than pooled wagering.
+# ─────────────────────────────────────────────────────────────────
+
+STARTING_BALANCE = 100
+PROP_ODDS        = "+100"   # flat even-money line on both sides of a two-outcome prop
+MIN_STAKE        = 1
+N_SIMULATIONS    = 8000     # Monte Carlo draws for the Plackett-Luce field simulation
+MANUFACTURER_MAX_STAKE      = 5
+MANUFACTURER_COVERAGE_FLOOR = 0.7   # need manufacturer data for ≥70% of the confirmed field
+IRATING_WEIGHT_START = 0.50   # trust iRating most when there's no in-series sample yet
+IRATING_WEIGHT_FLOOR  = 0.15   # never zero it out — it's still real signal
+IRATING_DECAY_RACES   = 8      # by ~race 8, in-series results dominate
+IRATING_SCALE         = 10.0   # rating points per std-dev of iRating edge
+
+def ensure_balance(data: dict, discord_id: str) -> int:
+    """Create a driver's Dale Dollars account if it doesn't exist yet,
+    returning their current balance."""
+    econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
+    bal  = econ.setdefault("balances", {})
+    did  = str(discord_id)
+    if did not in bal:
+        bal[did] = STARTING_BALANCE
+    return bal[did]
+
+def record_ledger(data: dict, discord_id: str, race_num: int, delta: int, reason: str):
+    econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
+    hist = econ.setdefault("history", {})
+    did  = str(discord_id)
+    hist.setdefault(did, []).append({"race": race_num, "delta": delta, "reason": reason})
+
+def resolve_driver_by_name(reg: dict, name: str):
+    """Fuzzy-match a typed name against the CONFIRMED roster, same
+    tokenized approach as resolve_result_key — exact match first, then
+    token-subset match, refusing ambiguous hits."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    confirmed = [d for d in reg.get("drivers", []) if d.get("status") == "Confirmed"]
+    for d in confirmed:
+        if d.get("name", "").strip().lower() == name.lower():
+            return d
+    want = _name_tokens(name)
+    if not want:
+        return None
+    hits = [d for d in confirmed
+            if (t := _name_tokens(d.get("name", ""))) and (want <= t or t <= want)]
+    return hits[0] if len(hits) == 1 else None
+
+def team_of(reg: dict, discord_id: str):
+    """Team name for a discord_id, or None if not on a team."""
+    did = str(discord_id)
+    for d in reg.get("drivers", []):
+        if str(d.get("discord_id")) == did:
+            return d.get("team")
+    return None
+
+def manufacturer_of(reg: dict, data: dict, discord_id: str):
+    """Best-known manufacturer for a discord_id, from driver_profiles
+    keyed by name. Returns None if unknown — callers must not guess."""
+    did = str(discord_id)
+    name = next((d.get("name") for d in reg.get("drivers", [])
+                 if str(d.get("discord_id")) == did), None)
+    if not name:
+        return None
+    return data.get("driver_profiles", {}).get(name, {}).get("manufacturer")
+
+def compute_track_type(race_num: int) -> str:
+    return TRACK_TYPE.get(race_num, "intermediate")
+
+def _zscores(values: dict) -> dict:
+    """{key: value} -> {key: z-score}. Returns all zeros if the sample is
+    too small or has no spread — a flat prior beats a divide-by-zero."""
+    if len(values) < 2:
+        return {k: 0.0 for k in values}
+    vals = list(values.values())
+    mean = sum(vals) / len(vals)
+    var  = sum((v - mean) ** 2 for v in vals) / len(vals)
+    std  = var ** 0.5
+    if std < 1e-9:
+        return {k: 0.0 for k in values}
+    return {k: (v - mean) / std for k, v in values.items()}
+
+def compute_power_ratings(data: dict, upcoming_race_num: int) -> dict:
+    """Blend season form, recent form, track-type history, and iRating
+    into a single per-driver rating. Higher = stronger favorite.
+
+    iRating acts as a shrinking prior: it's weighted heavily when a driver
+    has little or no in-series sample, and that weight decays toward a
+    floor as real QSR results accumulate — the in-series data is always
+    the more relevant signal once there's enough of it, but iRating never
+    goes fully to zero since it's still a real skill signal.
+
+    Returns {driver_name: rating}. Only includes drivers with at least
+    one race under their belt — nobody gets priced off zero data.
+    """
+    standings    = compute_adjusted_standings(data)
+    race_results = data.get("race_results", {})
+    profiles     = data.get("driver_profiles", {})
+    track_type   = compute_track_type(upcoming_race_num)
+    races_completed = max(0, upcoming_race_num - 1)
+
+    base_ratings = {}
+    for name, info in standings.items():
+        races = info.get("races", 0)
+        hist  = race_results.get(name, [])
+        finishes = [e.get("finish") for e in hist if e.get("finish")]
+        if not races or not finishes:
+            continue
+        avg_finish    = sum(finishes) / len(finishes)
+        recent        = finishes[-3:]
+        recent_avg    = sum(recent) / len(recent)
+        same_type     = [e.get("finish") for e in hist
+                          if TRACK_TYPE.get(e.get("race")) == track_type and e.get("finish")]
+        track_avg     = (sum(same_type) / len(same_type)) if same_type else avg_finish
+        # Track history counts more as the sample grows, capped so one
+        # early result at a similar track can't swing things wildly.
+        track_weight  = min(0.5, 0.15 * len(same_type))
+        blended       = track_avg * track_weight + avg_finish * (1 - track_weight)
+        blended       = blended * 0.7 + recent_avg * 0.3   # recent form nudge
+        variance      = sum((f - avg_finish) ** 2 for f in finishes) / len(finishes)
+        consistency   = max(0.0, 5 - variance ** 0.5)       # small bump for steady drivers
+        incidents     = info.get("incidents", 0)
+        inc_rate      = incidents / races if races else 0
+        risk_penalty  = min(10.0, inc_rate * 1.5)
+        base_ratings[name] = max(1.0, 100 - blended * 2 - risk_penalty + consistency)
+
+    if not base_ratings:
+        return {}
+
+    # iRating adjustment — only for drivers we actually have a value for.
+    ir_values = {n: profiles.get(n, {}).get("irating") for n in base_ratings}
+    ir_values = {n: v for n, v in ir_values.items() if isinstance(v, (int, float))}
+    ir_z = _zscores(ir_values) if len(ir_values) >= 2 else {}
+
+    w_ir = max(IRATING_WEIGHT_FLOOR,
+               IRATING_WEIGHT_START - (IRATING_WEIGHT_START - IRATING_WEIGHT_FLOOR)
+               * min(1.0, races_completed / IRATING_DECAY_RACES))
+
+    ratings = {}
+    for name, base in base_ratings.items():
+        adj = 0.0
+        if name in ir_z:
+            adj = w_ir * ir_z[name] * IRATING_SCALE
+        ratings[name] = max(1.0, base + adj)
+    return ratings
+
+def simulate_field(ratings: dict, n_sims: int = N_SIMULATIONS, seed: int = None) -> dict:
+    """Monte Carlo Plackett-Luce simulation of the finishing order.
+
+    Each simulated race draws 1st place from the whole field weighted by
+    rating, removes them, draws 2nd from what's left, and so on through
+    10th. Win/top5/top10 probabilities all come out of the SAME simulated
+    races, which is what guarantees win% <= top5% <= top10% for every
+    driver — they can't drift out of sync the way separately-fit formulas
+    could.
+
+    Returns {driver_name: {"win": p, "top5": p, "top10": p}}.
+    """
+    names = list(ratings.keys())
+    if not names:
+        return {}
+    n = len(names)
+    depth = min(10, n)
+    weights_base = [max(0.01, ratings[nm]) for nm in names]
+    rng = random.Random(seed)
+    win_count  = {nm: 0 for nm in names}
+    top5_count = {nm: 0 for nm in names}
+    top10_count = {nm: 0 for nm in names}
+
+    for _ in range(n_sims):
+        pool_names   = list(names)
+        pool_weights = list(weights_base)
+        for pos in range(1, depth + 1):
+            total = sum(pool_weights)
+            pick  = rng.random() * total
+            cum   = 0.0
+            idx   = len(pool_weights) - 1
+            for i, w in enumerate(pool_weights):
+                cum += w
+                if pick <= cum:
+                    idx = i
+                    break
+            drv = pool_names.pop(idx)
+            pool_weights.pop(idx)
+            if pos == 1:
+                win_count[drv] += 1
+            if pos <= 5:
+                top5_count[drv] += 1
+            if pos <= 10:
+                top10_count[drv] += 1
+
+    return {nm: {"win": win_count[nm] / n_sims,
+                 "top5": top5_count[nm] / n_sims,
+                 "top10": top10_count[nm] / n_sims} for nm in names}
+
+def prob_to_american(p: float) -> str:
+    """Implied probability -> American odds string, e.g. +450 / -150."""
+    p = min(max(p, 0.001), 0.999)
+    if p >= 0.5:
+        odds = -100 * p / (1 - p)
+        return f"{int(round(odds))}"
+    else:
+        odds = 100 * (1 - p) / p
+        return f"+{int(round(odds))}"
+
+def american_to_payout(odds_str: str, stake: int) -> int:
+    """Total return (stake + profit) if the bet wins, at the odds locked
+    in when the bet was placed."""
+    odds_str = odds_str.strip()
+    n = int(odds_str)
+    if n > 0:
+        profit = stake * n / 100
+    else:
+        profit = stake * 100 / abs(n)
+    return int(round(stake + profit))
+
+def stake_cap_for_prob(prob: float) -> int:
+    """The core 'easier pick, lower max stake' rule. Ties the cap directly
+    to how likely the specific outcome is, so it applies automatically to
+    any market — a heavy favorite's top-5 pick gets capped the same way a
+    heavy-favorite moneyline pick would, not just manufacturer bets."""
+    if prob >= 0.55:
+        return 5
+    if prob >= 0.35:
+        return 10
+    if prob >= 0.15:
+        return 15
+    return 20
+
+def field_incidents_for_race(data: dict, race_num: int) -> int:
+    """Sum of every driver's recorded incidents for a specific race."""
+    total = 0
+    for entries in data.get("race_results", {}).values():
+        for e in entries:
+            if e.get("race") == race_num:
+                total += e.get("incidents", 0) or 0
+    return total
+
+def manufacturer_field_coverage(reg: dict, data: dict) -> tuple:
+    """(known_count, total_confirmed) — how much of the confirmed field
+    has a known manufacturer on file."""
+    confirmed = [d for d in reg.get("drivers", []) if d.get("status") == "Confirmed"]
+    if not confirmed:
+        return 0, 0
+    profiles = data.get("driver_profiles", {})
+    known = sum(1 for d in confirmed if profiles.get(d.get("name"), {}).get("manufacturer"))
+    return known, len(confirmed)
+
+def validate_board(board: dict) -> list:
+    """Internal-consistency check run before every post. Returns a list of
+    problems — empty means clean. This is the actual enforcement of
+    'no errors', not just a hope: if this comes back non-empty, the board
+    does not get posted."""
+    problems = []
+    EPS = 0.03   # simulation noise tolerance
+
+    ml = board.get("moneyline", {})
+    if ml:
+        total = sum(v["prob"] for v in ml.values())
+        if not (0.9 <= total <= 1.1):
+            problems.append(f"moneyline probabilities sum to {total:.3f}, expected ~1.0")
+
+    for market_name in ("top5", "top10"):
+        for name, info in board.get(market_name, {}).items():
+            p = info.get("prob", -1)
+            if not (0 <= p <= 1):
+                problems.append(f"{market_name}[{name}] prob out of range: {p}")
+
+    top5  = board.get("top5", {})
+    top10 = board.get("top10", {})
+    for name, info in ml.items():
+        wp = info["prob"]
+        if name in top5 and top5[name]["prob"] < wp - EPS:
+            problems.append(f"{name}: top5 ({top5[name]['prob']:.3f}) < win ({wp:.3f})")
+        if name in top5 and name in top10 and top10[name]["prob"] < top5[name]["prob"] - EPS:
+            problems.append(f"{name}: top10 ({top10[name]['prob']:.3f}) < top5 ({top5[name]['prob']:.3f})")
+
+    manu = board.get("manufacturer", {})
+    if manu:
+        mtotal = sum(v["prob"] for v in manu.values())
+        if not (0.9 <= mtotal <= 1.1):
+            problems.append(f"manufacturer probabilities sum to {mtotal:.3f}, expected ~1.0")
+
+    return problems
+
+def build_odds_board(data: dict, reg: dict) -> tuple:
+    """Build the full Vegas-style board: moneyline, top5, top10,
+    manufacturer (if there's enough data to trust it), and the two O/U
+    props. Stores the FULL field on data["odds_board"] (not just the
+    favorites shown in the embed) so /wager can price any driver and
+    settlement can grade any bet.
+
+    Returns (board, problems). If problems is non-empty, the board was
+    NOT written to data["odds_board"] and must not be posted.
+    """
+    race_num  = data.get("race_number", 1)
+    schedule  = data.get("schedule") or SCHEDULE
+    track     = schedule[race_num - 1]["track"] if race_num <= len(schedule) else "Unknown"
+
+    ratings = compute_power_ratings(data, race_num)
+    sim     = simulate_field(ratings)
+
+    moneyline = {n: {"prob": round(s["win"], 4), "american": prob_to_american(s["win"])}
+                 for n, s in sim.items()}
+    top5 = {n: {"prob": round(s["top5"], 4), "american": prob_to_american(s["top5"])}
+            for n, s in sim.items()}
+    top10 = {n: {"prob": round(s["top10"], 4), "american": prob_to_american(s["top10"])}
+             for n, s in sim.items()}
+
+    # Manufacturer — only built if there's real coverage. Win probability
+    # per manufacturer is just the sum of its drivers' win probabilities
+    # from the SAME simulation, so it stays consistent with the moneyline
+    # board rather than being priced separately.
+    manufacturer = {}
+    manu_note = None
+    known, total = manufacturer_field_coverage(reg, data)
+    if total and (known / total) >= MANUFACTURER_COVERAGE_FLOOR:
+        profiles = data.get("driver_profiles", {})
+        by_manu = {}
+        for n, s in sim.items():
+            m = profiles.get(n, {}).get("manufacturer")
+            if m:
+                by_manu[m] = by_manu.get(m, 0.0) + s["win"]
+        if by_manu:
+            leftover = max(0.0, 1.0 - sum(by_manu.values()))
+            total_p  = sum(by_manu.values()) + leftover
+            manufacturer = {m: {"prob": round(p / total_p, 4), "american": prob_to_american(p / total_p)}
+                             for m, p in by_manu.items()}
+    else:
+        manu_note = f"manufacturer data on {known}/{total} confirmed drivers — market withheld this week"
+
+    # Prop 1 — current points leader's finishing position, O/U their own
+    # recent average.
+    props = []
+    standings = compute_adjusted_standings(data)
+    sorted_s  = standings_sorted(standings)
+    if sorted_s:
+        leader_name = sorted_s[0][0]
+        hist = data.get("race_results", {}).get(leader_name, [])
+        finishes = [e.get("finish") for e in hist if e.get("finish")]
+        if finishes:
+            recent = finishes[-3:]
+            line = round((sum(recent) / len(recent)) + 0.5, 1)
+            props.append({
+                "id": "leader_ou", "driver": leader_name,
+                "label": f"{leader_name} finishing position — Over/Under {line}",
+                "line": line, "odds": PROP_ODDS,
+            })
+
+    # Prop 2 & 3 — real session data from race_meta (populated when results
+    # come in via the JSON import path). Only built once there's at least
+    # one past race with meta on file — no meta yet means no guessed prop,
+    # same "don't fabricate a line" stance as everywhere else here.
+    race_meta = data.get("race_meta", {})
+    past_cautions = [race_meta[str(rn)]["cautions"] for rn in range(1, race_num)
+                      if str(rn) in race_meta and race_meta[str(rn)].get("cautions") is not None]
+    if past_cautions:
+        avg  = sum(past_cautions) / len(past_cautions)
+        line = round(avg + 0.5, 1)
+        props.append({
+            "id": "cautions_ou",
+            "label": f"Total cautions — Over/Under {line}",
+            "line": line, "odds": PROP_ODDS,
+        })
+
+    past_lead_changes = [race_meta[str(rn)]["lead_changes"] for rn in range(1, race_num)
+                          if str(rn) in race_meta and race_meta[str(rn)].get("lead_changes") is not None]
+    if past_lead_changes:
+        avg  = sum(past_lead_changes) / len(past_lead_changes)
+        line = round(avg + 0.5, 1)
+        props.append({
+            "id": "lead_changes_ou",
+            "label": f"Total lead changes — Over/Under {line}",
+            "line": line, "odds": PROP_ODDS,
+        })
+
+    board = {
+        "race_number": race_num, "track": track,
+        "moneyline": moneyline, "top5": top5, "top10": top10,
+        "manufacturer": manufacturer, "manufacturer_note": manu_note,
+        "props": props,
+        "open": True, "posted_at": datetime.utcnow().isoformat(),
+    }
+
+    problems = validate_board(board)
+    if not problems:
+        data["odds_board"] = board
+    return board, problems
+
+def format_odds_embed(board: dict) -> discord.Embed:
+    race_num = board.get("race_number", "?")
+    track    = board.get("track", "")
+    ml       = sorted(board.get("moneyline", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)
+    embed = discord.Embed(
+        title=f"🎰 Dale's Book — Race {race_num} at {track}",
+        description="For fun only — no real money, no real stakes. Season bankroll leader wins free entry next series.",
+        color=0x2ECC71,
+    )
+    if ml:
+        fav_lines = [f"**{n}** {info['american']}  ({info['prob']*100:.0f}%)" for n, info in ml[:5]]
+        embed.add_field(name="🏆 Race Winner — Favorites", value="\n".join(fav_lines), inline=False)
+        if len(ml) > 5:
+            dark = ml[-1]
+            embed.add_field(name="🐴 Dark Horse", value=f"**{dark[0]}** {dark[1]['american']}", inline=False)
+    top5 = sorted(board.get("top5", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)[:3]
+    if top5:
+        embed.add_field(name="🥉 Top 5 Finish — Best Bets",
+                         value="\n".join(f"**{n}** {info['american']}" for n, info in top5), inline=True)
+    top10 = sorted(board.get("top10", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)[:3]
+    if top10:
+        embed.add_field(name="🔟 Top 10 Finish — Best Bets",
+                         value="\n".join(f"**{n}** {info['american']}" for n, info in top10), inline=True)
+    manu = sorted(board.get("manufacturer", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)
+    if manu:
+        embed.add_field(name="🏭 Manufacturer Winner (max $5 bet)",
+                         value="\n".join(f"**{m}** {info['american']}" for m, info in manu), inline=False)
+    elif board.get("manufacturer_note"):
+        embed.add_field(name="🏭 Manufacturer Winner", value=f"_Unavailable this week — {board['manufacturer_note']}_", inline=False)
+    for prop in board.get("props", []):
+        embed.add_field(name="📊 Prop", value=f"{prop['label']}  ({prop['odds']} either side)", inline=False)
+    embed.add_field(
+        name="How to play",
+        value="`/wager` to place a pick · `/balance` to check your stack · `/moneyboard` for the season leaderboard.\n"
+              "Stake caps scale with how likely the pick is — favorites cap low, longshots cap higher.\n"
+              "You can't bet on yourself or a teammate — everybody's picks have to be clean.",
+        inline=False)
+    embed.set_footer(text="Dale Dollars have no cash value and can't be purchased.")
+    return embed
+
+def get_race_manufacturer(data: dict, name: str, race_num: int):
+    """The manufacturer on record for a specific driver's specific race
+    entry — used at settlement time so a later profile update can't
+    retroactively change how an old race grades."""
+    for e in data.get("race_results", {}).get(name, []):
+        if e.get("race") == race_num:
+            return e.get("manufacturer")
+    return None
+
+def grade_and_settle_race(data: dict, reg: dict, race_num: int):
+    """Grade every bet placed on race_num against the actual results and
+    update balances. Returns a list of (discord_id, name, delta, reason)
+    for the recap post. Safe to call multiple times — already-settled
+    bets are skipped. Manufacturer bets VOID (stake refunded, not lost)
+    if the winning car's manufacturer was never captured — grading a bet
+    against data we don't actually have would be exactly the kind of
+    silent error this whole system is built to avoid."""
+    bets = data.get("bets", {}).get(str(race_num), [])
+    if not bets:
+        return []
+
+    finishes = {}
+    for name, entries in data.get("race_results", {}).items():
+        entry = next((e for e in entries if e.get("race") == race_num), None)
+        if entry and entry.get("finish"):
+            finishes[name] = entry["finish"]
+    if not finishes:
+        return []   # results not posted yet — nothing to grade
+
+    standings = compute_adjusted_standings(data)
+    sorted_s  = standings_sorted(standings)
+    winner    = min(finishes.items(), key=lambda kv: kv[1])[0]
+    winner_manufacturer = get_race_manufacturer(data, winner, race_num)
+    meta = data.get("race_meta", {}).get(str(race_num), {})
+    actual_cautions     = meta.get("cautions")
+    actual_lead_changes = meta.get("lead_changes")
+
+    changes = []
+    for bet in bets:
+        if bet.get("settled"):
+            continue
+        did   = bet["discord_id"]
+        stake = bet["stake"]
+        won   = False
+        void  = False
+
+        if bet["type"] == "moneyline":
+            won = (bet["target"] == winner)
+        elif bet["type"] in ("top5", "top10"):
+            finish = finishes.get(bet["target"])
+            if finish is None:
+                void = True
+            else:
+                won = finish <= (5 if bet["type"] == "top5" else 10)
+        elif bet["type"] == "leader_ou":
+            leader_name   = sorted_s[0][0] if sorted_s else None
+            leader_finish = finishes.get(leader_name)
+            if leader_finish is None:
+                void = True
+            else:
+                won = (leader_finish > bet["line"]) if bet["side"] == "over" else (leader_finish < bet["line"])
+        elif bet["type"] == "cautions_ou":
+            if actual_cautions is None:
+                void = True   # this race's meta didn't come from a JSON import — can't grade, refund
+            else:
+                won = (actual_cautions > bet["line"]) if bet["side"] == "over" else (actual_cautions < bet["line"])
+        elif bet["type"] == "lead_changes_ou":
+            if actual_lead_changes is None:
+                void = True
+            else:
+                won = (actual_lead_changes > bet["line"]) if bet["side"] == "over" else (actual_lead_changes < bet["line"])
+        elif bet["type"] == "manufacturer":
+            if not winner_manufacturer:
+                void = True   # can't confirm the winning car's make — refund, don't guess
+            else:
+                won = (bet["target"] == winner_manufacturer)
+
+        ensure_balance(data, did)
+        if void:
+            data["economy"]["balances"][str(did)] = data["economy"]["balances"].get(str(did), 0) + stake
+            record_ledger(data, did, race_num, 0, f"Voided {bet['type']} bet — insufficient data, stake refunded")
+            changes.append((did, bet.get("name", "?"), 0, "void"))
+        elif won:
+            payout = american_to_payout(bet["odds"], stake)
+            delta  = payout - stake
+            data["economy"]["balances"][str(did)] = data["economy"]["balances"].get(str(did), 0) + payout
+            record_ledger(data, did, race_num, delta, f"Won {bet['type']} bet")
+            changes.append((did, bet.get("name", "?"), delta, "won"))
+        else:
+            record_ledger(data, did, race_num, -stake, f"Lost {bet['type']} bet")
+            changes.append((did, bet.get("name", "?"), -stake, "lost"))
+        bet["settled"] = True
+        bet["won"] = None if void else won
+
+    if board := data.get("odds_board"):
+        if board.get("race_number") == race_num:
+            board["open"] = False
+    return changes
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1421,6 +1960,20 @@ SCHEDULE = [
     {"race":13,  "date":"October 26, 2026",      "track":"Kansas Speedway"},
     {"race":14,  "date":"November 2, 2026",      "track":"Homestead-Miami Speedway"},
 ]
+
+# Track type per race number — drives the odds engine's track-history
+# weighting. Everything here runs ARCA @ 110%, but a road course and a
+# short track reward different things, so "how have you run at tracks
+# like this one" needs to know which bucket each race falls in.
+TRACK_TYPE = {
+    1: "intermediate", 2: "intermediate", 3: "intermediate", 4: "intermediate",
+    5: "wildcard",        # Darlington — egg-shaped, its own animal
+    6: "road_course",     # Watkins Glen
+    7: "short_track", 8: "short_track", 9: "short_track",
+    10: "road_course",    # Lime Rock
+    11: "short_track",
+    12: "intermediate", 13: "intermediate", 14: "intermediate",
+}
 POSTED_FILE             = os.path.join(_DATA_DIR, "posted_announcements.json")
 FIRED_TASKS_FILE        = os.path.join(_DATA_DIR, "fired_tasks.json")
 
@@ -1975,12 +2528,12 @@ PREDICTION_FILE = os.path.join(_DATA_DIR, "dale_prediction.json")
 
 @tasks.loop(minutes=1)
 async def race_prediction():
-    """Dale posts a race prediction 1 hour before green flag."""
+    """Dale posts the odds board and a race prediction 1 hour before green flag."""
     now = now_et()
     if not should_fire("prediction", 19, 0, now):
         return
     guild = bot.get_guild(GUILD_ID)
-    if not guild or not ANTHROPIC_API_KEY:
+    if not guild:
         return
     ch = discord.utils.get(guild.text_channels, name="series-announcements")
     if not ch:
@@ -1994,15 +2547,9 @@ async def race_prediction():
     track = ""
     if schedule and len(schedule) >= race_num:
         track = schedule[race_num - 1].get("track", "tonight's track")
-    prompt = (
-        f"It's one hour before green flag for Race {race_num} at {track} in the "
-        f"QSR High Horsepower Series. The lobby is open and drivers are joining now. "
-        f"Current top 5 in standings: {top5_names}. "
-        f"Make a bold race prediction as Dale Earnhardt Sr. Pick a winner and maybe a surprise "
-        f"storyline to watch. 2-3 sentences. Confident. Dale doesn't hedge his bets."
-    )
+
     # Part 1 — LOBBY UP ping. This is the call to action, so it goes first
-    # and carries the @arca mention; the prediction rides behind it.
+    # and carries the @arca mention; the odds board and prediction ride behind it.
     track_clean = (track or "").replace(" — SEASON FINALE", "").strip() or "the track"
     await ch.send(
         f"🟢 **LOBBY UP — RACE {race_num}: {track_clean.upper()}**\n"
@@ -2013,20 +2560,93 @@ async def race_prediction():
         f"Hop in and get your laps. See you out there. 🏁"
     )
 
-    # Part 2 — Dale's prediction
-    response = await ask_claude(prompt, user_context=mood_context())
-    if response:
-        with open(PREDICTION_FILE, "w") as f:
-            json.dump({"race_num": race_num, "prediction": response, "correct": None}, f)
-        embed = discord.Embed(
-            title=f"🔮 Dale's Race {race_num} Prediction",
-            description=response,
-            color=0xFFD700,
-            timestamp=datetime.now(ET)
+    # Part 2 — Dale's Book odds board. Pure math, no AI dependency, so it
+    # posts even if ANTHROPIC_API_KEY is unset. If the board fails its own
+    # consistency check, it does NOT get posted — a wrong board is worse
+    # than no board.
+    reg = load_reg()
+    board, problems = build_odds_board(data, reg)
+    favorite = None
+    if problems:
+        print(f"⚠️ Dale's Book validation FAILED for Race {race_num}, not posting: {problems}")
+    else:
+        save_data(data)
+        if board.get("moneyline"):
+            favorite = max(board["moneyline"].items(), key=lambda kv: kv[1]["prob"])[0]
+        await ch.send(embed=format_odds_embed(board))
+
+    # Part 3 — Dale's narrative prediction, grounded in the actual favorite
+    # from the odds engine rather than pure vibes.
+    if ANTHROPIC_API_KEY:
+        prompt = (
+            f"It's one hour before green flag for Race {race_num} at {track} in the "
+            f"QSR High Horsepower Series. The lobby is open and drivers are joining now. "
+            f"Current top 5 in standings: {top5_names}. "
+            f"Dale's Book has {favorite or 'nobody'} as the betting favorite tonight. "
+            f"Make a bold race prediction as Dale Earnhardt Sr. — you can agree with the book's "
+            f"favorite or call for an upset. Maybe flag a surprise storyline to watch. "
+            f"2-3 sentences. Confident. Dale doesn't hedge his bets."
         )
-        embed.set_footer(text="Hold Dale accountable after the race 👀")
-        await ch.send(embed=embed)
+        response = await ask_claude(prompt, user_context=mood_context())
+        if response:
+            with open(PREDICTION_FILE, "w") as f:
+                json.dump({"race_num": race_num, "prediction": response, "correct": None}, f)
+            embed = discord.Embed(
+                title=f"🔮 Dale's Race {race_num} Prediction",
+                description=response,
+                color=0xFFD700,
+                timestamp=datetime.now(ET)
+            )
+            embed.set_footer(text="Hold Dale accountable after the race 👀")
+            await ch.send(embed=embed)
     mark_fired("prediction", now)
+
+
+# ─────────────────────────────────────────────────────────────────
+
+@tasks.loop(minutes=1)
+async def weekly_settlement():
+    """Every Tuesday at noon ET, grade last night's bets against posted
+    results and post the recap + updated money leaderboard. If results
+    haven't been pushed from Race Control yet, this skips quietly and an
+    admin can run /forcesettle once they're in — it does NOT mark itself
+    fired in that case, so it keeps checking on later ticks that same day."""
+    now = now_et()
+    if now.weekday() != 1 or not at_time(now, 12, 0):   # 1 = Tuesday
+        return
+    if already_fired("settlement", now):
+        return
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return
+    data = load_data()
+    reg  = load_reg()
+    board = data.get("odds_board") or {}
+    race_num = board.get("race_number")
+    if not race_num:
+        mark_fired("settlement", now)
+        return
+    changes = grade_and_settle_race(data, reg, race_num)
+    if not changes:
+        return   # results not posted yet — try again next tick today
+    save_data(data)
+
+    ch = discord.utils.get(guild.text_channels, name="pitlane")
+    if ch:
+        winners = sum(1 for c in changes if c[3] == "won")
+        bal = data.get("economy", {}).get("balances", {})
+        ranked = sorted(bal.items(), key=lambda kv: kv[1], reverse=True)[:5]
+        id_to_name = {str(d.get("discord_id")): d.get("name") for d in reg.get("drivers", [])}
+        lead_lines = [f"**{i+1}.** {id_to_name.get(did, f'<@{did}>')} — ${amt}"
+                      for i, (did, amt) in enumerate(ranked)]
+        embed = discord.Embed(
+            title=f"🎰 Dale's Book — Race {race_num} Settled",
+            description=f"{winners}/{len(changes)} bets cashed. Here's the money board:",
+            color=0x2ECC71,
+        )
+        embed.add_field(name="Top 5", value="\n".join(lead_lines) or "—", inline=False)
+        await ch.send(embed=embed)
+    mark_fired("settlement", now)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -2113,6 +2733,7 @@ async def on_ready():
     dales_weekly_take.start()
     pre_race_trash_talk.start()
     race_prediction.start()
+    weekly_settlement.start()
     race_announcement_scheduler.start()
     close_expired_polls.start()
     await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
@@ -4793,6 +5414,228 @@ async def archetypes_cmd(ctx):
     await ctx.send(embed=embed)
 
 
+# ─────────────────────────────────────────────────────────────────
+#  DALE'S BOOK — no-stakes prediction game
+# ─────────────────────────────────────────────────────────────────
+
+@bot.hybrid_command(name="odds", description="Dale's Book — this week's for-fun odds board")
+async def odds_cmd(ctx):
+    data  = load_data()
+    board = data.get("odds_board") or {}
+    if not board.get("moneyline"):
+        await ctx.send("Dale's Book opens up shortly before lobby. Check back Monday afternoon. 🎰")
+        return
+    await ctx.send(embed=format_odds_embed(board))
+
+
+def team_manufacturers(reg: dict, data: dict, team_name: str, exclude_discord_id: str) -> set:
+    """Known manufacturers raced by a driver's teammates (excluding
+    themselves) — used so a manufacturer bet can't indirectly favor a
+    teammate's car the same way a direct moneyline bet on them would."""
+    if not team_name:
+        return set()
+    out = set()
+    for d in reg.get("drivers", []):
+        if d.get("team") != team_name or str(d.get("discord_id")) == exclude_discord_id:
+            continue
+        m = data.get("driver_profiles", {}).get(d.get("name"), {}).get("manufacturer")
+        if m:
+            out.add(m)
+    return out
+
+
+@bot.hybrid_command(name="wager", description="Place a for-fun Dale Dollars wager on this week's board")
+@discord.app_commands.describe(
+    bet_type="What you're betting on",
+    pick="Driver name (moneyline/top5/top10), manufacturer name, or 'over'/'under' for a prop",
+    amount="Dale Dollars to risk — capped by how likely the pick is",
+    double_down="Use your one Power Play boost for this race (raises the cap, not manufacturer)",
+)
+@discord.app_commands.choices(bet_type=[
+    discord.app_commands.Choice(name="Race Winner (moneyline)", value="moneyline"),
+    discord.app_commands.Choice(name="Top 5 Finish", value="top5"),
+    discord.app_commands.Choice(name="Top 10 Finish", value="top10"),
+    discord.app_commands.Choice(name="Manufacturer Winner (max $5)", value="manufacturer"),
+    discord.app_commands.Choice(name="Leader finishing position O/U", value="leader_ou"),
+    discord.app_commands.Choice(name="Total cautions O/U", value="cautions_ou"),
+    discord.app_commands.Choice(name="Total lead changes O/U", value="lead_changes_ou"),
+])
+async def wager_cmd(ctx, bet_type: str, pick: str, amount: int, double_down: bool = False):
+    data  = load_data()
+    reg   = load_reg()
+    board = data.get("odds_board") or {}
+    if not board.get("open") or not board.get("moneyline"):
+        await ctx.send("Dale's Book isn't open right now. Check `/odds` closer to race time.")
+        return
+    race_num = board["race_number"]
+    did      = str(ctx.author.id)
+
+    econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
+    dd_used = econ.setdefault("double_down_used", {})
+    if double_down and race_num in dd_used.get(did, []):
+        await ctx.send("You've already used this week's Power Play boost.")
+        return
+
+    bettor_team = team_of(reg, did)
+    bet_record  = {"discord_id": did, "name": ctx.author.display_name,
+                   "double_down": double_down, "settled": False, "won": None,
+                   "placed_at": datetime.utcnow().isoformat()}
+    prob = 0.5   # default for the flat-odds O/U props
+
+    if bet_type in ("moneyline", "top5", "top10"):
+        target = resolve_driver_by_name(reg, pick)
+        if not target:
+            await ctx.send(f"Couldn't find a confirmed driver matching \"{pick}\". Check `/roster`.")
+            return
+        target_id   = str(target.get("discord_id", ""))
+        target_team = target.get("team")
+        if target_id == did:
+            await ctx.send("Can't bet on yourself — pick someone else. 🚫")
+            return
+        if bettor_team and target_team and bettor_team == target_team:
+            await ctx.send("Can't bet on a teammate — that's a conflict of interest. 🚫")
+            return
+        market = board.get(bet_type, board.get("moneyline"))
+        priced = market.get(target["name"])
+        if not priced:
+            await ctx.send(f"{target['name']} isn't priced on this week's board yet.")
+            return
+        prob = priced["prob"]
+        bet_record.update(type=bet_type, target=target["name"], odds=priced["american"])
+
+    elif bet_type == "manufacturer":
+        manu_market = board.get("manufacturer") or {}
+        if not manu_market:
+            note = board.get("manufacturer_note", "not enough manufacturer data on file this week")
+            await ctx.send(f"Manufacturer betting isn't available this week — {note}.")
+            return
+        matched = next((m for m in manu_market if m.lower() == pick.strip().lower()), None)
+        if not matched:
+            await ctx.send(f"\"{pick}\" isn't one of this week's manufacturers: {', '.join(manu_market)}.")
+            return
+        own_manu  = manufacturer_of(reg, data, did)
+        team_manu = team_manufacturers(reg, data, bettor_team, did)
+        if own_manu and matched == own_manu:
+            await ctx.send("Can't bet on your own manufacturer. 🚫")
+            return
+        if matched in team_manu:
+            await ctx.send("Can't bet on a teammate's manufacturer. 🚫")
+            return
+        prob = manu_market[matched]["prob"]
+        bet_record.update(type="manufacturer", target=matched, odds=manu_market[matched]["american"])
+
+    elif bet_type in ("leader_ou", "cautions_ou", "lead_changes_ou"):
+        side = pick.strip().lower()
+        if side not in ("over", "under"):
+            await ctx.send("For O/U props, pick must be `over` or `under`.")
+            return
+        prop = next((p for p in board.get("props", []) if p["id"] == bet_type), None)
+        if not prop:
+            await ctx.send("That prop isn't on the board this week.")
+            return
+        if bet_type == "leader_ou":
+            leader_id   = str(next((d.get("discord_id", "") for d in reg.get("drivers", [])
+                                     if d.get("name") == prop.get("driver")), ""))
+            leader_team = team_of(reg, leader_id) if leader_id else None
+            if leader_id == did:
+                await ctx.send("Can't bet on your own finishing position. 🚫")
+                return
+            if bettor_team and leader_team and bettor_team == leader_team:
+                await ctx.send("Can't bet on a teammate's finishing position. 🚫")
+                return
+        bet_record.update(type=bet_type, side=side, line=prop["line"], odds=prop["odds"])
+    else:
+        await ctx.send("Unknown bet type.")
+        return
+
+    # Stake cap — the harder the pick, the more you're allowed to risk.
+    # Manufacturer always caps at $5 regardless of Power Play.
+    if bet_type == "manufacturer":
+        cap = MANUFACTURER_MAX_STAKE
+    else:
+        cap = stake_cap_for_prob(prob)
+        if double_down:
+            cap = max(cap, 20)
+
+    if amount < MIN_STAKE or amount > cap:
+        await ctx.send(f"That pick's cap is **${cap}** this week (min ${MIN_STAKE}). Try an amount in that range.")
+        return
+
+    ensure_balance(data, did)
+    if econ["balances"][did] < amount:
+        await ctx.send(f"Not enough Dale Dollars — you've got ${econ['balances'][did]}, this bet needs ${amount}.")
+        return
+
+    bet_record["stake"] = amount
+    econ["balances"][did] -= amount
+    if double_down:
+        dd_used.setdefault(did, []).append(race_num)
+    data.setdefault("bets", {}).setdefault(str(race_num), []).append(bet_record)
+    save_data(data)
+
+    label = bet_record.get("target") or f"{bet_record['side']} {bet_record.get('line','')}"
+    await ctx.send(
+        f"✅ Bet placed: **${amount}** on **{label}** at **{bet_record['odds']}**"
+        f"{' 🔥 (Power Play)' if double_down else ''}. Balance: ${econ['balances'][did]}."
+    )
+
+
+@bot.hybrid_command(name="balance", description="Check your Dale Dollars balance")
+async def balance_cmd(ctx):
+    data = load_data()
+    did  = str(ctx.author.id)
+    bal  = ensure_balance(data, did)
+    save_data(data)
+    board = data.get("odds_board") or {}
+    open_bets = [b for b in data.get("bets", {}).get(str(board.get("race_number")), [])
+                 if b.get("discord_id") == did and not b.get("settled")]
+    embed = discord.Embed(title="💵 Your Dale Dollars", color=0x2ECC71)
+    embed.add_field(name="Balance", value=f"${bal}", inline=True)
+    if open_bets:
+        lines = [f"${b['stake']} {b['type']} — {b.get('target') or (b.get('side','')+' '+str(b.get('line','')))} @ {b['odds']}"
+                 for b in open_bets]
+        embed.add_field(name="Open bets this week", value="\n".join(lines), inline=False)
+    await ctx.send(embed=embed)
+
+
+@bot.hybrid_command(name="moneyboard", description="Season-long Dale Dollars leaderboard")
+async def moneyboard_cmd(ctx):
+    data = load_data()
+    bal  = data.get("economy", {}).get("balances", {})
+    reg  = load_reg()
+    id_to_name = {str(d.get("discord_id")): d.get("name") for d in reg.get("drivers", [])}
+    ranked = sorted(bal.items(), key=lambda kv: kv[1], reverse=True)[:15]
+    if not ranked:
+        await ctx.send("Nobody's placed a bet yet. Type `/odds` to see this week's board.")
+        return
+    lines = [f"**{i+1}.** {id_to_name.get(did, f'<@{did}>')} — ${amt}"
+             for i, (did, amt) in enumerate(ranked)]
+    embed = discord.Embed(
+        title="🏆 Dale's Book — Season Money Board",
+        description="\n".join(lines),
+        color=0xFFD700,
+    )
+    embed.set_footer(text="Top bankroll at season's end wins free entry to the next series.")
+    await ctx.send(embed=embed)
+
+
+@bot.hybrid_command(name="forcesettle", description="Manually settle a race's bets (admin)")
+@is_owner()
+async def forcesettle_cmd(ctx, race_number: int):
+    data = load_data()
+    reg  = load_reg()
+    changes = grade_and_settle_race(data, reg, race_number)
+    save_data(data)
+    if not changes:
+        await ctx.send(f"Nothing to settle for Race {race_number} — either no bets or no results posted yet.")
+        return
+    voided = sum(1 for c in changes if c[3] == "void")
+    msg = f"✅ Settled {len(changes)} bet(s) for Race {race_number}."
+    if voided:
+        msg += f" ({voided} voided/refunded — insufficient data to grade.)"
+    await ctx.send(msg)
+
+
 @bot.hybrid_command(name="help", description="List all Ask Dale commands")
 @has_arca()
 async def help_cmd(ctx):
@@ -4844,6 +5687,13 @@ async def help_cmd(ctx):
         name="🔥  Storylines",
         value="`/rivalries` — hottest head-to-head battles\n"
               "`/archetypes` — every driver's archetype label",
+        inline=False)
+    embed.add_field(
+        name="🎰  Dale's Book (for fun — no real money)",
+        value="`/odds` — this week's board (winner, top5, top10, manufacturer, props)\n"
+              "`/wager` — place a pick, amount capped by how likely it is\n"
+              "`/balance` — your Dale Dollars\n"
+              "`/moneyboard` — season leaderboard",
         inline=False)
     embed.set_footer(text="QSR High Horsepower Series — Season 1")
     await ctx.send(embed=embed)
