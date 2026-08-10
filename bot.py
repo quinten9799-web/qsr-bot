@@ -1093,7 +1093,12 @@ def bet_targets(data: dict, reg: dict, board: dict, did: str, bet_type: str) -> 
         market = board.get(bet_type, board.get("moneyline")) or {}
         ranked = sorted(market.items(), key=lambda kv: kv[1]["prob"], reverse=True)
         for name, info in ranked:
-            drv = next((d for d in reg.get("drivers", []) if d.get("name") == name), None)
+            # Board names come from race_results/standings (iRacing-reported),
+            # registration names come from what the driver typed — these
+            # drift ("Ryan Munoz" vs "Ryan J Munoz"), so match tolerantly
+            # the same way resolve_driver_by_name does everywhere else,
+            # or self/teammate exclusion silently fails on drifted names.
+            drv = resolve_driver_by_name(reg, name)
             drv_id = str(drv.get("discord_id", "")) if drv else ""
             if drv_id == did:
                 continue
@@ -1161,7 +1166,14 @@ def resolve_bet_target(data: dict, reg: dict, board: dict, did: str, bet_type: s
         if bettor_team and target_team and bettor_team == target_team:
             raise BetResolutionError("Can't bet on a teammate — that's a conflict of interest. 🚫")
         market = board.get(bet_type, board.get("moneyline"))
+        # Exact match first; registration name vs board name (iRacing-
+        # reported, via standings/race_results) drift the same way team
+        # rosters do, so fall back to the same tolerant match used there.
         priced = market.get(target["name"])
+        if not priced:
+            fallback_key = resolve_result_key(target["name"], market)
+            if fallback_key:
+                priced = market.get(fallback_key)
         if not priced:
             raise BetResolutionError(f"{target['name']} isn't priced on this week's board yet.")
         return {"type": bet_type, "target": target["name"], "odds": priced["american"], "prob": priced["prob"]}
