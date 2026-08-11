@@ -1885,6 +1885,24 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": question})
+
+    # The Anthropic API requires messages to strictly alternate user/assistant,
+    # starting with "user". Raw Discord channel history does NOT guarantee this —
+    # two different people posting back-to-back (or the "different speaker"
+    # system-note we inject) can produce two "user" turns in a row, which the
+    # API rejects with a 400 on every single call. Collapse consecutive
+    # same-role turns into one before sending, and drop any leading
+    # "assistant" turn so the transcript always opens on "user".
+    normalized = []
+    for m in messages:
+        if normalized and normalized[-1]["role"] == m["role"]:
+            normalized[-1]["content"] += "\n" + m["content"]
+        else:
+            normalized.append({"role": m["role"], "content": m["content"]})
+    while normalized and normalized[0]["role"] != "user":
+        normalized.pop(0)
+    messages = normalized
+
     payload = {
         "model": "claude-sonnet-5",
         "max_tokens": 500,
@@ -1906,7 +1924,8 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
                     data_resp = await resp.json()
                     return data_resp["content"][0]["text"]
                 else:
-                    print(f"Claude API error: {resp.status}")
+                    body = await resp.text()
+                    print(f"Claude API error: {resp.status} — {body[:500]}")
                     return None
     except Exception as e:
         print(f"Claude API error: {e}")
