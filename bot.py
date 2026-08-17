@@ -1045,13 +1045,223 @@ def format_odds_embed(board: dict) -> discord.Embed:
         embed.add_field(name="📊 Prop", value=f"{prop['label']}  ({prop['odds']} either side)", inline=False)
     embed.add_field(
         name="How to play",
-        value="`/wager` to place a pick · `/balance` to check your stack · `/moneyboard` for the season leaderboard.\n"
+        value="Tap **🎰 Place a Bet** below, or use `/bet` for a guided flow — `/wager` still works for typing picks fast.\n"
+              "`/balance` to check your stack · `/moneyboard` for the season leaderboard.\n"
               "Stake caps scale with how likely the pick is — favorites cap low, longshots cap higher.\n"
               "You can't bet on yourself or a teammate — everybody's picks have to be clean.\n"
               f"Bet in {MIN_RACES_FOR_PRIZE}+ races to be eligible for the season prize.",
         inline=False)
     embed.set_footer(text="Dale Dollars have no cash value and can't be purchased.")
     return embed
+
+
+# ─────────────────────────────────────────────────────────────────
+#  DALE'S BOOK — shared bet resolution / commit logic.
+#  Both /wager (typed, power-user path) and the guided /bet click-through
+#  flow funnel through resolve_bet_target() + commit_bet() so the two
+#  entry points can never drift apart on the actual betting rules —
+#  fix a rule here once, it applies everywhere.
+# ─────────────────────────────────────────────────────────────────
+
+class BetResolutionError(Exception):
+    """Raised with a user-facing message any time a pick/amount can't be
+    accepted. Callers catch this and show str(e) to the driver."""
+    pass
+
+
+BET_TYPE_LABELS = {
+    "moneyline":      "🏆 Race Winner",
+    "top5":           "🥉 Top 5 Finish",
+    "top10":          "🔟 Top 10 Finish",
+    "manufacturer":   "🏭 Manufacturer Winner (max $5)",
+    "leader_ou":      "📊 Points Leader Finish O/U",
+    "cautions_ou":    "📊 Total Cautions O/U",
+    "lead_changes_ou":"📊 Total Lead Changes O/U",
+}
+
+
+def bet_targets(data: dict, reg: dict, board: dict, did: str, bet_type: str) -> list:
+    """(label, value) pairs a bettor can actually pick for a bet_type —
+    odds baked into the label, self/teammate picks already excluded.
+    Powers both the /wager autocomplete and the guided /bet dropdowns,
+    so what a driver sees in either path is always what they're allowed
+    to bet on."""
+    bettor_team = team_of(reg, did)
+    out = []
+
+    if bet_type in ("moneyline", "top5", "top10"):
+        market = board.get(bet_type, board.get("moneyline")) or {}
+        ranked = sorted(market.items(), key=lambda kv: kv[1]["prob"], reverse=True)
+        for name, info in ranked:
+            # Board names come from race_results/standings (iRacing-reported),
+            # registration names come from what the driver typed — these
+            # drift ("Ryan Munoz" vs "Ryan J Munoz"), so match tolerantly
+            # the same way resolve_driver_by_name does everywhere else,
+            # or self/teammate exclusion silently fails on drifted names.
+            drv = resolve_driver_by_name(reg, name)
+            drv_id = str(drv.get("discord_id", "")) if drv else ""
+            if drv_id == did:
+                continue
+            if bettor_team and drv and drv.get("team") == bettor_team:
+                continue
+            out.append((f"{name}  ({info['american']})", name))
+
+    elif bet_type == "manufacturer":
+        manu_market = board.get("manufacturer") or {}
+        own_manu  = manufacturer_of(reg, data, did)
+        team_manu = team_manufacturers(reg, data, bettor_team, did)
+        for m, info in sorted(manu_market.items(), key=lambda kv: kv[1]["prob"], reverse=True):
+            if m == own_manu or m in team_manu:
+                continue
+            out.append((f"{m}  ({info['american']})", m))
+
+    elif bet_type in ("leader_ou", "cautions_ou", "lead_changes_ou"):
+        prop = next((p for p in board.get("props", []) if p["id"] == bet_type), None)
+        if prop:
+            if bet_type == "leader_ou":
+                leader_id   = str(next((d.get("discord_id", "") for d in reg.get("drivers", [])
+                                         if d.get("name") == prop.get("driver")), ""))
+                leader_team = team_of(reg, leader_id) if leader_id else None
+                if leader_id == did or (bettor_team and leader_team and bettor_team == leader_team):
+                    return []
+            out.append((f"Over {prop['line']}  ({prop['odds']})", "over"))
+            out.append((f"Under {prop['line']}  ({prop['odds']})", "under"))
+
+    return out
+
+
+def bet_type_options(data: dict, reg: dict, board: dict, did: str) -> list:
+    """discord.SelectOption list for Step 1 of the guided /bet flow —
+    only bet types with at least one legal target for THIS bettor show
+    up, so nobody picks a market only to hit a dead end at Step 2."""
+    options = []
+    for bt in ("moneyline", "top5", "top10", "manufacturer",
+               "leader_ou", "cautions_ou", "lead_changes_ou"):
+        if bt == "manufacturer" and not board.get("manufacturer"):
+            continue
+        if bt in ("leader_ou", "cautions_ou", "lead_changes_ou"):
+            if not any(p["id"] == bt for p in board.get("props", [])):
+                continue
+        if not bet_targets(data, reg, board, did, bt):
+            continue
+        options.append(discord.SelectOption(label=BET_TYPE_LABELS[bt], value=bt))
+    return options
+
+
+def resolve_bet_target(data: dict, reg: dict, board: dict, did: str, bet_type: str, pick: str) -> dict:
+    """Validates a (bet_type, pick) pair and returns the priced bet info:
+    {type, target/side+line, odds, prob}. Raises BetResolutionError with
+    a user-facing message on any failure. This is the single source of
+    truth for 'is this pick legal' — identical for /wager and /bet."""
+    bettor_team = team_of(reg, did)
+
+    if bet_type in ("moneyline", "top5", "top10"):
+        target = resolve_driver_by_name(reg, pick)
+        if not target:
+            raise BetResolutionError(f"Couldn't find a confirmed driver matching \"{pick}\". Check `/roster`.")
+        target_id   = str(target.get("discord_id", ""))
+        target_team = target.get("team")
+        if target_id == did:
+            raise BetResolutionError("Can't bet on yourself — pick someone else. 🚫")
+        if bettor_team and target_team and bettor_team == target_team:
+            raise BetResolutionError("Can't bet on a teammate — that's a conflict of interest. 🚫")
+        market = board.get(bet_type, board.get("moneyline"))
+        # Exact match first; registration name vs board name (iRacing-
+        # reported, via standings/race_results) drift the same way team
+        # rosters do, so fall back to the same tolerant match used there.
+        priced = market.get(target["name"])
+        if not priced:
+            fallback_key = resolve_result_key(target["name"], market)
+            if fallback_key:
+                priced = market.get(fallback_key)
+        if not priced:
+            raise BetResolutionError(f"{target['name']} isn't priced on this week's board yet.")
+        return {"type": bet_type, "target": target["name"], "odds": priced["american"], "prob": priced["prob"]}
+
+    elif bet_type == "manufacturer":
+        manu_market = board.get("manufacturer") or {}
+        if not manu_market:
+            note = board.get("manufacturer_note", "not enough manufacturer data on file this week")
+            raise BetResolutionError(f"Manufacturer betting isn't available this week — {note}.")
+        matched = next((m for m in manu_market if m.lower() == pick.strip().lower()), None)
+        if not matched:
+            raise BetResolutionError(f"\"{pick}\" isn't one of this week's manufacturers: {', '.join(manu_market)}.")
+        own_manu  = manufacturer_of(reg, data, did)
+        team_manu = team_manufacturers(reg, data, bettor_team, did)
+        if own_manu and matched == own_manu:
+            raise BetResolutionError("Can't bet on your own manufacturer. 🚫")
+        if matched in team_manu:
+            raise BetResolutionError("Can't bet on a teammate's manufacturer. 🚫")
+        return {"type": "manufacturer", "target": matched, "odds": manu_market[matched]["american"],
+                "prob": manu_market[matched]["prob"]}
+
+    elif bet_type in ("leader_ou", "cautions_ou", "lead_changes_ou"):
+        side = pick.strip().lower()
+        if side not in ("over", "under"):
+            raise BetResolutionError("For O/U props, pick must be `over` or `under`.")
+        prop = next((p for p in board.get("props", []) if p["id"] == bet_type), None)
+        if not prop:
+            raise BetResolutionError("That prop isn't on the board this week.")
+        if bet_type == "leader_ou":
+            leader_id   = str(next((d.get("discord_id", "") for d in reg.get("drivers", [])
+                                     if d.get("name") == prop.get("driver")), ""))
+            leader_team = team_of(reg, leader_id) if leader_id else None
+            if leader_id == did:
+                raise BetResolutionError("Can't bet on your own finishing position. 🚫")
+            if bettor_team and leader_team and bettor_team == leader_team:
+                raise BetResolutionError("Can't bet on a teammate's finishing position. 🚫")
+        return {"type": bet_type, "side": side, "line": prop["line"], "odds": prop["odds"], "prob": 0.5}
+
+    else:
+        raise BetResolutionError("Unknown bet type.")
+
+
+def commit_bet(data: dict, reg: dict, did: str, display_name: str, priced: dict,
+               amount: int, double_down: bool) -> str:
+    """Validates stake against cap/balance, deducts, records, and saves.
+    Raises BetResolutionError with a user-facing message on failure.
+    Returns the confirmation message on success. Caller must already have
+    confirmed the board is open before calling this."""
+    board    = data.get("odds_board") or {}
+    race_num = board["race_number"]
+
+    econ    = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
+    dd_used = econ.setdefault("double_down_used", {})
+    if double_down and race_num in dd_used.get(did, []):
+        raise BetResolutionError("You've already used this week's Power Play boost.")
+
+    bet_type = priced["type"]
+    if bet_type == "manufacturer":
+        cap = MANUFACTURER_MAX_STAKE
+    else:
+        cap = stake_cap_for_prob(priced["prob"])
+        if double_down:
+            cap = max(cap, 20)
+
+    if amount < MIN_STAKE or amount > cap:
+        raise BetResolutionError(f"That pick's cap is **${cap}** this week (min ${MIN_STAKE}). Try an amount in that range.")
+
+    ensure_balance(data, did)
+    if econ["balances"][did] < amount:
+        raise BetResolutionError(f"Not enough Dale Dollars — you've got ${econ['balances'][did]}, this bet needs ${amount}.")
+
+    bet_record = {k: v for k, v in priced.items() if k != "prob"}
+    bet_record.update({
+        "discord_id": did, "name": display_name,
+        "double_down": double_down, "settled": False, "won": None,
+        "placed_at": datetime.utcnow().isoformat(),
+        "stake": amount,
+    })
+    econ["balances"][did] -= amount
+    if double_down:
+        dd_used.setdefault(did, []).append(race_num)
+    data.setdefault("bets", {}).setdefault(str(race_num), []).append(bet_record)
+    save_data(data)
+
+    label = bet_record.get("target") or f"{bet_record['side']} {bet_record.get('line', '')}"
+    return (f"✅ Bet placed: **${amount}** on **{label}** at **{bet_record['odds']}**"
+            f"{' 🔥 (Power Play)' if double_down else ''}. Balance: ${econ['balances'][did]}.")
+
 
 def get_race_manufacturer(data: dict, name: str, race_num: int):
     """The manufacturer on record for a specific driver's specific race
@@ -1922,7 +2132,21 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
             ) as resp:
                 if resp.status == 200:
                     data_resp = await resp.json()
-                    return data_resp["content"][0]["text"]
+                    # Don't assume content[0] is a text block — a response can
+                    # come back 200 OK with no text block (empty content, a
+                    # non-text block first) and content[0]["text"] then raises
+                    # an unguarded KeyError, silently killing the answer and
+                    # dropping Dale into the generic fallback lines for every
+                    # single message. Collect every text block instead and
+                    # log the raw shape when there isn't one, so this is
+                    # diagnosable instead of just printing "'text'".
+                    text_parts = [b.get("text", "") for b in data_resp.get("content", [])
+                                  if isinstance(b, dict) and b.get("type") == "text"]
+                    combined = "\n".join(p for p in text_parts if p).strip()
+                    if combined:
+                        return combined
+                    print(f"Claude API returned 200 but no usable text block: {data_resp}")
+                    return None
                 else:
                     body = await resp.text()
                     print(f"Claude API error: {resp.status} — {body[:500]}")
@@ -2715,7 +2939,7 @@ async def weekly_settlement():
                     f"🟢 **Dale's Book is OPEN** for Race {next_race} — bet all week, "
                     f"closes at lobby-up next race night."
                 )
-                await ch.send(embed=format_odds_embed(new_board))
+                await ch.send(embed=format_odds_embed(new_board), view=OddsBoardView())
     else:
         print(f"ℹ️ Dale's Book not reopened yet — race_number still {race_num} "
               f"(results not pushed from Race Control). Run !postodds once they are.")
@@ -2784,6 +3008,7 @@ async def on_ready():
     bot.add_view(RoleSelectView())      # Re-register persistent views on restart
     bot.add_view(RegistrationView())
     bot.add_view(RSVPView())
+    bot.add_view(OddsBoardView())       # "🎰 Place a Bet" button on every odds post
     print(f"✅  Ask Dale Bot online as {bot.user}")
 
     # ── Slash command sync ──────────────────────────────────────
@@ -4681,8 +4906,9 @@ async def setup_sportsbook(ctx):
     )
     embed.add_field(
         name="Commands",
-        value="`/odds` — this week's board\n"
-              "`/wager` — place a pick\n"
+        value="`/odds` — this week's board (tap **🎰 Place a Bet** on it for a guided flow)\n"
+              "`/bet` — guided, click-through betting (easiest way to play)\n"
+              "`/wager` — place a pick by typing it out, with autocomplete\n"
               "`/balance` — your Dale Dollars + open bets\n"
               "`/moneyboard` — season leaderboard",
         inline=False,
@@ -4695,7 +4921,7 @@ async def setup_sportsbook(ctx):
         inline=False,
     )
     embed.set_footer(text="Dale Dollars have no cash value and can't be purchased.")
-    msg = await ch.send(embed=embed)
+    msg = await ch.send(embed=embed, view=OddsBoardView())
     try:
         await msg.pin()
     except discord.HTTPException:
@@ -5548,8 +5774,180 @@ async def archetypes_cmd(ctx):
 
 
 # ─────────────────────────────────────────────────────────────────
-#  DALE'S BOOK — no-stakes prediction game
+#  DALE'S BOOK — guided click-through betting flow.
+#  Step 1 (bet type) -> Step 2 (target, range-chunked past 25 options)
+#  -> amount modal -> commit_bet(). Every step re-loads data/reg fresh
+#  and re-validates through resolve_bet_target()/commit_bet(), so this
+#  is never trusted state — it's just a friendlier way to fill in the
+#  same fields /wager takes typed.
 # ─────────────────────────────────────────────────────────────────
+
+class BetAmountModal(discord.ui.Modal):
+    """Final step — asks for stake (and Power Play, if applicable) and
+    commits the bet. Re-resolves the pick fresh at submit time in case
+    the board closed or odds moved while the driver was clicking through."""
+    def __init__(self, bet_type: str, pick: str, priced: dict):
+        target_label = priced.get("target") or f"{priced['side'].title()} {priced.get('line', '')}"
+        super().__init__(title=f"Bet: {target_label}"[:45])
+        self.bet_type = bet_type
+        self.pick     = pick
+        cap = MANUFACTURER_MAX_STAKE if bet_type == "manufacturer" else stake_cap_for_prob(priced["prob"])
+        cap_hint = f"${MIN_STAKE}-${cap}" if bet_type == "manufacturer" else f"${MIN_STAKE}-${cap} (Power Play raises it)"
+        self.amount_input = discord.ui.TextInput(
+            label=f"Amount — {cap_hint}", placeholder=str(cap), required=True, max_length=4)
+        self.add_item(self.amount_input)
+        self.dd_input = None
+        if bet_type != "manufacturer":
+            self.dd_input = discord.ui.TextInput(
+                label="Use Power Play boost? (yes/no)", required=False,
+                placeholder="no", max_length=3, default="no")
+            self.add_item(self.dd_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw = str(self.amount_input.value).strip()
+        if not raw.isdigit():
+            await interaction.response.send_message("❌ Amount has to be a whole number.", ephemeral=True)
+            return
+        amount      = int(raw)
+        double_down = bool(self.dd_input and str(self.dd_input.value).strip().lower() in ("yes", "y", "true"))
+
+        data  = load_data()
+        reg   = load_reg()
+        board = data.get("odds_board") or {}
+        did   = str(interaction.user.id)
+        if not board.get("open") or not board.get("moneyline"):
+            await interaction.response.send_message(
+                "Dale's Book closed while you were picking — check `/odds` for the current board.",
+                ephemeral=True)
+            return
+        try:
+            priced = resolve_bet_target(data, reg, board, did, self.bet_type, self.pick)
+            msg = commit_bet(data, reg, did, interaction.user.display_name, priced, amount, double_down)
+        except BetResolutionError as e:
+            await interaction.response.send_message(f"❌ {e}", ephemeral=True)
+            return
+        await interaction.response.send_message(msg, ephemeral=True)
+
+
+class TargetSelect(discord.ui.Select):
+    """Step 2 — pick a specific target from a <=25 chunk."""
+    def __init__(self, options_data: list):
+        options = [discord.SelectOption(label=label[:100], value=value)
+                   for label, value in options_data]
+        super().__init__(placeholder="Step 2 — pick your target…", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: "BetFlowView" = self.view
+        pick = self.values[0]
+        data  = load_data()
+        reg   = load_reg()
+        board = data.get("odds_board") or {}
+        did   = str(interaction.user.id)
+        try:
+            priced = resolve_bet_target(data, reg, board, did, view.bet_type, pick)
+        except BetResolutionError as e:
+            await interaction.response.edit_message(content=f"❌ {e}", view=None)
+            return
+        await interaction.response.send_modal(BetAmountModal(view.bet_type, pick, priced))
+
+
+class TargetRangeSelect(discord.ui.Select):
+    """Step 2a — pick a range (only shown when a market has >25 targets)."""
+    def __init__(self, chunks: list):
+        self.chunks = chunks
+        options = [
+            discord.SelectOption(
+                label=f"{chunk[0][0].split('  (')[0]} – {chunk[-1][0].split('  (')[0]}"[:100],
+                description=f"{len(chunk)} options", value=str(i))
+            for i, chunk in enumerate(chunks)
+        ]
+        super().__init__(placeholder="Step 2a — pick a range…", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: "BetFlowView" = self.view
+        chunk = self.chunks[int(self.values[0])]
+        view.clear_items()
+        view.add_item(TargetSelect(chunk))
+        await interaction.response.edit_message(content="**Step 2b** — pick your target:", view=view)
+
+
+class BetTypeSelect(discord.ui.Select):
+    """Step 1 — what market to bet on. Options are pre-filtered so every
+    choice here is guaranteed to have at least one legal target."""
+    def __init__(self, options: list):
+        super().__init__(placeholder="Step 1 — what are you betting on?",
+                          min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: "BetFlowView" = self.view
+        view.bet_type = self.values[0]
+        data  = load_data()
+        reg   = load_reg()
+        board = data.get("odds_board") or {}
+        did   = str(interaction.user.id)
+        targets = bet_targets(data, reg, board, did, view.bet_type)
+        if not targets:
+            await interaction.response.edit_message(
+                content="Nothing's available on that market for you right now.", view=None)
+            return
+        chunks = [targets[i:i + 25] for i in range(0, len(targets), 25)]
+        view.clear_items()
+        if len(chunks) <= 1:
+            view.add_item(TargetSelect(chunks[0]))
+        else:
+            view.add_item(TargetRangeSelect(chunks))
+        await interaction.response.edit_message(
+            content=f"🎰 **Dale's Book** — Step 2: pick your **{BET_TYPE_LABELS[view.bet_type]}** target.",
+            view=view)
+
+
+class BetFlowView(discord.ui.View):
+    """Ephemeral, per-user, 3-minute guided bet flow."""
+    def __init__(self, type_options: list):
+        super().__init__(timeout=180)
+        self.bet_type = None
+        self.add_item(BetTypeSelect(type_options))
+
+
+async def build_bet_step1(did: str):
+    """Returns (content, view) for the opening step of the guided flow,
+    or (message, None) if the book's closed / nothing's biddable."""
+    data  = load_data()
+    reg   = load_reg()
+    board = data.get("odds_board") or {}
+    if not board.get("open") or not board.get("moneyline"):
+        return "Dale's Book isn't open right now — it runs Tuesday through lobby-up on race night. Check `/odds`.", None
+    options = bet_type_options(data, reg, board, did)
+    if not options:
+        return "Nothing's available for you to bet on this week (self/teammate picks are excluded from every market).", None
+    return "🎰 **Dale's Book** — Step 1: what are you betting on?", BetFlowView(options)
+
+
+class OddsBoardView(discord.ui.View):
+    """Persistent 'Place a Bet' button attached to every odds board post
+    (auto-open, /odds, /postodds). Re-registered in on_ready so it keeps
+    working across bot restarts."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Place a Bet", style=discord.ButtonStyle.success,
+                        custom_id="dales_book_place_bet", emoji="🎰")
+    async def place_bet_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        content, view = await build_bet_step1(str(interaction.user.id))
+        if view is None:
+            await interaction.response.send_message(content, ephemeral=True)
+        else:
+            await interaction.response.send_message(content, view=view, ephemeral=True)
+
+
+@bot.hybrid_command(name="bet", description="Place a Dale's Book wager with a guided, click-through flow")
+async def bet_cmd(ctx):
+    content, view = await build_bet_step1(str(ctx.author.id))
+    if view is None:
+        await ctx.send(content, ephemeral=True)
+    else:
+        await ctx.send(content, view=view, ephemeral=True)
+
 
 @bot.hybrid_command(name="odds", description="Dale's Book — this week's for-fun odds board")
 async def odds_cmd(ctx):
@@ -5558,7 +5956,7 @@ async def odds_cmd(ctx):
     if not board.get("moneyline"):
         await ctx.send("Dale's Book opens Tuesday, the day after race night. Check back then. 🎰")
         return
-    await ctx.send(embed=format_odds_embed(board))
+    await ctx.send(embed=format_odds_embed(board), view=OddsBoardView())
 
 
 @bot.hybrid_command(name="postodds", description="Manually build and post this week's odds board (admin)")
@@ -5578,7 +5976,7 @@ async def post_odds_cmd(ctx):
             ephemeral=True)
         return
     save_data(data)
-    await ctx.send(embed=format_odds_embed(board))
+    await ctx.send(embed=format_odds_embed(board), view=OddsBoardView())
 
 
 def team_manufacturers(reg: dict, data: dict, team_name: str, exclude_discord_id: str) -> set:
@@ -5597,6 +5995,54 @@ def team_manufacturers(reg: dict, data: dict, team_name: str, exclude_discord_id
     return out
 
 
+async def wager_pick_autocomplete(interaction: discord.Interaction, current: str):
+    """Suggests legal picks for whatever bet_type is already selected, with
+    odds baked into the label — same source list as the guided /bet flow
+    (bet_targets()), so typing and clicking never disagree on what's valid."""
+    bet_type = getattr(interaction.namespace, "bet_type", None)
+    data  = load_data()
+    board = data.get("odds_board") or {}
+    if not bet_type or not board.get("open"):
+        return []
+    reg = load_reg()
+    did = str(interaction.user.id)
+    current_lower = current.strip().lower()
+    out = []
+    for label, value in bet_targets(data, reg, board, did, bet_type):
+        if current_lower and current_lower not in label.lower():
+            continue
+        out.append(discord.app_commands.Choice(name=label[:100], value=value))
+    return out[:25]
+
+
+async def wager_amount_autocomplete(interaction: discord.Interaction, current: str):
+    """Suggests a min / half-cap / max-cap amount so the stake cap is
+    visible BEFORE submitting, instead of only showing up as a rejection."""
+    bet_type = getattr(interaction.namespace, "bet_type", None)
+    pick     = getattr(interaction.namespace, "pick", None)
+    data  = load_data()
+    board = data.get("odds_board") or {}
+    if not bet_type or not pick or not board.get("open"):
+        return []
+    reg = load_reg()
+    did = str(interaction.user.id)
+    try:
+        priced = resolve_bet_target(data, reg, board, did, bet_type, pick)
+    except BetResolutionError:
+        return []
+    cap = MANUFACTURER_MAX_STAKE if bet_type == "manufacturer" else stake_cap_for_prob(priced["prob"])
+    if getattr(interaction.namespace, "double_down", False):
+        cap = max(cap, 20)
+    marks = sorted(set(v for v in (MIN_STAKE, max(MIN_STAKE, cap // 2), cap) if MIN_STAKE <= v <= cap))
+    choices = [discord.app_commands.Choice(name=f"${v}  (cap ${cap})", value=v) for v in marks]
+    typed = current.strip()
+    if typed.isdigit():
+        tv = int(typed)
+        if MIN_STAKE <= tv <= cap and tv not in marks:
+            choices.insert(0, discord.app_commands.Choice(name=f"${tv}", value=tv))
+    return choices[:25]
+
+
 @bot.hybrid_command(name="wager", description="Place a for-fun Dale Dollars wager on this week's board")
 @discord.app_commands.describe(
     bet_type="What you're betting on",
@@ -5613,124 +6059,26 @@ def team_manufacturers(reg: dict, data: dict, team_name: str, exclude_discord_id
     discord.app_commands.Choice(name="Total cautions O/U", value="cautions_ou"),
     discord.app_commands.Choice(name="Total lead changes O/U", value="lead_changes_ou"),
 ])
+@discord.app_commands.autocomplete(pick=wager_pick_autocomplete, amount=wager_amount_autocomplete)
 async def wager_cmd(ctx, bet_type: str, pick: str, amount: int, double_down: bool = False):
+    """Prefer `/bet` for a guided, click-through version of this same
+    flow — this command is the fast typed path for people who already
+    know what they want. Also new: `pick` and `amount` now autocomplete
+    with live odds and stake caps as you type, on the slash-command path."""
     data  = load_data()
     reg   = load_reg()
     board = data.get("odds_board") or {}
     if not board.get("open") or not board.get("moneyline"):
         await ctx.send("Dale's Book isn't open right now — it runs Tuesday through lobby-up on race night. Check `/odds`.")
         return
-    race_num = board["race_number"]
-    did      = str(ctx.author.id)
-
-    econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
-    dd_used = econ.setdefault("double_down_used", {})
-    if double_down and race_num in dd_used.get(did, []):
-        await ctx.send("You've already used this week's Power Play boost.")
+    did = str(ctx.author.id)
+    try:
+        priced = resolve_bet_target(data, reg, board, did, bet_type, pick)
+        msg = commit_bet(data, reg, did, ctx.author.display_name, priced, amount, double_down)
+    except BetResolutionError as e:
+        await ctx.send(str(e))
         return
-
-    bettor_team = team_of(reg, did)
-    bet_record  = {"discord_id": did, "name": ctx.author.display_name,
-                   "double_down": double_down, "settled": False, "won": None,
-                   "placed_at": datetime.utcnow().isoformat()}
-    prob = 0.5   # default for the flat-odds O/U props
-
-    if bet_type in ("moneyline", "top5", "top10"):
-        target = resolve_driver_by_name(reg, pick)
-        if not target:
-            await ctx.send(f"Couldn't find a confirmed driver matching \"{pick}\". Check `/roster`.")
-            return
-        target_id   = str(target.get("discord_id", ""))
-        target_team = target.get("team")
-        if target_id == did:
-            await ctx.send("Can't bet on yourself — pick someone else. 🚫")
-            return
-        if bettor_team and target_team and bettor_team == target_team:
-            await ctx.send("Can't bet on a teammate — that's a conflict of interest. 🚫")
-            return
-        market = board.get(bet_type, board.get("moneyline"))
-        priced = market.get(target["name"])
-        if not priced:
-            await ctx.send(f"{target['name']} isn't priced on this week's board yet.")
-            return
-        prob = priced["prob"]
-        bet_record.update(type=bet_type, target=target["name"], odds=priced["american"])
-
-    elif bet_type == "manufacturer":
-        manu_market = board.get("manufacturer") or {}
-        if not manu_market:
-            note = board.get("manufacturer_note", "not enough manufacturer data on file this week")
-            await ctx.send(f"Manufacturer betting isn't available this week — {note}.")
-            return
-        matched = next((m for m in manu_market if m.lower() == pick.strip().lower()), None)
-        if not matched:
-            await ctx.send(f"\"{pick}\" isn't one of this week's manufacturers: {', '.join(manu_market)}.")
-            return
-        own_manu  = manufacturer_of(reg, data, did)
-        team_manu = team_manufacturers(reg, data, bettor_team, did)
-        if own_manu and matched == own_manu:
-            await ctx.send("Can't bet on your own manufacturer. 🚫")
-            return
-        if matched in team_manu:
-            await ctx.send("Can't bet on a teammate's manufacturer. 🚫")
-            return
-        prob = manu_market[matched]["prob"]
-        bet_record.update(type="manufacturer", target=matched, odds=manu_market[matched]["american"])
-
-    elif bet_type in ("leader_ou", "cautions_ou", "lead_changes_ou"):
-        side = pick.strip().lower()
-        if side not in ("over", "under"):
-            await ctx.send("For O/U props, pick must be `over` or `under`.")
-            return
-        prop = next((p for p in board.get("props", []) if p["id"] == bet_type), None)
-        if not prop:
-            await ctx.send("That prop isn't on the board this week.")
-            return
-        if bet_type == "leader_ou":
-            leader_id   = str(next((d.get("discord_id", "") for d in reg.get("drivers", [])
-                                     if d.get("name") == prop.get("driver")), ""))
-            leader_team = team_of(reg, leader_id) if leader_id else None
-            if leader_id == did:
-                await ctx.send("Can't bet on your own finishing position. 🚫")
-                return
-            if bettor_team and leader_team and bettor_team == leader_team:
-                await ctx.send("Can't bet on a teammate's finishing position. 🚫")
-                return
-        bet_record.update(type=bet_type, side=side, line=prop["line"], odds=prop["odds"])
-    else:
-        await ctx.send("Unknown bet type.")
-        return
-
-    # Stake cap — the harder the pick, the more you're allowed to risk.
-    # Manufacturer always caps at $5 regardless of Power Play.
-    if bet_type == "manufacturer":
-        cap = MANUFACTURER_MAX_STAKE
-    else:
-        cap = stake_cap_for_prob(prob)
-        if double_down:
-            cap = max(cap, 20)
-
-    if amount < MIN_STAKE or amount > cap:
-        await ctx.send(f"That pick's cap is **${cap}** this week (min ${MIN_STAKE}). Try an amount in that range.")
-        return
-
-    ensure_balance(data, did)
-    if econ["balances"][did] < amount:
-        await ctx.send(f"Not enough Dale Dollars — you've got ${econ['balances'][did]}, this bet needs ${amount}.")
-        return
-
-    bet_record["stake"] = amount
-    econ["balances"][did] -= amount
-    if double_down:
-        dd_used.setdefault(did, []).append(race_num)
-    data.setdefault("bets", {}).setdefault(str(race_num), []).append(bet_record)
-    save_data(data)
-
-    label = bet_record.get("target") or f"{bet_record['side']} {bet_record.get('line','')}"
-    await ctx.send(
-        f"✅ Bet placed: **${amount}** on **{label}** at **{bet_record['odds']}**"
-        f"{' 🔥 (Power Play)' if double_down else ''}. Balance: ${econ['balances'][did]}."
-    )
+    await ctx.send(msg)
 
 
 @bot.hybrid_command(name="balance", description="Check your Dale Dollars balance")
@@ -5861,7 +6209,8 @@ async def help_cmd(ctx):
     embed.add_field(
         name="🎰  Dale's Book (for fun — no real money)",
         value="`/odds` — this week's board (winner, top5, top10, manufacturer, props)\n"
-              "`/wager` — place a pick, amount capped by how likely it is\n"
+              "`/bet` — guided, click-through betting — easiest way to play\n"
+              "`/wager` — place a pick by typing it, with autocomplete\n"
               "`/balance` — your Dale Dollars\n"
               "`/moneyboard` — season leaderboard",
         inline=False)
