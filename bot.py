@@ -1743,9 +1743,18 @@ def get_rivalry_context() -> str:
     # Points battle — top 3 gap
     if len(sorted_s) >= 2:
         leader     = sorted_s[0]
-        gap_to_2nd = leader[1]["points"] - sorted_s[1][1]["points"]
+        runner_up  = sorted_s[1]
+        gap_to_2nd = leader[1]["points"] - runner_up[1]["points"]
+        # Previously only the GAP was given, never the leader's actual point
+        # total — every Dale prompt that pulls this context (general Q&A,
+        # trash talk, post-race recap) had to either omit points entirely or
+        # invent a number to go with "leads by N pts." Give the real totals
+        # for both drivers so nothing downstream has to guess.
         lines.append(
-            f"POINTS BATTLE: {leader[0]} leads by {gap_to_2nd} pts over {sorted_s[1][0]}."
+            f"POINTS BATTLE: {leader[0]} leads the championship with "
+            f"{leader[1]['points']} pts, {gap_to_2nd} ahead of {runner_up[0]} "
+            f"({runner_up[1]['points']} pts). Note: the championship leader is "
+            f"not necessarily the same driver who won the most recent race."
         )
 
     # Hottest rivalry
@@ -2491,6 +2500,10 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
         f"and if there were wreckers, give your honest opinion. "
         f"If there's a hot rivalry brewing, call it out. "
         f"If the team championship is close at the top, mention it in one line. "
+        f"IMPORTANT: the race winner and the championship points leader are not "
+        f"always the same driver — check the standings list above before saying "
+        f"anyone 'leads' or 'sits on top' of the championship. Only say that about "
+        f"the driver actually listed first in the standings above. "
         f"If you reference anyone's championship points, use only the exact "
         f"numbers given above — never estimate, round, or make one up. "
         f"3-5 sentences. Sound like Dale in victory lane or the garage after a race. "
@@ -3061,9 +3074,18 @@ async def standings(ctx):
         icon    = medals.get(i, f"`{i:>2}.`")
         wins    = info.get("wins", 0)
         win_str = f" ⭐x{wins}" if wins else ""
-        lines.append(f"{icon} **{driver}** — {info['points']} pts{win_str}")
+        # Drop-adjusted points alone read as "missing data" the moment drops
+        # kick in (a driver's total can look like it lost 40+ points
+        # overnight). Show the raw cumulative total and the counted/started
+        # fraction right on the line — same shape as SRH's own RACES
+        # COUNTED / STARTS columns — so nobody has to go hunting for why.
+        raw     = info.get("raw_points", info["points"])
+        counted = info.get("counted", 0)
+        starts  = counted + len(info.get("dropped", []) or [])
+        detail  = f" · {raw} raw · {counted}/{starts} counted" if starts else ""
+        lines.append(f"{icon} **{driver}** — {info['points']} pts{detail}{win_str}")
     embed.description = "\n".join(lines)
-    embed.set_footer(text=f"Through Race {data.get('race_number',1)-1} | Updated after each race by Race Control Bot")
+    embed.set_footer(text=f"Through Race {data.get('race_number',1)-1} | Each driver's {SEASON_DROPS} worst races are dropped | Updated after each race by Race Control Bot")
     await ctx.send(embed=embed)
 
 @bot.hybrid_command(name="schedule", description="Season race schedule")
