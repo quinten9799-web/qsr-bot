@@ -1827,6 +1827,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
     data = load_data()
     standings = compute_adjusted_standings(data)
     race_num  = data.get("race_number", 1)
+    race_results = data.get("race_results", {})
     live_context = ""
     if standings:
         sorted_s = standings_sorted(standings)
@@ -1834,6 +1835,35 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
                          for i, (name, info) in enumerate(sorted_s[:5]))
         live_context += f"\nCURRENT STANDINGS TOP 5: {top5}"
         live_context += f"\nRACE NUMBER: {race_num - 1} races completed"
+
+    # LAST RACE RESULTS — actual finish positions for the most recently
+    # completed race, pulled straight from race_results. Without this,
+    # Dale only ever saw cumulative top-5 standings and a bare race count,
+    # so any "who won last week" / "what did I finish" question had zero
+    # grounding and he'd correctly refuse rather than guess — which read
+    # as Dale being broken when the data was sitting right there in
+    # data.json, just never wired into his context.
+    last_race_num = race_num - 1
+    if last_race_num >= 1:
+        last_track = next((e["track"] for e in SCHEDULE if e["race"] == last_race_num), "")
+        finishers = []
+        for name, hist in race_results.items():
+            entry = next((r for r in hist if r.get("race") == last_race_num), None)
+            if entry and entry.get("finish"):
+                finishers.append((entry["finish"], name))
+        finishers.sort(key=lambda x: x[0])
+        if finishers:
+            board = ", ".join(f"P{pos} {name}" for pos, name in finishers[:10])
+            live_context += (
+                f"\nLAST RACE RESULTS (Race {last_race_num} — {last_track}), "
+                f"top 10: {board}"
+            )
+        else:
+            live_context += (
+                f"\nLAST RACE RESULTS: Race {last_race_num} ({last_track}) results "
+                f"have not been pushed from Race Control yet — say you don't have "
+                f"them in front of you rather than guessing."
+            )
 
     # NEXT RACE — pulled from the authoritative SCHEDULE array (same one the
     # announcement scheduler uses), never from data.json's separately-loaded
@@ -1849,6 +1879,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
     else:
         live_context += "\nSeason 1 schedule is complete — all 14 races run."
     live_context += get_rivalry_context()
+
 
     # The roster is the single biggest anti-hallucination lever. Without it
     # Dale has no idea who's actually in the league, so he reaches for
