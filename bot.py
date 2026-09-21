@@ -2554,7 +2554,7 @@ async def race_prediction():
         return
     data      = load_data()
     standings = compute_adjusted_standings(data)
-    schedule  = data.get("schedule", [])
+    schedule  = data.get("schedule") or SCHEDULE
     race_num  = data.get("race_number", 1)
     sorted_s   = standings_sorted(standings)
     top5_names = [name for name, _ in sorted_s[:5]]
@@ -3038,15 +3038,21 @@ async def standings(ctx):
 @bot.hybrid_command(name="schedule", description="Season race schedule")
 @has_arca()
 async def schedule_cmd(ctx):
-    data  = load_data()
-    sched = data.get("schedule", [])
-    if not sched:
-        await ctx.send("📅 Schedule not loaded yet. Check back soon!")
-        return
+    data     = load_data()
+    # Authoritative SCHEDULE constant is always present — an admin-loaded
+    # CSV (!loadschedule) can still override it, but we never again show
+    # "not loaded yet" just because that optional step was skipped.
+    sched    = data.get("schedule") or SCHEDULE
+    race_num = data.get("race_number", 1)
     embed = discord.Embed(title="📅 QSR High Horsepower — Season Schedule", color=0xE8272A)
     lines = []
     for i, race in enumerate(sched, 1):
-        done = "✅" if race.get("complete") else "🔜"
+        if race.get("complete") or i < race_num:
+            done = "✅"
+        elif i == race_num:
+            done = "🏁"
+        else:
+            done = "🔜"
         lines.append(f"{done} **Race {i}** — {race['track']} | {race['date']}")
     embed.description = "\n".join(lines)
     await ctx.send(embed=embed)
