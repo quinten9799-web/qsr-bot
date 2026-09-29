@@ -126,6 +126,21 @@ def track_name(text):
     return re.sub(r"\[[^\]]*\]", "", str(text or "")).strip()
 
 
+ROAD_COURSES = {"Sonoma Raceway", "Watkins Glen International", "Circuit of the Americas", "Lime Rock Park", "Charlotte Roval",
+                "Daytona Road Course", "Indianapolis Road Course", "WeatherTech Raceway Laguna Seca", "Long Beach Street Circuit",
+                "Willow Springs International Raceway", "Road America"}
+
+
+def track_short(track):
+    """'New Hampshire Motor Speedway' -> 'New Hampshire', 'Charlotte Roval' stays."""
+    t = track_name(track)
+    for w in (" International Speedway", " Motor Speedway", " Superspeedway", " International Raceway", " International",
+              " Speedway", " Raceway", " Street Circuit", " Park"):
+        if t.endswith(w):
+            return t[: -len(w)]
+    return t.replace("WeatherTech Raceway ", "")
+
+
 def tracks_in(text):
     t = " " + norm(text) + " "
     out = []
@@ -576,6 +591,156 @@ def next_race(hist, data):
         if x.get("round") == n:
             return dict(x, track=track_name(x.get("track")))
     return None
+
+
+
+# ── race week: track history for the drivers actually in the field ────
+def race_week(hist, data, track, field=None, cs=None):
+    """Everything Dale needs for race week at one track.
+    field: names of drivers entered this week (registration), or None for everyone.
+    Returns track, past winners, per-driver history for the field, and ranked storylines."""
+    cs, nm, races, sn = _ctx(hist, data, cs)
+    t = track_name(track)
+    rs = [r for r in races if r.get("track") == t]
+    past = []
+    per = {}
+    for r in rs:
+        R = sorted([x for x in r["results"] if isinstance(x.get("fin"), int)], key=lambda x: x["fin"])
+        for x in R:
+            k = nm.key(x["name"])
+            p = per.setdefault(k, {"key": k, "starts": 0, "wins": 0, "top5": 0, "top10": 0, "fins": [], "led": 0,
+                                   "best": None, "win_years": [], "comeback": None})
+            p["starts"] += 1
+            p["wins"] += x["fin"] == 1
+            p["top5"] += x["fin"] <= 5
+            p["top10"] += x["fin"] <= 10
+            p["fins"].append(x["fin"])
+            p["led"] += x.get("led") or 0
+            p["best"] = x["fin"] if p["best"] is None else min(p["best"], x["fin"])
+            if x["fin"] == 1:
+                p["win_years"].append((r.get("date") or "")[:4])
+                if isinstance(x.get("st"), int) and (p["comeback"] is None or x["st"] > p["comeback"]):
+                    p["comeback"] = x["st"]
+        if R:
+            past.append({"date": r.get("date"), "year": (r.get("date") or "")[:4], "series": sn.get(r.get("series"), r.get("series")),
+                         "driver": nm.name(nm.key(R[0]["name"])), "start": R[0].get("st"), "margin": _margin(r),
+                         "led": R[0].get("led"), "laps": r.get("laps"), "live": bool(r.get("live"))})
+    # who's in the field
+    if field is None:
+        keys = list(per)
+    else:
+        keys = []
+        for n in field:
+            c = find(cs, n)
+            k = c["key"] if c else nm.key(n)
+            if k not in keys:
+                keys.append(k)
+    rows = []
+    for k in keys:
+        c = cs.get(k)
+        p = per.get(k)
+        row = {"driver": nm.name(k) if (c or p) else pretty_base(k).title(), "key": k,
+               "starts": p["starts"] if p else 0, "wins": p["wins"] if p else 0, "top5": p["top5"] if p else 0,
+               "top10": p["top10"] if p else 0, "best": p["best"] if p else None,
+               "avg": round(sum(p["fins"]) / len(p["fins"]), 1) if p else None, "led": p["led"] if p else 0,
+               "win_years": p["win_years"] if p else [], "comeback": p["comeback"] if p else None,
+               "career_wins": c["totals"]["wins"] if c else 0, "career_starts": c["totals"]["starts"] if c else 0,
+               "titles": c["totals"].get("titles", 0) if c else 0}
+        rows.append(row)
+    rows.sort(key=lambda r: (-r["wins"], -r["top5"], r["avg"] if r["avg"] is not None else 99, -r["career_wins"]))
+    been = [r for r in rows if r["starts"]]
+    fresh = [r for r in rows if not r["starts"]]
+    story = []
+    winners = [r for r in been if r["wins"]]
+    if not rs:
+        story.append(f"QSR has never raced at {t}. Clean slate for the whole field.")
+    else:
+        last = past[-1]
+        story.append(f"Last time QSR raced here: {last['driver']} won ({last['year']} {last['series']})"
+                     + (f" from P{last['start']}" if last.get("start") else "") + ".")
+        if winners:
+            if len(winners) == 1:
+                w = winners[0]
+                story.append(f"{w['driver']} is the only past {track_short(t)} winner in the field"
+                             + (f" ({w['wins']} wins here)" if w["wins"] > 1 else "") + ".")
+            else:
+                story.append(f"{len(winners)} past winners here in the field: "
+                             + ", ".join(f"{w['driver']}" + (f" ({w['wins']})" if w["wins"] > 1 else "") for w in winners[:4]) + ".")
+        elif been:
+            story.append(f"Nobody in this field has won here. Somebody's getting their first {track_short(t)} trophy.")
+        perfect = [r for r in been if r["starts"] >= 2 and max(per[r["key"]]["fins"]) <= 5]
+        for r in perfect[:2]:
+            story.append(f"{r['driver']} has never finished outside the top 5 here ({r['starts']} starts, avg {r['avg']}).")
+        led = sorted([r for r in been if r["led"]], key=lambda r: -r["led"])
+        if led and led[0]["led"] >= 20:
+            story.append(f"{led[0]['driver']} has led {led[0]['led']} laps here, the most in the field.")
+        cb = [r for r in winners if r["comeback"] and r["comeback"] >= 10]
+        if cb:
+            r = max(cb, key=lambda r: r["comeback"])
+            story.append(f"{r['driver']} once won here from P{r['comeback']}.")
+        close = [w for w in past if w.get("margin") is not None and w["margin"] < 0.1]
+        if close:
+            w = min(close, key=lambda w: w["margin"])
+            story.append(f"Closest finish here: {w['driver']} by {w['margin']:.3f}s ({w['year']}).")
+    if fresh and rs:
+        vets = [r for r in fresh if r["career_starts"] >= 10]
+        story.append(f"{len(fresh)} driver{'s' if len(fresh) != 1 else ''} in the field "
+                     f"{'have' if len(fresh) != 1 else 'has'} never raced QSR here"
+                     + (f", including {', '.join(r['driver'] for r in vets[:2])}" if vets else "") + ".")
+    ms_lines = []
+    for r in rows:
+        for m in (milestones(cs, r["driver"]) if r["career_starts"] else []):
+            spot = re.search(r"for (\d+)(?:st|nd|rd|th) all-time", m)
+            rnd = re.search(r"from (\d+) career wins", m)
+            if spot and int(spot.group(1)) <= 10:
+                ms_lines.append((int(spot.group(1)), f"{r['driver']}: {m}."))
+            elif rnd:
+                ms_lines.append((0, f"{r['driver']}: {m}."))
+    ms_lines.sort(key=lambda t: t[0])
+    story.extend(m for _, m in ms_lines[:2])
+    road = None
+    if t in ROAD_COURSES:
+        fk = {r["key"] for r in rows}
+        rw_ = {}
+        for r in races:
+            if r.get("track") in ROAD_COURSES and r.get("track") != t:
+                w = next((x for x in r["results"] if x.get("fin") == 1), None)
+                if w and nm.key(w["name"]) in fk:
+                    rw_.setdefault(nm.key(w["name"]), []).append(track_short(r["track"]))
+        road = sorted(({"driver": nm.name(k), "wins": len(v), "tracks": sorted(set(v))} for k, v in rw_.items()),
+                      key=lambda x: -x["wins"])
+        if road:
+            story.insert(1 if rs else 1, "Road-course winners in the field: " + ", ".join(
+                f"{x['driver']} ({', '.join(x['tracks'])})" for x in road[:4]) + ".")
+        elif not rs:
+            story.insert(1, "Nobody in this field has won a QSR road course yet. First one's up for grabs.")
+    return {"track": t, "races": len(rs), "past": past, "field": rows, "been": been, "fresh": fresh,
+            "road": road, "storylines": story}
+
+
+def pick_storylines(rw, n=3, skip=()):
+    """Up to n storylines, spread across different drivers."""
+    names = [r["driver"] for r in rw.get("field", [])] + [w["driver"] for w in rw.get("past", [])]
+    used, out = set(), []
+    for s in rw.get("storylines", []):
+        if any(s.startswith(x) for x in skip):
+            continue
+        who = {x for x in names if x and x in s}
+        if who and who <= used:
+            continue
+        if not s.startswith("Last time"):   # the recap line shouldn't block the better one about the same driver
+            used |= who
+        out.append(s)
+        if len(out) == n:
+            break
+    return out
+
+
+def race_week_text(rw, max_lines=5):
+    """Compact text block for announcements and Dale's prompts."""
+    if not rw:
+        return ""
+    return "\n".join("• " + s for s in rw["storylines"][:max_lines])
 
 # ── careers ────────────────────────────────────────────────────────────
 def _keymap(hist, series):

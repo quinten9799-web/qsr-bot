@@ -119,6 +119,49 @@ def history_context(question: str, user_context: str = "") -> str:
         print(f"⚠️ history context failed: {e}")
         return ""
 
+def race_week_for(race_num: int):
+    """qsr_history.race_week() for a scheduled race and this week's field
+    (everyone registered and not withdrawn; standings names as fallback)."""
+    try:
+        if not race_num or race_num > len(SCHEDULE):
+            return None
+        hist = load_history()
+        if not hist.get("races"):
+            return None
+        data = load_data()
+        track = SCHEDULE[race_num - 1]["track"].replace(" — SEASON FINALE", "").strip()
+        reg = load_reg()
+        field = [d.get("name") for d in reg.get("drivers", []) if d.get("name") and d.get("status") != "Withdrawn"]
+        if not field:
+            field = list((data.get("standings") or {}).keys())
+        return QH.race_week(hist, data, track, field)
+    except Exception as e:
+        print(f"⚠️ race_week failed: {e}")
+        return None
+
+
+def race_week_facts(race_num: int, n: int = 5) -> str:
+    """Track-history facts for Dale's prompts. Empty string if none."""
+    rw = race_week_for(race_num)
+    if not rw:
+        return ""
+    return (f" TRACK HISTORY FACTS for {rw['track']} (real QSR records, quote numbers exactly, use one or two "
+            f"if they fit naturally, never invent others): " + " ".join(rw["storylines"][:n]))
+
+
+def track_card_file(race_num: int):
+    """(discord.File, race_week) for the weekly track history graphic."""
+    import qsr_cards as QC
+    rw = race_week_for(race_num)
+    if not rw:
+        return None, None
+    d = _parse_sched_date(SCHEDULE[race_num - 1].get("date", ""))
+    date_text = d.strftime("%a %b %-d") if d else ""
+    logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qsr_league_logo.png")
+    png = QC.render_track_history(rw, race_num, date_text, logo)
+    return discord.File(io.BytesIO(png), filename=f"qsr_track_history_race{race_num}.png"), rw
+
+
 # ─────────────────────────────────────────────────────────────────
 #  REGISTRATION DATA HELPERS
 # ─────────────────────────────────────────────────────────────────
@@ -2296,6 +2339,10 @@ async def race_announcement_scheduler():
     msg += f"{field_line}\n"
     if leader_line: msg += leader_line
     if penalty_line: msg += penalty_line
+    rw = race_week_for(race_num)
+    if rw and rw.get("storylines"):
+        picks = [x for x in QH.pick_storylines(rw, 4) if "never raced QSR here" not in x][:3]
+        msg += f"\n📜 **{QH.track_short(rw['track'])} History**\n" + "\n".join(f"• {x}" for x in picks) + "\n"
     msg += f"\n{hype}"
 
     view = RSVPView()
@@ -2345,6 +2392,7 @@ async def dales_weekly_take():
         f"Keep it to 2-4 sentences. Sound natural, like you just walked into the garage "
         f"and said something. No greeting needed — just the take. "
         f"Current mood: {mood}. Race {race_num - 1} completed so far this season."
+        f"{race_week_facts(race_num_next)}"
     )
     response = await ask_claude(prompt, user_context=mood_context())
     if response:
@@ -2390,6 +2438,7 @@ async def pre_race_trash_talk():
         f"Make a bold prediction or stir the pot a little. "
         f"2-3 sentences max. Sound like pre-race Dale — confident, a little ornery. "
         f"Start with something like 'I tell you what...' or 'Y'all better watch...' or similar."
+        f"{race_week_facts(todays_race(now) or 0, 4)}"
     )
     response = await ask_claude(prompt, user_context=mood_context())
     if response:
@@ -2402,6 +2451,62 @@ async def pre_race_trash_talk():
         embed.set_footer(text="Green flag in 30 minutes | @everyone")
         await ch.send("@everyone", embed=embed)
     mark_fired("trash_talk", now)
+
+
+# ─────────────────────────────────────────────────────────────────
+#  WEEKLY TRACK HISTORY GRAPHIC
+# ─────────────────────────────────────────────────────────────────
+
+async def post_track_card(channel, race_num: int, with_take: bool = True) -> str:
+    f, rw = track_card_file(race_num)
+    if not f:
+        return "No race history loaded, or that race isn't on the schedule."
+    caption = f"📜 **Track History: {rw['track']}**, Race {race_num}"
+    if with_take and ANTHROPIC_API_KEY:
+        try:
+            take = await ask_claude(
+                f"You're Dale Earnhardt Sr. previewing QSR Race {race_num} at {rw['track']}. Using ONLY these real "
+                f"QSR track-history facts, give a 1-2 sentence take on who to watch and why. Quote numbers exactly. "
+                f"Facts: " + " ".join(rw["storylines"][:6]), user_context=mood_context())
+            if take:
+                caption += f"\n{take.strip()}"
+        except Exception as e:
+            print(f"⚠️ track card take failed: {e}")
+    await channel.send(caption[:1900], file=f)
+    return f"Posted the {rw['track']} history card."
+
+
+@tasks.loop(minutes=1)
+async def track_history_post():
+    """Saturday 12:00 PM ET: the track history graphic for Monday's race."""
+    now = now_et()
+    if not should_fire_weekday("track_history_card", 5, 12, 0, now):   # 5 = Saturday
+        return
+    up = upcoming_race(now)
+    if not up:
+        mark_fired("track_history_card", now)
+        return
+    d = _parse_sched_date(SCHEDULE[up[0] - 1].get("date", ""))
+    if not d or (d - now.date()).days > 3:     # off week: nothing this weekend
+        mark_fired("track_history_card", now)
+        return
+    channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+    if channel:
+        try:
+            print("✅ " + await post_track_card(channel, up[0]))
+        except Exception as e:
+            print(f"⚠️ track history card failed: {e}")
+    mark_fired("track_history_card", now)
+
+
+@bot.hybrid_command(name="trackcard", description="Post the track history graphic for a race (default: next race)")
+@is_admin()
+async def trackcard_cmd(ctx, race: int = 0):
+    race = race or (upcoming_race(now_et()) or (0,))[0]
+    async with ctx.typing():
+        msg = await post_track_card(ctx.channel, race, with_take=True)
+    if not msg.startswith("Posted"):
+        await ctx.send(msg)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -2853,6 +2958,7 @@ async def on_ready():
 
     dales_weekly_take.start()
     pre_race_trash_talk.start()
+    track_history_post.start()
     race_prediction.start()
     weekly_settlement.start()
     race_announcement_scheduler.start()
@@ -6037,6 +6143,7 @@ async def help_cmd(ctx):
               "`/records` — record book: track wins, streaks, comebacks, closest finishes\n"
               "`/trackhistory [track]` — past winners at a track (default: next race)\n"
               "`/headtohead Name vs Name` — all-time: who's come out ahead when they raced each other\n"
+              "`/trackcard [race]` — (admin) post the track history graphic\n"
               "…or just `/ask` Dale about any stat from any series",
         inline=False)
     embed.add_field(
