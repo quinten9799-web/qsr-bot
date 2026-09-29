@@ -15,7 +15,7 @@ Main calls:
   dale_context(hist, data, question, asker) -> compact text block for Dale
   archive_season(path, data, label) -> freeze the live season into history
 
-Race by race (hist["races"] from Sim Racer Hub + every scored HHPS race):
+Race by race (hist["races"] from Sim Racer Hub + iRacing league results + every scored HHPS race):
   all_races(hist, data)          -> every race with full results, oldest first
   race_records(hist, data)       -> record book (track wins, streaks, comebacks, laps led, closest finishes...)
   track_book(hist, data, track)  -> past winners and leaders at one track
@@ -59,11 +59,48 @@ def pretty_base(name):
 
 
 # ── live season from data.json ─────────────────────────────────────────
-def current_rows(data, label=None):
+def _race_dates(data):
+    """HHPS race number -> ISO date from data.json race_history."""
+    out = {}
+    for key, rh in ((data or {}).get("race_history") or {}).items():
+        try:
+            n = int(rh.get("race_number") or str(key).split("_")[-1])
+        except Exception:
+            continue
+        d = _parse_date(rh.get("date"))
+        if d:
+            out[n] = d
+    return out
+
+
+def _extra_for(hist, date, name):
+    """Start spot / laps led / incidents pulled from iRacing for an HHPS race
+    that was posted without them (hist['live_extras']['hhps'][date][name])."""
+    ex = (((hist or {}).get("live_extras") or {}).get("hhps") or {}).get(date or "")
+    if not ex:
+        return None
+    n = norm(name)
+    if n in ex:
+        return ex[n]
+    hits = [v for k, v in ex.items() if base(k) == base(n)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def current_rows(data, label=None, hist=None):
     """Per-driver totals for the season running in data.json."""
     rows = []
-    for name, hist in (data.get("race_results") or {}).items():
-        races = [r for r in hist or [] if isinstance(r, dict) and isinstance(r.get("finish"), (int, float))]
+    dates = _race_dates(data) if hist else {}
+    for name, hist_rows in (data.get("race_results") or {}).items():
+        races = [r for r in hist_rows or [] if isinstance(r, dict) and isinstance(r.get("finish"), (int, float))]
+        if hist:
+            fixed = []
+            for r in races:
+                if not isinstance(r.get("start"), (int, float)):
+                    x = _extra_for(hist, dates.get(int(r.get("race") or 0)), name)
+                    if x and isinstance(x.get("st"), int):
+                        r = dict(r, start=x["st"])
+                fixed.append(r)
+            races = fixed
         if not races:
             continue
         fins = [int(r["finish"]) for r in races]
@@ -71,8 +108,8 @@ def current_rows(data, label=None):
         row = {"name": name, "starts": len(races), "wins": sum(1 for f in fins if f == 1),
                "top5": sum(1 for f in fins if f <= 5), "top10": sum(1 for f in fins if f <= 10),
                "avg_finish": round(sum(fins) / len(fins), 1), "best": min(fins),
-               "poles": sum(1 for s in starts if s == 1) if len(starts) == len(races) else None,
-               "avg_start": round(sum(starts) / len(starts), 1) if len(starts) == len(races) else None,
+               "poles": sum(1 for s in starts if s == 1) if starts else None,
+               "avg_start": round(sum(starts) / len(starts), 1) if starts else None,
                "incidents": sum(int(r.get("incidents") or 0) for r in races),
                "points": sum(int(r.get("points") or 0) + int(r.get("stage_pts") or 0) + int(r.get("fastest_lap_bonus") or 0) for r in races),
                "stage_pts": sum(int(r.get("stage_pts") or 0) for r in races),
@@ -86,7 +123,7 @@ def all_series(hist, data=None):
     while data.json still holds its races)."""
     out = [_fill_from_races(hist, s) for s in hist.get("series", [])]
     if data is not None:
-        rows = current_rows(data)
+        rows = current_rows(data, hist=hist)
         label = data.get("season_label") or "Season 1"
         cur_id = f"{CURRENT_ID}_{norm(label).replace(' ', '')}"
         if rows:  # the live season always wins over an archived copy of itself
@@ -98,7 +135,9 @@ def all_series(hist, data=None):
 
 
 # ── race by race ───────────────────────────────────────────────────────
-TRACKS = [("roval", "Charlotte Roval"), ("daytona international speedway road course", "Daytona Road Course"),
+TRACKS = [("charlotte rallycross", "Charlotte Rallycross"), ("phoenix rallycross", "Phoenix Rallycross"),
+          ("daytona rallycross", "Daytona Rallycross"), ("road atlanta", "Road Atlanta"),
+          ("chicago street", "Chicago Street Course"), ("roval", "Charlotte Roval"), ("daytona international speedway road course", "Daytona Road Course"),
           ("indianapolis motor speedway road course", "Indianapolis Road Course"),
           ("laguna seca", "WeatherTech Raceway Laguna Seca"), ("long beach", "Long Beach Street Circuit"),
           ("willow springs", "Willow Springs International Raceway"), ("road america", "Road America"),
@@ -131,7 +170,12 @@ def track_name(text):
 
 ROAD_COURSES = {"Sonoma Raceway", "Watkins Glen International", "Circuit of the Americas", "Lime Rock Park", "Charlotte Roval",
                 "Daytona Road Course", "Indianapolis Road Course", "WeatherTech Raceway Laguna Seca", "Long Beach Street Circuit",
-                "Willow Springs International Raceway", "Road America"}
+                "Willow Springs International Raceway", "Road America", "Road Atlanta", "Chicago Street Course",
+                "Circuit de Spa-Francorchamps", "Okayama International Circuit", "Rudskogen Motorsenter",
+                "Summit Point Raceway", "Virginia International Raceway", "Winton Motor Raceway"}
+# dirt / rallycross venues from the early iRacing Challenge: kept in the record book, left out of pavement odds
+OFF_PAVEMENT = {"Charlotte Rallycross", "Phoenix Rallycross", "Daytona Rallycross", "Port Royal Speedway",
+                "Limaland Motorsports Park", "Wild West Motorsports Park"}
 
 
 def track_short(track):
@@ -221,7 +265,22 @@ def all_races(hist, data=None):
     """AI drivers (Route 66) keep their finishing spots but never enter the records."""
     races = [dict(r, results=[x for x in r["results"] if not x.get("ai")]) if any(x.get("ai") for x in r["results"]) else r
              for r in hist.get("races") or []]
-    races += live_races(data)
+    live = live_races(data)
+    if live:  # the live season wins over a frozen copy of itself (same as all_series)
+        live_ids = {r["series"] for r in live}
+        races = [r for r in races if r.get("series") not in live_ids]
+    for r in live:
+        if any(x.get("st") is None or x.get("led") is None for x in r["results"]):
+            res = []
+            for x in r["results"]:
+                e = _extra_for(hist, r.get("date"), x["name"])
+                if e:
+                    x = dict(x, st=x["st"] if x.get("st") is not None else e.get("st"),
+                             led=x["led"] if x.get("led") is not None else e.get("led"),
+                             fl=x.get("fl") or e.get("fl"))
+                res.append(x)
+            r = dict(r, results=res)
+        races.append(r)
     races.sort(key=lambda r: (r.get("date") or "9999", str(r.get("series")), r.get("round") or 0))
     return races
 
@@ -310,9 +369,14 @@ def _streaks(races, nm, test):
     return best, cur
 
 
+RECORD_MIN_FIELD = 8
+
+
 def race_records(hist, data=None, cs=None):
-    """The record book, built from every race with full results."""
+    """The record book, built from every race with full results. Races with
+    tiny fields (the early 2-6 car lobbies) count for careers but not records."""
     cs, nm, races, sn = _ctx(hist, data, cs)
+    races = [r for r in races if len(r.get("results") or []) >= RECORD_MIN_FIELD]
     if not races:
         return []
     recs = []
@@ -1119,7 +1183,7 @@ def dale_context(hist, data, question="", asker=""):
     if not cs:
         return ""
     sm = summary(hist, data)
-    out = ["\n\nQSR ALL-TIME HISTORY (every series QSR has ever run, from Sim Racer Hub records plus the current season. "
+    out = ["\n\nQSR ALL-TIME HISTORY (every series QSR has ever run, from Sim Racer Hub records and iRacing league results plus the current season. "
            "Use these numbers exactly; if a stat isn't here, say you don't have it):",
            "Series: " + "; ".join(f"{k} ({v} races)" for k, v in sm["races"].items()) + f". {sm['total_races']} races all-time."]
     def board(title, stat, n=8, min_starts=0, fmt=None):
@@ -1166,7 +1230,7 @@ def _race_context(hist, data, cs, question, people):
     sn = _series_names(hist, data)
     have = ", ".join(f"{sn.get(k, k)} {v.get('races')}/{v.get('of')} races" for k, v in cov.items())
     out.append("RACE-BY-RACE RECORDS (from full race results: " + (have or "SRH") + ", plus every scored HHPS race; "
-               "laps led and start spots exist for Sim Racer Hub races and HHPS races posted with them; margins are SRH only):")
+               "laps led and start spots exist for every past race and every HHPS race run in the league sessions; margins exist for past races):")
     for r in race_records(hist, data, cs):
         out.append(f"  - {r['record']}: {r['value']}. {r['detail']}")
     nx = next_race(hist, data)
@@ -1227,9 +1291,15 @@ def archive_season(path, data, label=None, name=None, crown=False):
     hist = load(path)
     label = label or data.get("season_label") or "Season 1"
     sid = f"{CURRENT_ID}_{norm(label).replace(' ', '')}"
-    rows = current_rows(data)
+    rows = current_rows(data, hist=hist)
     if not rows:
         return False, "No races in data.json to archive."
+    # freeze the race-by-race results too, so track history / records keep them after the reset
+    frozen = [dict({k: v for k, v in r.items() if k != "live"}, series=sid, id=f"{sid}_r{r.get('round')}", source="race_control")
+              for r in all_races(hist, data) if r.get("live")]
+    if frozen:
+        hist["races"] = [r for r in hist.get("races", []) if r.get("series") != sid] + frozen
+        hist.setdefault("race_coverage", {})[sid] = {"races": len(frozen), "of": len(frozen), "complete": True}
     hist["series"] = [s for s in hist.get("series", []) if s.get("id") != sid]
     if crown:
         st = data.get("standings") or {}

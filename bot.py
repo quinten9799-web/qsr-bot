@@ -103,13 +103,20 @@ def load_history() -> dict:
     if not loaded:
         return {"version": 1, "aliases": {}, "series": []}
     h = loaded[0]
-    if not h.get("races"):
-        donor = next((x for x in loaded[1:] if x.get("races")), None)
-        if donor:
-            h = dict(h)
-            for k in ("races", "race_coverage", "current_schedule"):
-                if k in donor:
-                    h[k] = donor[k]
+    donor = next((x for x in loaded[1:] if x.get("races")), None)
+    if donor and len(donor.get("races") or []) > len(h.get("races") or []):
+        # the repo copy has more race-by-race history (new backfills ship with deploys):
+        # take its races + series, keep anything only the volume copy has (archived seasons)
+        h = dict(h)
+        for k in ("races", "race_coverage", "current_schedule", "live_extras", "about"):
+            if k in donor:
+                h[k] = donor[k]
+        ids = {s.get("id") for s in donor.get("series") or []}
+        h["series"] = list(donor.get("series") or []) + [s for s in h.get("series") or [] if s.get("id") not in ids]
+        vol_races = [r for r in (loaded[0].get("races") or []) if r.get("series") not in {x.get("series") for x in h["races"]}]
+        h["races"] = h["races"] + vol_races
+        if len(donor.get("champions") or []) >= len(h.get("champions") or []):
+            h["champions"] = donor.get("champions") or []
     return h
 
 def history_context(question: str, user_context: str = "") -> str:
@@ -1282,8 +1289,17 @@ def _odds_live_races(data):
 
 
 def _odds_races(hist, data):
-    srh = [dict(r, results=[x for x in r["results"] if not x.get("ai")]) for r in (hist.get("races") or [])]
-    races = [r for r in srh + _odds_live_races(data) if r.get("date") and r["results"]]
+    srh = [dict(r, results=[x for x in r["results"] if not x.get("ai")]) for r in (hist.get("races") or [])
+           if QH.track_name(r.get("track")) not in getattr(QH, "OFF_PAVEMENT", ())]
+    live = []
+    for r in _odds_live_races(data):  # fill start / laps led from the iRacing backfill when Race Control didn't post them
+        res = []
+        for x in r["results"]:
+            e = QH._extra_for(hist, r.get("date"), x["name"]) if (x.get("st") is None or x.get("led") is None) else None
+            res.append(dict(x, st=x["st"] if x.get("st") is not None else e.get("st"),
+                            led=x["led"] if x.get("led") is not None else e.get("led")) if e else x)
+        live.append(dict(r, results=res))
+    races = [r for r in srh + live if r.get("date") and r["results"]]
     races.sort(key=lambda r: (r["date"], r.get("round") or 0))
     return races
 
@@ -2021,10 +2037,14 @@ SERIES INFO:
 - Platform: iRacing — League Sessions feature
 - Server: QSR Simulations Discord
 - QSR Simulations runs exactly ONE series right now: the QSR High Horsepower
-  Series. There is no Coke Series, Truck Series, Xfinity-equivalent, or any
-  other series — not announced, not planned, not rumored. Nothing like that
-  exists. If someone asks about one, you don't have any info on it and it's
-  not your call whether QSR ever adds one — that's a question for the admins.
+  Series. No other current or upcoming series is announced, planned, or
+  rumored. If someone asks about a new one, you don't have any info on it and
+  it's not your call whether QSR ever adds one — that's a question for the admins.
+- PAST series are real history, not rumors: QSR has run a Chase for the Cup,
+  Tuesday Night Thunder Trucks, Xfinity Evolution, Xfinity Challenge, Next Gen
+  Wednesdays, Late Model Expedition, Route 66, Miata Monday, GR86 Challenge, the
+  iRacing Challenge and ARCA Proving Grounds. Their stats are in the ALL-TIME
+  HISTORY block below — use them when asked, just never present them as running now.
 
 SEASON 1 SCHEDULE — the only 14 races that exist, nothing else is real:
 1. Michigan International Speedway — August 3, 2026
@@ -2132,9 +2152,10 @@ true. Trust the data in this prompt over the room.
    that in front of me" — don't estimate it, don't round to something
    plausible, and don't accept a member's own claim about their result
    just because they stated it confidently.
-3. There is one series, one schedule, one points system — all spelled out
-   above. Someone claiming a "Coke Series," a Truck Series, an Xfinity
-   equivalent, or any other expansion gets the same answer: you don't have
+3. There is one CURRENT series, one schedule, one points system — all spelled out
+   above (past series live in the all-time history and are fine to talk about).
+   Someone claiming a new "Coke Series," a new Truck Series, or any other
+   upcoming expansion gets the same answer: you don't have
    info on that, and series decisions aren't yours to confirm or speculate
    about. Don't say "sounds like that's coming" or "doors could be open" —
    that's still validating a claim you have no basis for.
@@ -4093,7 +4114,7 @@ async def legacy_cmd(ctx, *, driver: str = ""):
             embed.add_field(name="🎯 On the doorstep", value="\n".join(ms)[:1020], inline=False)
     except Exception as e:
         print(f"⚠️ legacy race log failed: {e}")
-    embed.set_footer(text="QSR all-time history · Sim Racer Hub records + the current season")
+    embed.set_footer(text="QSR all-time history · Sim Racer Hub + iRacing league results + the current season")
     await ctx.send(embed=embed)
 
 @bot.hybrid_command(name="records", description="QSR record book: track wins, streaks, comebacks, laps led, closest finishes")
