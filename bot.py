@@ -610,6 +610,73 @@ def render_odds_card(board, race_num, lock_dt=None, logo_path=None):
     img.save(out, "PNG", optimize=True)
     return out.getvalue()
 
+def render_power_card(pr, logo_path=None):
+    """Weekly QSR Power Rankings, top 10."""
+    logo_path = logo_path or os.path.join(CARD_HERE, "qsr_league_logo.png")
+    img = _card_background()
+    d = ImageDraw.Draw(img, "RGBA")
+    M = 60
+    top = 52
+    if os.path.exists(logo_path):
+        try:
+            lg = Image.open(logo_path).convert("RGBA")
+            lg.thumbnail((230, 84))
+            img.paste(lg, (M, top), lg)
+        except Exception:
+            pass
+    tag = f"AFTER RACE {pr['after_race']}" + (f"  ·  NEXT: {pr['next_short'].upper()}" if pr.get("next_short") else "")
+    f = _card_font(32, "b")
+    d.text((CARD_W - M - _card_tw(d, tag, f), top + 24), tag, font=f, fill=CARD_WHITE)
+    _card_spaced(d, (M, 158), "QSR HIGH HORSEPOWER SERIES", _card_font(34, "b"), CARD_ORANGE, 5)
+    d.text((M, 198), "POWER RANKINGS", font=_card_font(104, "xb"), fill=CARD_WHITE)
+    y = 330
+    rowh = 92
+    for r in pr["rows"][:10]:
+        if r["rank"] <= 3:
+            d.rounded_rectangle((M, y + 4, CARD_W - M, y + rowh - 6), radius=14, fill=(255, 106, 0, 30 if r["rank"] > 1 else 55))
+        rk = str(r["rank"])
+        d.text((M + 14, y + 8), rk, font=_card_font(64, "xb"), fill=CARD_ORANGE if r["rank"] <= 3 else CARD_WHITE)
+        # movement arrow (drawn, the font has no triangles)
+        mx, my = M + 96, y + 24
+        mv = r.get("move")
+        if mv is None:
+            d.text((mx - 4, my - 2), "NEW", font=_card_font(22, "b"), fill=CARD_GOLD)
+        elif mv > 0:
+            d.polygon([(mx, my + 14), (mx + 14, my + 14), (mx + 7, my)], fill=(46, 204, 113))
+            d.text((mx + 18, my - 6), str(mv), font=_card_font(26, "b"), fill=(46, 204, 113))
+        elif mv < 0:
+            d.polygon([(mx, my), (mx + 14, my), (mx + 7, my + 14)], fill=CARD_RED)
+            d.text((mx + 18, my - 6), str(-mv), font=_card_font(26, "b"), fill=CARD_RED)
+        else:
+            d.rectangle((mx, my + 6, mx + 14, my + 9), fill=CARD_DIM)
+        nx = M + 160
+        d.text((nx, y + 6), _card_clip(d, r["driver"].upper(), _card_font(40, "b"), 480), font=_card_font(40, "b"), fill=CARD_WHITE)
+        d.text((nx, y + 50), _card_clip(d, r.get("blurb", ""), _card_font(26, "m"), 560), font=_card_font(26, "m"), fill=CARD_GREY)
+        # last three finishes as chips, newest on the right
+        cx = CARD_W - M - 20
+        for fin in reversed(r["last3"][-3:]):
+            t = f"P{fin}"
+            cf = _card_font(26, "b")
+            w = _card_tw(d, t, cf) + 20
+            col = (255, 196, 0, 60) if fin == 1 else ((255, 106, 0, 45) if fin <= 5 else (60, 60, 68, 255))
+            d.rounded_rectangle((cx - w, y + 12, cx, y + 44), radius=8, fill=col)
+            d.text((cx - w + 10, y + 13), t, font=cf, fill=CARD_WHITE)
+            cx -= w + 8
+        pts = f"{QH._ord(r['points_pos'])} IN POINTS" if r.get("points_pos") else ""
+        if pts:
+            pf = _card_font(22, "sb")
+            d.text((CARD_W - M - 20 - _card_tw(d, pts, pf), y + 54), pts, font=pf, fill=CARD_DIM)
+        y += rowh
+    foot = "RANKED BY DALE: PACE MODEL + RECENT FORM + SEASON  ·  /POWERRANKINGS"
+    ff = _card_font(24, "sb")
+    d.text(((CARD_W - _card_tw(d, foot, ff)) // 2, CARD_H - 58), foot, font=ff, fill=CARD_DIM)
+    d.rectangle((0, CARD_H - 10, CARD_W, CARD_H), fill=CARD_RED)
+    d.rectangle((CARD_W * 2 // 3, CARD_H - 10, CARD_W, CARD_H), fill=CARD_ORANGE)
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -3148,6 +3215,185 @@ async def throwback_cmd(ctx):
 
 
 # ─────────────────────────────────────────────────────────────────
+#  WEEKLY POWER RANKINGS — Thursday 12 PM ET in #pitlane
+#  Blend: 35% pace (the Dale's Book odds model, all QSR history) +
+#  45% recent form (last 4 HHPS races, newest weighted most) +
+#  20% season average finish. Needs 2+ starts in the last 4 races.
+# ─────────────────────────────────────────────────────────────────
+POWER_FILE = os.path.join(_DATA_DIR, "power_rankings.json")
+PR_WEIGHTS = (0.35, 0.45, 0.20)   # pace, recent form, season
+
+
+def _load_power() -> dict:
+    try:
+        with open(POWER_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"weeks": {}}
+
+
+def _save_power(p: dict):
+    tmp = POWER_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(p, f, indent=1)
+    os.replace(tmp, POWER_FILE)
+
+
+def build_power_rankings() -> dict | None:
+    """Rank every active HHPS driver. Returns {after_race, next_race, rows[...]}."""
+    import datetime as _dt
+    hist, data = load_history(), load_data()
+    rr = data.get("race_results") or {}
+    done = sorted({e["race"] for v in rr.values() for e in v if isinstance(e, dict) and e.get("finish") and e.get("race")})
+    if not done:
+        return None
+    last = done[-1]
+    recent = set(done[-4:])
+    drivers = {}
+    for n, v in rr.items():
+        v = sorted([e for e in v if isinstance(e, dict) and e.get("finish")], key=lambda e: e["race"])
+        if sum(1 for e in v if e["race"] in recent) >= 2:
+            drivers[n] = v
+    if len(drivers) < 5:
+        return None
+    irating = {k: v.get("irating") for k, v in (data.get("driver_profiles") or {}).items()}
+    cs = QH.careers(hist, data)
+    model = odds_fit(hist, data, _dt.date.today() + _dt.timedelta(days=1), irating, cs)
+    names, pos, dnf = odds_simulate(model, list(drivers), "Charlotte Motor Speedway", irating, seed=7)
+    pace = {n: float(pos[:, i].mean()) for i, n in enumerate(names)}
+    st = compute_adjusted_standings(data)
+    ppos = {n: i + 1 for i, (n, _) in enumerate(standings_sorted(st))}
+    rows = []
+    for n, v in drivers.items():
+        l4 = [e["finish"] for e in v if e["race"] in recent][-4:]
+        w = list(range(1, len(l4) + 1))
+        form = sum(a * b for a, b in zip(l4, w)) / sum(w)
+        season = sum(e["finish"] for e in v) / len(v)
+        score = PR_WEIGHTS[0] * pace[n] + PR_WEIGHTS[1] * form + PR_WEIGHTS[2] * season
+        rows.append({"driver": n, "score": round(score, 2), "pace": round(pace[n], 1), "form": round(form, 1),
+                     "season_avg": round(season, 1), "last3": [e["finish"] for e in v][-3:],
+                     "wins": sum(1 for e in v if e["finish"] == 1), "top5": sum(1 for e in v if e["finish"] <= 5),
+                     "starts": len(v), "points_pos": ppos.get(n),
+                     "career_wins": ((QH.find(cs, n) or {}).get("totals") or {}).get("wins", 0)})
+    rows.sort(key=lambda r: r["score"])
+    prev = None
+    pw = _load_power().get("weeks", {})
+    older = sorted((int(k) for k in pw if int(k) < last), reverse=True)
+    if older:
+        prev = {r["driver"]: r["rank"] for r in pw[str(older[0])]["rows"]}
+    for i, r in enumerate(rows):
+        r["rank"] = i + 1
+        r["move"] = (prev[r["driver"]] - r["rank"]) if prev and r["driver"] in prev else (None if prev else 0)
+    nxt = last + 1 if last < len(SCHEDULE) else None
+    return {"after_race": last, "next_race": nxt, "next_track": book_track(nxt) if nxt else "",
+            "next_short": QH.track_short(book_track(nxt)) if nxt else "", "rows": rows,
+            "built_at": datetime.utcnow().isoformat()}
+
+
+async def power_blurbs(pr: dict) -> dict:
+    """Dale's one-liner for each of the top 10 (falls back to a stats line)."""
+    top = pr["rows"][:10]
+    rw = race_week_for(pr["next_race"]) if pr.get("next_race") else None
+    track_notes = {}
+    for f in (rw or {}).get("field", []):
+        if f["starts"]:
+            track_notes[f["driver"]] = (f"{f['wins']} wins at {pr['next_short']}" if f["wins"]
+                                        else f"avg {f['avg']} at {pr['next_short']}")
+    facts = []
+    for r in top:
+        mv = r["move"]
+        mvt = "new to the rankings" if mv is None else (f"up {mv}" if mv > 0 else (f"down {-mv}" if mv < 0 else "no change"))
+        facts.append(f"#{r['rank']} {r['driver']}: last 3 finishes {', '.join('P' + str(x) for x in r['last3'])}; "
+                     f"{r['wins']} wins, {r['top5']} top 5s in {r['starts']} starts this season; "
+                     f"{QH._ord(r['points_pos']) if r['points_pos'] else '?'} in points; {mvt}; "
+                     f"{r['career_wins']} career QSR wins" + (f"; {track_notes[r['driver']]}" if r['driver'] in track_notes else
+                                                             (f"; never raced {pr['next_short']}" if pr.get('next_short') else "")))
+    def _pl(n, w):
+        return f"{n} {w}" + ("" if n == 1 else "s")
+    fallback = {r["driver"]: f"{', '.join('P' + str(x) for x in r['last3'])} lately · {_pl(r['wins'], 'win')}, "
+                             f"{_pl(r['top5'], 'top 5')} this year" for r in top}
+    if not ANTHROPIC_API_KEY:
+        return fallback
+    try:
+        txt = await ask_claude(
+            "You're Dale Earnhardt Sr. writing this week's QSR Power Rankings. For EACH driver below, write ONE punchy "
+            "line in your voice, max 12 words, using only these facts (quote numbers exactly, invent nothing). "
+            "Reply with ONLY a JSON object mapping the exact driver name to the line, nothing else.\n" + "\n".join(facts))
+        import re as _re
+        m = _re.search(r"\{.*\}", txt or "", _re.S)
+        got = json.loads(m.group(0)) if m else {}
+        return {n: (str(got.get(n)).strip()[:90] if got.get(n) else fallback[n]) for n in fallback}
+    except Exception as e:
+        print(f"⚠️ power blurbs failed: {e}")
+        return fallback
+
+
+async def post_power_rankings(channel, save: bool = True) -> str:
+    pr = await asyncio.to_thread(build_power_rankings)
+    if not pr:
+        return "Not enough races yet for power rankings."
+    blurbs = await power_blurbs(pr)
+    for r in pr["rows"]:
+        r["blurb"] = blurbs.get(r["driver"], "")
+    png = render_power_card(pr)
+    top = pr["rows"][0]
+    riser = max((r for r in pr["rows"][:10] if r["move"]), key=lambda r: r["move"], default=None)
+    text = f"📈 **QSR POWER RANKINGS** after Race {pr['after_race']}. **{top['driver']}** is your No. 1."
+    if riser and riser["move"] and riser["move"] > 0:
+        text += f" Biggest climber: **{riser['driver']}** (up {riser['move']})."
+    rest = pr["rows"][10:15]
+    if rest:
+        text += "\nJust outside: " + ", ".join(f"{r['rank']}. {r['driver']}" for r in rest)
+    await channel.send(text[:1900], file=discord.File(io.BytesIO(png), filename=f"power_rankings_r{pr['after_race']}.png"))
+    if save:
+        p = _load_power()
+        p["weeks"][str(pr["after_race"])] = pr
+        _save_power(p)
+    return f"Posted power rankings after Race {pr['after_race']}"
+
+
+@tasks.loop(minutes=1)
+async def power_rankings_post():
+    """Thursday 12:00 PM ET, race weeks only."""
+    now = now_et()
+    if not should_fire_weekday("power_rankings", 3, 12, 0, now):   # 3 = Thursday
+        return
+    up = upcoming_race(now)
+    d = race_date(up[0]) if up else None
+    if not d or (d - now.date()).days > 5:
+        mark_fired("power_rankings", now)
+        return
+    guild = bot.get_guild(GUILD_ID)
+    ch = discord.utils.get(guild.text_channels, name="pitlane") if guild else None
+    if ch:
+        try:
+            print("✅ " + await post_power_rankings(ch))
+        except Exception as e:
+            print(f"⚠️ power rankings failed: {e}")
+    mark_fired("power_rankings", now)
+
+
+@bot.hybrid_command(name="powerrankings", description="This week's QSR Power Rankings")
+async def powerrankings_cmd(ctx):
+    p = _load_power().get("weeks", {})
+    if not p:
+        await ctx.send("First power rankings drop Thursday at noon ET. 📈")
+        return
+    pr = p[max(p, key=int)]
+    png = render_power_card(pr)
+    await ctx.send(file=discord.File(io.BytesIO(png), filename=f"power_rankings_r{pr['after_race']}.png"))
+
+
+@bot.hybrid_command(name="postpowerrankings", description="Build and post power rankings now (admin)")
+@is_admin()
+async def postpowerrankings_cmd(ctx):
+    async with ctx.typing():
+        msg = await post_power_rankings(ctx.channel)
+    if not msg.startswith("Posted"):
+        await ctx.send(msg)
+
+
+# ─────────────────────────────────────────────────────────────────
 #  POST-RACE REACTION & RECAP
 # ─────────────────────────────────────────────────────────────────
 
@@ -3516,6 +3762,7 @@ async def on_ready():
     pre_race_trash_talk.start()
     track_history_post.start()
     throwback_post.start()
+    power_rankings_post.start()
     race_prediction.start()
     book_tick.start()
     race_announcement_scheduler.start()
@@ -6932,6 +7179,7 @@ async def help_cmd(ctx):
               "`/headtohead Name vs Name` — all-time: who's come out ahead when they raced each other\n"
               "`/trackcard [race]` — (admin) post the track history graphic\n"
               "`/throwback` — (admin) post a This Week in QSR History throwback\n"
+              "`/powerrankings` — this week's QSR Power Rankings (drop Thursdays)\n"
               "…or just `/ask` Dale about any stat from any series",
         inline=False)
     embed.add_field(
