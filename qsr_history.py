@@ -206,7 +206,8 @@ def live_races(data):
         res = []
         for x in rh.get("results") or []:
             if isinstance(x.get("pos"), (int, float)) and x.get("name"):
-                res.append({"fin": int(x["pos"]), "st": None, "name": x["name"], "laps": None, "led": None,
+                res.append({"fin": int(x["pos"]), "st": x.get("start"), "name": x["name"], "laps": x.get("laps"),
+                            "led": x.get("laps_led"),
                             "inc": x.get("incidents"), "status": "", "int": "", "fl": None, "pts": x.get("total_pts")})
         if not res:
             continue
@@ -334,7 +335,7 @@ def race_records(hist, data=None, cs=None):
             who = [f"{nm.name(k)} ({sn.get(v[1], v[1])}, {v[2].get('track')} {v[2].get('date', '')[:4]} to {v[3].get('track')} {v[3].get('date', '')[:4]})"
                    for k, v in best.items() if v[0] == top]
             recs.append({"id": rid, "record": label, "value": f"{top} straight starts", "detail": "; ".join(who[:3])})
-    full = [r for r in races if not r.get("live")]
+    full = [r for r in races if not r.get("live") or any(x.get("st") is not None for x in r["results"])]
     comebacks = []
     for r in full:
         w = next((x for x in r["results"] if x.get("fin") == 1), None)
@@ -532,7 +533,7 @@ def driver_race_line(d):
         return ""
     bits = [f"{d['races']} races with full results"]
     if d["laps_led"]:
-        bits.append(f"{d['laps_led']} laps led in {d['races_led']} races (SRH races only)")
+        bits.append(f"{d['laps_led']} laps led in {d['races_led']} races (races with lap data)")
     if d["track_wins"]:
         bits.append("wins by track: " + ", ".join(f"{t} {n}" for t, n in d["track_wins"].items()))
     if d["first_win"]:
@@ -1165,7 +1166,7 @@ def _race_context(hist, data, cs, question, people):
     sn = _series_names(hist, data)
     have = ", ".join(f"{sn.get(k, k)} {v.get('races')}/{v.get('of')} races" for k, v in cov.items())
     out.append("RACE-BY-RACE RECORDS (from full race results: " + (have or "SRH") + ", plus every scored HHPS race; "
-               "laps led, start spots and margins exist for the Sim Racer Hub races only):")
+               "laps led and start spots exist for Sim Racer Hub races and HHPS races posted with them; margins are SRH only):")
     for r in race_records(hist, data, cs):
         out.append(f"  - {r['record']}: {r['value']}. {r['detail']}")
     nx = next_race(hist, data)

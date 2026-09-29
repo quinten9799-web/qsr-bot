@@ -1276,7 +1276,8 @@ def _odds_live_races(data):
         maxlaps = max((x.get("laps") or 0) for x in res) or None
         out.append({"id": f"{sid}_r{n}", "series": sid, "round": n, "date": QH._parse_date(rh.get("date")) or "",
                     "track": QH.track_name(tracks.get(n, "")), "laps": maxlaps, "live": True,
-                    "results": [{"fin": int(x["pos"]), "name": x["name"], "laps": x.get("laps")} for x in res]})
+                    "results": [{"fin": int(x["pos"]), "name": x["name"], "laps": x.get("laps"),
+                                 "st": x.get("start"), "led": x.get("laps_led")} for x in res]})
     return out
 
 
