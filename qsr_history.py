@@ -95,7 +95,11 @@ def all_series(hist, data=None):
 
 
 # ── race by race ───────────────────────────────────────────────────────
-TRACKS = [("daytona", "Daytona International Speedway"), ("talladega", "Talladega Superspeedway"),
+TRACKS = [("roval", "Charlotte Roval"), ("daytona international speedway road course", "Daytona Road Course"),
+          ("indianapolis motor speedway road course", "Indianapolis Road Course"),
+          ("laguna seca", "WeatherTech Raceway Laguna Seca"), ("long beach", "Long Beach Street Circuit"),
+          ("willow springs", "Willow Springs International Raceway"), ("road america", "Road America"),
+          ("daytona", "Daytona International Speedway"), ("talladega", "Talladega Superspeedway"),
           ("echopark", "Atlanta Motor Speedway"), ("atlanta", "Atlanta Motor Speedway"),
           ("charlotte", "Charlotte Motor Speedway"), ("auto club", "Auto Club Speedway"), ("fontana", "Auto Club Speedway"),
           ("sonoma", "Sonoma Raceway"), ("iowa", "Iowa Speedway"), ("gateway", "World Wide Technology Raceway"),
@@ -195,7 +199,9 @@ def live_races(data):
 
 
 def all_races(hist, data=None):
-    races = [r for r in hist.get("races") or []]
+    """AI drivers (Route 66) keep their finishing spots but never enter the records."""
+    races = [dict(r, results=[x for x in r["results"] if not x.get("ai")]) if any(x.get("ai") for x in r["results"]) else r
+             for r in hist.get("races") or []]
     races += live_races(data)
     races.sort(key=lambda r: (r.get("date") or "9999", str(r.get("series")), r.get("round") or 0))
     return races
@@ -235,7 +241,7 @@ class _Names:
 def _margin(race):
     """Winning margin in seconds, when P2 was on the lead lap."""
     R = sorted([x for x in race["results"] if isinstance(x.get("fin"), int)], key=lambda x: x["fin"])
-    if len(R) < 2:
+    if len(R) < 2 or R[0]["fin"] != 1 or R[1]["fin"] != 2:
         return None
     def f(v):
         try:

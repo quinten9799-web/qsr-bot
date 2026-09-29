@@ -3946,12 +3946,1403 @@
  "champions_source": "#qsr-record-book on Discord (QSR Championship Record Book)",
  "races": [
   {
+   "id": "srh241208",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 1,
+   "date": "2023-10-30",
+   "track": "WeatherTech Raceway Laguna Seca",
+   "track_full": "WeatherTech Raceway at Laguna Seca Full Course",
+   "laps": 15,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Thomas W Smith",
+     "laps": 15,
+     "led": 15,
+     "inc": 11,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 2,
+     "name": "Jeremy O. Burns",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-1.590"
+    },
+    {
+     "fin": 3,
+     "st": 3,
+     "name": "Quinten Stewart",
+     "laps": 15,
+     "led": 0,
+     "inc": 4,
+     "int": "-3.744"
+    },
+    {
+     "fin": 4,
+     "st": 4,
+     "name": "Tyler Harrison2",
+     "laps": 15,
+     "led": 0,
+     "inc": 17,
+     "int": "-9.159"
+    },
+    {
+     "fin": 5,
+     "st": 7,
+     "name": "Jaylen L Hankamp",
+     "laps": 15,
+     "led": 0,
+     "inc": 15,
+     "int": "-16.752"
+    },
+    {
+     "fin": 6,
+     "st": 6,
+     "name": "Jake Spooner",
+     "laps": 15,
+     "led": 0,
+     "inc": 9,
+     "int": "-18.196"
+    },
+    {
+     "fin": 7,
+     "st": 28,
+     "name": "Carter Lins",
+     "laps": 15,
+     "led": 0,
+     "inc": 13,
+     "int": "-18.987"
+    },
+    {
+     "fin": 8,
+     "st": 5,
+     "name": "Chris Naill",
+     "laps": 15,
+     "led": 0,
+     "inc": 10,
+     "int": "-24.207"
+    },
+    {
+     "fin": 9,
+     "st": 30,
+     "name": "Lukas Schimmel",
+     "laps": 15,
+     "led": 0,
+     "inc": 10,
+     "int": "-43.717"
+    },
+    {
+     "fin": 10,
+     "st": 10,
+     "name": "Christian Ruckriegel",
+     "laps": 15,
+     "led": 0,
+     "inc": 19,
+     "int": "-50.462"
+    },
+    {
+     "fin": 11,
+     "st": 9,
+     "name": "Andrew Allen10",
+     "laps": 15,
+     "led": 0,
+     "inc": 11,
+     "int": "-56.300"
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "Harry Johnsen",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 16,
+     "name": "DJ Khaled",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 13,
+     "name": "Ghislaine Maxwell",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 15,
+     "name": "Schalong Johnsen",
+     "laps": 13,
+     "led": 0,
+     "inc": 6,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 14,
+     "name": "George Lloyd",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 17,
+     "name": "Grande Heuvos",
+     "laps": 13,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 19,
+     "name": "Mike Hunt",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 21,
+     "name": "Michael Tinkle",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 23,
+     "name": "Lil Uzi Paul",
+     "laps": 13,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 21,
+     "st": 24,
+     "name": "Dawson Howdy",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 27,
+     "name": "Richard Long",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 20,
+     "name": "Tylar DIckinhan",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 24,
+     "st": 26,
+     "name": "Nita Bighick",
+     "laps": 12,
+     "led": 0,
+     "inc": 2,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 25,
+     "st": 18,
+     "name": "Yo-Ho-Franklin",
+     "laps": 12,
+     "led": 0,
+     "inc": 8,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 26,
+     "st": 22,
+     "name": "Christopher Smell",
+     "laps": 12,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 27,
+     "st": 25,
+     "name": "Justin Hisaz",
+     "laps": 12,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 28,
+     "st": 8,
+     "name": "Curtis Grant",
+     "laps": 10,
+     "led": 0,
+     "inc": 12,
+     "status": "Disconnected",
+     "int": "-5L"
+    },
+    {
+     "fin": 29,
+     "st": 11,
+     "name": "Austin Dowdy2",
+     "laps": 8,
+     "led": 0,
+     "inc": 20,
+     "status": "Disqualified",
+     "int": "-7L"
+    },
+    {
+     "fin": 30,
+     "st": 29,
+     "name": "Joe Heale",
+     "laps": 2,
+     "led": 0,
+     "inc": 7,
+     "status": "Disconnected",
+     "int": "-13L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh241210",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 2,
+   "date": "2023-11-06",
+   "track": "Long Beach Street Circuit",
+   "track_full": "R66 at Long BeachLong Beach Street Circuit",
+   "laps": 15,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Jeremy O. Burns",
+     "laps": 15,
+     "led": 15,
+     "inc": 4,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 6,
+     "name": "Carter Lins",
+     "laps": 15,
+     "led": 0,
+     "inc": 4,
+     "int": "-3.299"
+    },
+    {
+     "fin": 3,
+     "st": 7,
+     "name": "Quinten Stewart",
+     "laps": 15,
+     "led": 0,
+     "inc": 2,
+     "int": "-7.656"
+    },
+    {
+     "fin": 4,
+     "st": 9,
+     "name": "Chris Naill",
+     "laps": 15,
+     "led": 0,
+     "inc": 6,
+     "int": "-50.132"
+    },
+    {
+     "fin": 5,
+     "st": 3,
+     "name": "David Tamira",
+     "laps": 15,
+     "led": 0,
+     "inc": 16,
+     "int": "-59.573"
+    },
+    {
+     "fin": 6,
+     "st": 5,
+     "name": "Andrew Allen10",
+     "laps": 14,
+     "led": 0,
+     "inc": 18,
+     "int": "-1L"
+    },
+    {
+     "fin": 7,
+     "st": 8,
+     "name": "Curtis Grant",
+     "laps": 13,
+     "led": 0,
+     "inc": 26,
+     "status": "Disqualified",
+     "int": "-2L"
+    },
+    {
+     "fin": 8,
+     "st": 11,
+     "name": "DJ Khaled",
+     "laps": 13,
+     "led": 0,
+     "inc": 2,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 9,
+     "st": 18,
+     "name": "Schalong Johnsen",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 10,
+     "st": 12,
+     "name": "George Lloyd",
+     "laps": 13,
+     "led": 0,
+     "inc": 2,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 11,
+     "st": 22,
+     "name": "Justin Hisaz",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 12,
+     "st": 14,
+     "name": "Michael Tinkle",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 16,
+     "name": "Grande Heuvos",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 10,
+     "name": "Harry Johnsen",
+     "laps": 12,
+     "led": 0,
+     "inc": 6,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 15,
+     "name": "Tylar DIckinhan",
+     "laps": 12,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 17,
+     "name": "Mike Hunt",
+     "laps": 12,
+     "led": 0,
+     "inc": 6,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 23,
+     "name": "Dawson Howdy",
+     "laps": 12,
+     "led": 0,
+     "inc": 6,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 24,
+     "name": "Lil Uzi Paul",
+     "laps": 12,
+     "led": 0,
+     "inc": 6,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 25,
+     "name": "Christopher Smell",
+     "laps": 12,
+     "led": 0,
+     "inc": 16,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 2,
+     "name": "Jake Spooner",
+     "laps": 11,
+     "led": 0,
+     "inc": 12,
+     "status": "Disconnected",
+     "int": "-4L"
+    },
+    {
+     "fin": 21,
+     "st": 20,
+     "name": "Yo-Ho-Franklin",
+     "laps": 11,
+     "led": 0,
+     "inc": 10,
+     "int": "-4L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 13,
+     "name": "Ghislaine Maxwell",
+     "laps": 10,
+     "led": 0,
+     "inc": 18,
+     "int": "-5L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 21,
+     "name": "Nita Bighick",
+     "laps": 7,
+     "led": 0,
+     "inc": 10,
+     "int": "-8L",
+     "ai": true
+    },
+    {
+     "fin": 24,
+     "st": 19,
+     "name": "Richard Long",
+     "laps": 4,
+     "led": 0,
+     "inc": 4,
+     "int": "-11L",
+     "ai": true
+    },
+    {
+     "fin": 25,
+     "st": 4,
+     "name": "Tyler Harrison2",
+     "laps": 3,
+     "led": 0,
+     "inc": 18,
+     "status": "Disconnected",
+     "int": "-12L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh241211",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 3,
+   "date": "2023-11-13",
+   "track": "Willow Springs International Raceway",
+   "track_full": "R66 at Willow SpringsWillow Springs International Raceway Big Willow",
+   "laps": 17,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Thomas W Smith",
+     "laps": 17,
+     "led": 9,
+     "inc": 8,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 2,
+     "name": "Jeremy O. Burns",
+     "laps": 17,
+     "led": 8,
+     "inc": 7,
+     "int": "-0.950"
+    },
+    {
+     "fin": 3,
+     "st": 3,
+     "name": "Carter Lins",
+     "laps": 17,
+     "led": 0,
+     "inc": 12,
+     "int": "-8.102"
+    },
+    {
+     "fin": 4,
+     "st": 5,
+     "name": "Tyler Harrison2",
+     "laps": 17,
+     "led": 0,
+     "inc": 16,
+     "int": "-10.319"
+    },
+    {
+     "fin": 5,
+     "st": 4,
+     "name": "Jake Spooner",
+     "laps": 17,
+     "led": 0,
+     "inc": 8,
+     "int": "-29.344"
+    },
+    {
+     "fin": 6,
+     "st": 23,
+     "name": "Quinten Stewart",
+     "laps": 17,
+     "led": 0,
+     "inc": 4,
+     "int": "-30.333"
+    },
+    {
+     "fin": 7,
+     "st": 6,
+     "name": "Chris Naill",
+     "laps": 17,
+     "led": 0,
+     "inc": 8,
+     "int": "-33.811"
+    },
+    {
+     "fin": 8,
+     "st": 7,
+     "name": "Harry Johnsen",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 9,
+     "st": 8,
+     "name": "Schalong Johnsen",
+     "laps": 15,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 10,
+     "st": 11,
+     "name": "Dawson Howdy",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 11,
+     "st": 10,
+     "name": "Ghislaine Maxwell",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "George Lloyd",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 13,
+     "name": "Tylar DIckinhan",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 15,
+     "name": "Mike Hunt",
+     "laps": 15,
+     "led": 0,
+     "inc": 1,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 17,
+     "name": "Grande Heuvos",
+     "laps": 15,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 18,
+     "name": "Lil Uzi Paul",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 22,
+     "name": "Nita Bighick",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 20,
+     "name": "Richard Long",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 16,
+     "name": "Justin Hisaz",
+     "laps": 15,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 9,
+     "name": "DJ Khaled",
+     "laps": 15,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 21,
+     "st": 21,
+     "name": "Christopher Smell",
+     "laps": 15,
+     "led": 0,
+     "inc": 1,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 19,
+     "name": "Yo-Ho-Franklin",
+     "laps": 14,
+     "led": 0,
+     "inc": 8,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 14,
+     "name": "Michael Tinkle",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 24,
+     "st": 24,
+     "name": "Andrew Allen10",
+     "laps": 4,
+     "led": 0,
+     "inc": 11,
+     "status": "Disconnected",
+     "int": "-13L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh241212",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 4,
+   "date": "2023-11-20",
+   "track": "Road America",
+   "track_full": "R66 at Road AmericaRoad America [Retired] Full Course",
+   "laps": 10,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Jake Spooner",
+     "laps": 10,
+     "led": 10,
+     "inc": 2,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 3,
+     "name": "Carter Lins",
+     "laps": 10,
+     "led": 0,
+     "inc": 2,
+     "int": "-1.532"
+    },
+    {
+     "fin": 3,
+     "st": 2,
+     "name": "Danni DaSilva",
+     "laps": 10,
+     "led": 0,
+     "inc": 14,
+     "int": "-9.396"
+    },
+    {
+     "fin": 4,
+     "st": 4,
+     "name": "Jeremy O. Burns",
+     "laps": 10,
+     "led": 0,
+     "inc": 12,
+     "int": "-16.590"
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Quinten Stewart",
+     "laps": 10,
+     "led": 0,
+     "inc": 10,
+     "int": "-21.608"
+    },
+    {
+     "fin": 6,
+     "st": 7,
+     "name": "Tyler Harrison2",
+     "laps": 10,
+     "led": 0,
+     "inc": 23,
+     "int": "-22.015"
+    },
+    {
+     "fin": 7,
+     "st": 8,
+     "name": "Chris Naill",
+     "laps": 10,
+     "led": 0,
+     "inc": 8,
+     "int": "-22.894"
+    },
+    {
+     "fin": 8,
+     "st": 6,
+     "name": "Andrew Allen10",
+     "laps": 10,
+     "led": 0,
+     "inc": 20,
+     "int": "-2:05.347"
+    },
+    {
+     "fin": 9,
+     "st": 25,
+     "name": "Christian Ruckriegel",
+     "laps": 9,
+     "led": 0,
+     "inc": 19,
+     "int": "-1L"
+    },
+    {
+     "fin": 10,
+     "st": 26,
+     "name": "Austin Dowdy2",
+     "laps": 9,
+     "led": 0,
+     "inc": 18,
+     "int": "-1L"
+    },
+    {
+     "fin": 11,
+     "st": 9,
+     "name": "Christopher Puglise",
+     "laps": 9,
+     "led": 0,
+     "inc": 23,
+     "int": "-1L"
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "Harry Johnsen",
+     "laps": 9,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 11,
+     "name": "Ghislaine Maxwell",
+     "laps": 9,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 13,
+     "name": "Schalong Johnsen",
+     "laps": 9,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 14,
+     "name": "DJ Khaled",
+     "laps": 9,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 16,
+     "name": "Grande Heuvos",
+     "laps": 9,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 10,
+     "name": "George Lloyd",
+     "laps": 9,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 15,
+     "name": "Tylar DIckinhan",
+     "laps": 9,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 22,
+     "name": "Dawson Howdy",
+     "laps": 9,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 21,
+     "name": "Lil Uzi Paul",
+     "laps": 9,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "ai": true
+    },
+    {
+     "fin": 21,
+     "st": 20,
+     "name": "Richard Long",
+     "laps": 8,
+     "led": 0,
+     "inc": 4,
+     "status": "Retired",
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 19,
+     "name": "Nita Bighick",
+     "laps": 8,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 29,
+     "name": "Justin Hisaz",
+     "laps": 8,
+     "led": 0,
+     "inc": 4,
+     "status": "Retired",
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 24,
+     "st": 23,
+     "name": "Yo-Ho-Franklin",
+     "laps": 8,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 25,
+     "st": 28,
+     "name": "Mike Hunt",
+     "laps": 8,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 26,
+     "st": 17,
+     "name": "Michael Tinkle",
+     "laps": 8,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 27,
+     "st": 18,
+     "name": "Christopher Smell",
+     "laps": 8,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 28,
+     "st": 27,
+     "name": "Joshua Thornton5",
+     "laps": 5,
+     "led": 0,
+     "inc": 12,
+     "int": "-5L"
+    },
+    {
+     "fin": 29,
+     "st": 24,
+     "name": "David Tamira",
+     "laps": 3,
+     "led": 0,
+     "inc": 11,
+     "status": "Disconnected",
+     "int": "-7L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh241213",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 5,
+   "date": "2023-11-27",
+   "track": "Indianapolis Road Course",
+   "track_full": "R66 at IndyIndianapolis Motor Speedway Road Course",
+   "laps": 15,
+   "results": [
+    {
+     "fin": 1,
+     "st": 3,
+     "name": "Jake Spooner",
+     "laps": 15,
+     "led": 15,
+     "inc": 0,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 5,
+     "name": "Tyler Harrison2",
+     "laps": 15,
+     "led": 0,
+     "inc": 10,
+     "int": "-2.141"
+    },
+    {
+     "fin": 3,
+     "st": 4,
+     "name": "Jeremy O. Burns",
+     "laps": 15,
+     "led": 0,
+     "inc": 3,
+     "int": "-15.178"
+    },
+    {
+     "fin": 4,
+     "st": 6,
+     "name": "Quinten Stewart",
+     "laps": 15,
+     "led": 0,
+     "inc": 5,
+     "int": "-19.330"
+    },
+    {
+     "fin": 5,
+     "st": 7,
+     "name": "Chris Naill",
+     "laps": 15,
+     "led": 0,
+     "inc": 8,
+     "int": "-30.150"
+    },
+    {
+     "fin": 6,
+     "st": 8,
+     "name": "Carter Lins",
+     "laps": 15,
+     "led": 0,
+     "inc": 19,
+     "int": "-54.769"
+    },
+    {
+     "fin": 7,
+     "st": 10,
+     "name": "Joshua Thornton5",
+     "laps": 15,
+     "led": 0,
+     "inc": 16,
+     "int": "-1:00.2446"
+    },
+    {
+     "fin": 8,
+     "st": 11,
+     "name": "Jaylen L Hankamp",
+     "laps": 15,
+     "led": 0,
+     "inc": 16,
+     "int": "-1:11.5805"
+    },
+    {
+     "fin": 9,
+     "st": 2,
+     "name": "Danni DaSilva",
+     "laps": 15,
+     "led": 0,
+     "inc": 17,
+     "int": "-1:15.6578"
+    },
+    {
+     "fin": 10,
+     "st": 9,
+     "name": "Andrew Allen10",
+     "laps": 15,
+     "led": 0,
+     "inc": 8,
+     "int": "-1:19.1597"
+    },
+    {
+     "fin": 11,
+     "st": 13,
+     "name": "Austin Dowdy2",
+     "laps": 15,
+     "led": 0,
+     "inc": 18,
+     "int": "-1:28.1753"
+    },
+    {
+     "fin": 12,
+     "st": 17,
+     "name": "Harry Johnsen",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 14,
+     "name": "George Lloyd",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 16,
+     "name": "Yo-Ho-Franklin",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 20,
+     "name": "Tylar DIckinhan",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 25,
+     "name": "Dawson Howdy",
+     "laps": 13,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 27,
+     "name": "Lil Uzi Paul",
+     "laps": 13,
+     "led": 0,
+     "inc": 2,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 24,
+     "name": "Schalong Johnsen",
+     "laps": 13,
+     "led": 0,
+     "inc": 3,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 26,
+     "name": "Richard Long",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 22,
+     "name": "Nita Bighick",
+     "laps": 13,
+     "led": 0,
+     "inc": 2,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 21,
+     "st": 23,
+     "name": "Mike Hunt",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 29,
+     "name": "Justin Hisaz",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 28,
+     "name": "Christopher Smell",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 24,
+     "st": 18,
+     "name": "DJ Khaled",
+     "laps": 13,
+     "led": 0,
+     "inc": 12,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 25,
+     "st": 21,
+     "name": "Grande Heuvos",
+     "laps": 13,
+     "led": 0,
+     "inc": 5,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 26,
+     "st": 12,
+     "name": "Christopher Puglise",
+     "laps": 12,
+     "led": 0,
+     "inc": 20,
+     "status": "Disqualified",
+     "int": "-3L"
+    },
+    {
+     "fin": 27,
+     "st": 15,
+     "name": "Michael Tinkle",
+     "laps": 12,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 28,
+     "st": 19,
+     "name": "Ghislaine Maxwell",
+     "laps": 12,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 29,
+     "st": 1,
+     "name": "Hector Collazo3",
+     "laps": 2,
+     "led": 0,
+     "inc": 1,
+     "status": "Disconnected",
+     "int": "-13L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh246040",
    "series": "chase",
    "srh_season": "20738",
    "round": 1,
    "date": "2023-11-30",
    "track": "Daytona International Speedway",
+   "track_full": "Daytona International Speedway Oval - 2008",
    "laps": 74,
    "results": [
     {
@@ -4181,12 +5572,290 @@
    "stage_top10": []
   },
   {
+   "id": "srh241214",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 6,
+   "date": "2023-12-04",
+   "track": "Watkins Glen International",
+   "track_full": "R66 at Watkins GlenWatkins Glen International Boot",
+   "laps": 17,
+   "results": [
+    {
+     "fin": 1,
+     "st": 3,
+     "name": "Danni DaSilva",
+     "laps": 17,
+     "led": 12,
+     "inc": 3,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 5,
+     "name": "Andrew Allen10",
+     "laps": 17,
+     "led": 1,
+     "inc": 11,
+     "int": "-9.960"
+    },
+    {
+     "fin": 3,
+     "st": 7,
+     "name": "Jeremy O. Burns",
+     "laps": 17,
+     "led": 0,
+     "inc": 5,
+     "int": "-10.968"
+    },
+    {
+     "fin": 4,
+     "st": 2,
+     "name": "Jake Spooner",
+     "laps": 17,
+     "led": 4,
+     "inc": 9,
+     "int": "-31.829"
+    },
+    {
+     "fin": 5,
+     "st": 1,
+     "name": "Carter Lins",
+     "laps": 17,
+     "led": 0,
+     "inc": 19,
+     "int": "-1:10.1396"
+    },
+    {
+     "fin": 6,
+     "st": 4,
+     "name": "Quinten Stewart",
+     "laps": 16,
+     "led": 0,
+     "inc": 6,
+     "int": "-1L"
+    },
+    {
+     "fin": 7,
+     "st": 27,
+     "name": "Thomas W Smith",
+     "laps": 15,
+     "led": 0,
+     "inc": 15,
+     "status": "Disconnected",
+     "int": "-2L"
+    },
+    {
+     "fin": 8,
+     "st": 12,
+     "name": "Harry Johnsen",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 9,
+     "st": 15,
+     "name": "Ghislaine Maxwell",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 10,
+     "st": 13,
+     "name": "Dawson Howdy",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 11,
+     "st": 16,
+     "name": "George Lloyd",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 12,
+     "st": 11,
+     "name": "DJ Khaled",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 19,
+     "name": "Michael Tinkle",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 21,
+     "name": "Grande Heuvos",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 18,
+     "name": "Tylar DIckinhan",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 14,
+     "name": "Schalong Johnsen",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 23,
+     "name": "Lil Uzi Paul",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 20,
+     "name": "Justin Hisaz",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 24,
+     "name": "Richard Long",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 17,
+     "name": "Mike Hunt",
+     "laps": 13,
+     "led": 0,
+     "inc": 2,
+     "int": "-4L",
+     "ai": true
+    },
+    {
+     "fin": 21,
+     "st": 22,
+     "name": "Nita Bighick",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-4L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 25,
+     "name": "Christopher Smell",
+     "laps": 13,
+     "led": 0,
+     "inc": 8,
+     "int": "-4L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 9,
+     "name": "Joshua Thornton5",
+     "laps": 12,
+     "led": 0,
+     "inc": 20,
+     "status": "Disqualified",
+     "int": "-5L"
+    },
+    {
+     "fin": 24,
+     "st": 26,
+     "name": "Yo-Ho-Franklin",
+     "laps": 10,
+     "led": 0,
+     "inc": 8,
+     "int": "-7L",
+     "ai": true
+    },
+    {
+     "fin": 25,
+     "st": 8,
+     "name": "David Tamira",
+     "laps": 7,
+     "led": 0,
+     "inc": 11,
+     "status": "Disconnected",
+     "int": "-10L"
+    },
+    {
+     "fin": 26,
+     "st": 6,
+     "name": "Christian Ruckriegel",
+     "laps": 4,
+     "led": 0,
+     "inc": 5,
+     "status": "Disconnected",
+     "int": "-13L"
+    },
+    {
+     "fin": 27,
+     "st": 10,
+     "name": "Chris Naill",
+     "laps": 3,
+     "led": 0,
+     "inc": 3,
+     "status": "Disconnected",
+     "int": "-14L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh246886",
    "series": "chase",
    "srh_season": "20738",
    "round": 2,
    "date": "2023-12-07",
    "track": "Auto Club Speedway",
+   "track_full": "Auto Club Speedway Oval",
    "laps": 81,
    "results": [
     {
@@ -4406,12 +6075,278 @@
    "stage_top10": []
   },
   {
+   "id": "srh241215",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 7,
+   "date": "2023-12-11",
+   "track": "Charlotte Roval",
+   "track_full": "R66 at CLT Roval[Retired] Charlotte Motor Speedway [Retired] Roval",
+   "laps": 15,
+   "results": [
+    {
+     "fin": 1,
+     "st": 6,
+     "name": "Carter Lins",
+     "laps": 15,
+     "led": 10,
+     "inc": 2,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 1,
+     "name": "Jake Spooner",
+     "laps": 15,
+     "led": 2,
+     "inc": 12,
+     "int": "-6.667"
+    },
+    {
+     "fin": 3,
+     "st": 2,
+     "name": "Jeremy O. Burns",
+     "laps": 15,
+     "led": 3,
+     "inc": 12,
+     "int": "-6.870"
+    },
+    {
+     "fin": 4,
+     "st": 4,
+     "name": "Danni DaSilva",
+     "laps": 15,
+     "led": 0,
+     "inc": 19,
+     "int": "-18.343"
+    },
+    {
+     "fin": 5,
+     "st": 9,
+     "name": "Andrew Allen10",
+     "laps": 15,
+     "led": 0,
+     "inc": 2,
+     "int": "-49.019"
+    },
+    {
+     "fin": 6,
+     "st": 3,
+     "name": "Quinten Stewart",
+     "laps": 15,
+     "led": 0,
+     "inc": 4,
+     "int": "-54.652"
+    },
+    {
+     "fin": 7,
+     "st": 5,
+     "name": "Tyler Harrison2",
+     "laps": 15,
+     "led": 0,
+     "inc": 16,
+     "int": "-55.611"
+    },
+    {
+     "fin": 8,
+     "st": 12,
+     "name": "Ghislaine Maxwell",
+     "laps": 13,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 9,
+     "st": 15,
+     "name": "Harry Johnsen",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 10,
+     "st": 13,
+     "name": "George Lloyd",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 11,
+     "st": 11,
+     "name": "Dawson Howdy",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 12,
+     "st": 14,
+     "name": "Michael Tinkle",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 16,
+     "name": "DJ Khaled",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 22,
+     "name": "Grande Heuvos",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 21,
+     "name": "Tylar DIckinhan",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 24,
+     "name": "Nita Bighick",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 19,
+     "name": "Yo-Ho-Franklin",
+     "laps": 13,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 17,
+     "name": "Christopher Smell",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 23,
+     "name": "Mike Hunt",
+     "laps": 13,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 20,
+     "name": "Lil Uzi Paul",
+     "laps": 13,
+     "led": 0,
+     "inc": 8,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 21,
+     "st": 10,
+     "name": "Schalong Johnsen",
+     "laps": 13,
+     "led": 0,
+     "inc": 2,
+     "int": "-2L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 18,
+     "name": "Richard Long",
+     "laps": 12,
+     "led": 0,
+     "inc": 6,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 25,
+     "name": "Justin Hisaz",
+     "laps": 12,
+     "led": 0,
+     "inc": 6,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 24,
+     "st": 8,
+     "name": "Christian Ruckriegel",
+     "laps": 8,
+     "led": 0,
+     "inc": 13,
+     "status": "Disconnected",
+     "int": "-7L"
+    },
+    {
+     "fin": 25,
+     "st": 7,
+     "name": "Chris Naill",
+     "laps": 6,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-9L"
+    },
+    {
+     "fin": 26,
+     "st": 26,
+     "name": "Joshua Thornton5",
+     "laps": 4,
+     "led": 0,
+     "inc": 8,
+     "int": "-11L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh247644",
    "series": "chase",
    "srh_season": "20738",
    "round": 3,
    "date": "2023-12-14",
    "track": "Michigan International Speedway",
+   "track_full": "[Legacy] Michigan International Speedway - 2009",
    "laps": 81,
    "results": [
     {
@@ -4670,12 +6605,297 @@
    "stage_top10": []
   },
   {
+   "id": "srh241216",
+   "series": "route66",
+   "srh_season": "20491",
+   "round": 8,
+   "date": "2023-12-18",
+   "track": "Daytona Road Course",
+   "track_full": "R66 Season Finale at DaytonaDaytona International Speedway Road Course",
+   "laps": 17,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Danni DaSilva",
+     "laps": 17,
+     "led": 5,
+     "inc": 15,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 2,
+     "name": "Jeremy O. Burns",
+     "laps": 17,
+     "led": 1,
+     "inc": 9,
+     "int": "-1.430"
+    },
+    {
+     "fin": 3,
+     "st": 4,
+     "name": "David Tamira",
+     "laps": 17,
+     "led": 3,
+     "inc": 2,
+     "int": "-7.418"
+    },
+    {
+     "fin": 4,
+     "st": 9,
+     "name": "Andrew Allen10",
+     "laps": 17,
+     "led": 0,
+     "inc": 7,
+     "int": "-26.727"
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Jake Spooner",
+     "laps": 17,
+     "led": 1,
+     "inc": 9,
+     "int": "-1:06.5041"
+    },
+    {
+     "fin": 6,
+     "st": 7,
+     "name": "Quinten Stewart",
+     "laps": 17,
+     "led": 0,
+     "inc": 4,
+     "int": "-1:12.054"
+    },
+    {
+     "fin": 7,
+     "st": 6,
+     "name": "Tyler Harrison2",
+     "laps": 16,
+     "led": 5,
+     "inc": 19,
+     "int": "-1L"
+    },
+    {
+     "fin": 8,
+     "st": 28,
+     "name": "Austin Dowdy2",
+     "laps": 16,
+     "led": 0,
+     "inc": 19,
+     "int": "-1L"
+    },
+    {
+     "fin": 9,
+     "st": 11,
+     "name": "Joshua Thornton5",
+     "laps": 15,
+     "led": 0,
+     "inc": 20,
+     "status": "Disqualified",
+     "int": "-2L"
+    },
+    {
+     "fin": 10,
+     "st": 10,
+     "name": "Curtis Grant",
+     "laps": 14,
+     "led": 0,
+     "inc": 9,
+     "int": "-3L"
+    },
+    {
+     "fin": 11,
+     "st": 12,
+     "name": "DJ Khaled",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 12,
+     "st": 18,
+     "name": "George Lloyd",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 13,
+     "st": 14,
+     "name": "Schalong Johnsen",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 14,
+     "st": 13,
+     "name": "Dawson Howdy",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 15,
+     "st": 16,
+     "name": "Tylar DIckinhan",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 16,
+     "st": 21,
+     "name": "Michael Tinkle",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 17,
+     "st": 20,
+     "name": "Grande Heuvos",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 18,
+     "st": 22,
+     "name": "Ghislaine Maxwell",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 19,
+     "st": 27,
+     "name": "Nita Bighick",
+     "laps": 14,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 20,
+     "st": 26,
+     "name": "Christopher Smell",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 21,
+     "st": 23,
+     "name": "Lil Uzi Paul",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 22,
+     "st": 24,
+     "name": "Yo-Ho-Franklin",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 23,
+     "st": 25,
+     "name": "Justin Hisaz",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 24,
+     "st": 19,
+     "name": "Richard Long",
+     "laps": 14,
+     "led": 0,
+     "inc": 5,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 25,
+     "st": 17,
+     "name": "Mike Hunt",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "ai": true
+    },
+    {
+     "fin": 26,
+     "st": 15,
+     "name": "Harry Johnsen",
+     "laps": 13,
+     "led": 0,
+     "inc": 16,
+     "int": "-4L",
+     "ai": true
+    },
+    {
+     "fin": 27,
+     "st": 8,
+     "name": "Chris Naill",
+     "laps": 12,
+     "led": 0,
+     "inc": 7,
+     "status": "Disconnected",
+     "int": "-5L"
+    },
+    {
+     "fin": 28,
+     "st": 3,
+     "name": "Thomas W Smith",
+     "laps": 5,
+     "led": 2,
+     "inc": 6,
+     "status": "Disqualified",
+     "int": "-12L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh248782",
    "series": "chase",
    "srh_season": "20738",
    "round": 4,
    "date": "2023-12-21",
    "track": "Charlotte Motor Speedway",
+   "track_full": "Charlotte Motor Speedway [Retired] Oval",
    "laps": 102,
    "results": [
     {
@@ -4914,6 +7134,7 @@
    "round": 5,
    "date": "2023-12-28",
    "track": "Watkins Glen International",
+   "track_full": "Watkins Glen International Cup",
    "laps": 41,
    "results": [
     {
@@ -5088,6 +7309,7 @@
    "round": 6,
    "date": "2024-01-04",
    "track": "Bristol Motor Speedway",
+   "track_full": "Bristol Motor Speedway Dual Pit Roads",
    "laps": 150,
    "results": [
     {
@@ -5317,6 +7539,7 @@
    "round": 7,
    "date": "2024-01-11",
    "track": "Rockingham Speedway",
+   "track_full": "Rockingham Speedway Oval - 2012",
    "laps": 120,
    "results": [
     {
@@ -5565,6 +7788,7 @@
    "round": 8,
    "date": "2024-01-18",
    "track": "Nashville Superspeedway",
+   "track_full": "Nashville Superspeedway",
    "laps": 88,
    "results": [
     {
@@ -5811,6 +8035,7 @@
    "round": 9,
    "date": "2024-01-25",
    "track": "Chicagoland Speedway",
+   "track_full": "Chicagoland Speedway",
    "laps": 86,
    "results": [
     {
@@ -6035,6 +8260,7 @@
    "round": 10,
    "date": "2024-02-01",
    "track": "Kansas Speedway",
+   "track_full": "Kansas Speedway Oval",
    "laps": 90,
    "results": [
     {
@@ -6220,6 +8446,7 @@
    "round": 11,
    "date": "2024-02-08",
    "track": "Atlanta Motor Speedway",
+   "track_full": "EchoPark Speedway (Atlanta) Oval - 2008",
    "laps": 85,
    "results": [
     {
@@ -6388,12 +8615,420 @@
    "stage_top10": []
   },
   {
+   "id": "srh264215",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 1,
+   "date": "2024-03-19",
+   "track": "Daytona International Speedway",
+   "track_full": "Daytona International Speedway Oval",
+   "laps": 75,
+   "results": [
+    {
+     "fin": 1,
+     "st": 16,
+     "name": "Dirk Likes",
+     "laps": 75,
+     "led": 13,
+     "inc": 4,
+     "int": "-",
+     "fl": 47.437
+    },
+    {
+     "fin": 2,
+     "st": 10,
+     "name": "Christian Ruckriegel",
+     "laps": 75,
+     "led": 3,
+     "inc": 5,
+     "int": "-0.195",
+     "fl": 47.339
+    },
+    {
+     "fin": 3,
+     "st": 14,
+     "name": "Quinten Stewart",
+     "laps": 75,
+     "led": 7,
+     "inc": 4,
+     "int": "-0.230",
+     "fl": 47.224
+    },
+    {
+     "fin": 4,
+     "st": 17,
+     "name": "Mike Petrin",
+     "laps": 75,
+     "led": 0,
+     "inc": 6,
+     "int": "-0.311",
+     "fl": 47.066
+    },
+    {
+     "fin": 5,
+     "st": 7,
+     "name": "Ethan Wisnoski",
+     "laps": 75,
+     "led": 0,
+     "inc": 4,
+     "int": "-0.380",
+     "fl": 47.385
+    },
+    {
+     "fin": 6,
+     "st": 18,
+     "name": "Frank Walsh",
+     "laps": 75,
+     "led": 0,
+     "inc": 5,
+     "int": "-0.522",
+     "fl": 47.322
+    },
+    {
+     "fin": 7,
+     "st": 12,
+     "name": "Ronnie L Joyner",
+     "laps": 75,
+     "led": 7,
+     "inc": 4,
+     "int": "-1.045",
+     "fl": 46.96
+    },
+    {
+     "fin": 8,
+     "st": 5,
+     "name": "Austin Dowdy2",
+     "laps": 75,
+     "led": 0,
+     "inc": 8,
+     "int": "-1.151",
+     "fl": 47.44
+    },
+    {
+     "fin": 9,
+     "st": 13,
+     "name": "Brent Allen",
+     "laps": 75,
+     "led": 4,
+     "inc": 7,
+     "int": "-4.506",
+     "fl": 47.459
+    },
+    {
+     "fin": 10,
+     "st": 3,
+     "name": "Chris Naill",
+     "laps": 75,
+     "led": 0,
+     "inc": 4,
+     "int": "-6.700",
+     "fl": 47.549
+    },
+    {
+     "fin": 11,
+     "st": 4,
+     "name": "Bradley Cooper",
+     "laps": 75,
+     "led": 20,
+     "inc": 4,
+     "int": "-7.449",
+     "fl": 47.229
+    },
+    {
+     "fin": 12,
+     "st": 15,
+     "name": "Daniel Mulnix",
+     "laps": 75,
+     "led": 3,
+     "inc": 6,
+     "int": "-11.976",
+     "fl": 47.076
+    },
+    {
+     "fin": 13,
+     "st": 20,
+     "name": "Zach White6",
+     "laps": 75,
+     "led": 0,
+     "inc": 4,
+     "int": "-17.304",
+     "fl": 47.363
+    },
+    {
+     "fin": 14,
+     "st": 19,
+     "name": "Peter Hoppe",
+     "laps": 75,
+     "led": 0,
+     "inc": 0,
+     "int": "-17.424",
+     "fl": 47.524
+    },
+    {
+     "fin": 15,
+     "st": 9,
+     "name": "Jaylen L Hankamp",
+     "laps": 75,
+     "led": 13,
+     "inc": 6,
+     "int": "-21.587",
+     "fl": 47.453
+    },
+    {
+     "fin": 16,
+     "st": 2,
+     "name": "Derick McMurchy",
+     "laps": 74,
+     "led": 4,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 46.953
+    },
+    {
+     "fin": 17,
+     "st": 11,
+     "name": "CJ Gates",
+     "laps": 74,
+     "led": 0,
+     "inc": 5,
+     "int": "-1L",
+     "fl": 47.689
+    },
+    {
+     "fin": 18,
+     "st": 8,
+     "name": "Ryan Commons",
+     "laps": 74,
+     "led": 0,
+     "inc": 6,
+     "int": "-1L",
+     "fl": 47.605
+    },
+    {
+     "fin": 19,
+     "st": 1,
+     "name": "Mitchell Kostner",
+     "laps": 73,
+     "led": 1,
+     "inc": 5,
+     "int": "-2L",
+     "fl": 47.663
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh264983",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 2,
+   "date": "2024-03-26",
+   "track": "Kansas Speedway",
+   "track_full": "Kansas Speedway Oval",
+   "laps": 90,
+   "results": [
+    {
+     "fin": 1,
+     "st": 4,
+     "name": "Bradley Cooper",
+     "laps": 90,
+     "led": 80,
+     "inc": 4,
+     "int": "-",
+     "fl": 31.045
+    },
+    {
+     "fin": 2,
+     "st": 2,
+     "name": "Ronnie L Joyner",
+     "laps": 90,
+     "led": 5,
+     "inc": 4,
+     "int": "-0.360",
+     "fl": 30.792
+    },
+    {
+     "fin": 3,
+     "st": 16,
+     "name": "Daniel Mulnix",
+     "laps": 90,
+     "led": 2,
+     "inc": 0,
+     "int": "-1.011",
+     "fl": 30.798
+    },
+    {
+     "fin": 4,
+     "st": 1,
+     "name": "Dirk Likes",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-5.904",
+     "fl": 31.121
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Joseph Turchiano",
+     "laps": 90,
+     "led": 3,
+     "inc": 0,
+     "int": "-14.519",
+     "fl": 31.025
+    },
+    {
+     "fin": 6,
+     "st": 3,
+     "name": "Brent Allen",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-20.261",
+     "fl": 30.769
+    },
+    {
+     "fin": 7,
+     "st": 17,
+     "name": "Derick McMurchy",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-27.475",
+     "fl": 31.023
+    },
+    {
+     "fin": 8,
+     "st": 18,
+     "name": "Reid Sanders",
+     "laps": 90,
+     "led": 0,
+     "inc": 4,
+     "int": "-31.147",
+     "fl": 31.094
+    },
+    {
+     "fin": 9,
+     "st": 9,
+     "name": "Christian Ruckriegel",
+     "laps": 90,
+     "led": 0,
+     "inc": 4,
+     "int": "-31.499",
+     "fl": 31.054
+    },
+    {
+     "fin": 10,
+     "st": 12,
+     "name": "Ethan Wisnoski",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-32.854",
+     "fl": 30.791
+    },
+    {
+     "fin": 11,
+     "st": 7,
+     "name": "Austin Dowdy2",
+     "laps": 89,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 31.013
+    },
+    {
+     "fin": 12,
+     "st": 19,
+     "name": "Zach White6",
+     "laps": 89,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 31.513
+    },
+    {
+     "fin": 13,
+     "st": 11,
+     "name": "Mike Petrin",
+     "laps": 89,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 31.109
+    },
+    {
+     "fin": 14,
+     "st": 14,
+     "name": "Spencer Johnson3",
+     "laps": 88,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "fl": 31.227
+    },
+    {
+     "fin": 15,
+     "st": 13,
+     "name": "Ryan Commons",
+     "laps": 88,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "fl": 31.259
+    },
+    {
+     "fin": 16,
+     "st": 15,
+     "name": "Brandon H Yates",
+     "laps": 88,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "fl": 31.884
+    },
+    {
+     "fin": 17,
+     "st": 8,
+     "name": "Peter Hoppe",
+     "laps": 87,
+     "led": 0,
+     "inc": 0,
+     "int": "-3L",
+     "fl": 31.034
+    },
+    {
+     "fin": 18,
+     "st": 10,
+     "name": "Frank Walsh",
+     "laps": 87,
+     "led": 0,
+     "inc": 1,
+     "int": "-3L",
+     "fl": 31.248
+    },
+    {
+     "fin": 19,
+     "st": 6,
+     "name": "CJ Gates",
+     "laps": 52,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-38L",
+     "fl": 30.7
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh265939",
    "series": "chase",
    "srh_season": "22159",
    "round": 1,
    "date": "2024-03-28",
    "track": "Daytona International Speedway",
+   "track_full": "Daytona International Speedway Oval - 2008",
    "laps": 92,
    "results": [
     {
@@ -6622,12 +9257,259 @@
    "stage_top10": []
   },
   {
+   "id": "srh265938",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 3,
+   "date": "2024-04-02",
+   "track": "Las Vegas Motor Speedway",
+   "track_full": "Las Vegas Motor Speedway Oval",
+   "laps": 95,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Daniel Mulnix",
+     "laps": 95,
+     "led": 81,
+     "inc": 0,
+     "int": "-",
+     "fl": 30.691
+    },
+    {
+     "fin": 2,
+     "st": 2,
+     "name": "Ronnie L Joyner",
+     "laps": 95,
+     "led": 5,
+     "inc": 0,
+     "int": "-0.441",
+     "fl": 30.712
+    },
+    {
+     "fin": 3,
+     "st": 6,
+     "name": "Jared Ziegler",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-0.807",
+     "fl": 30.883
+    },
+    {
+     "fin": 4,
+     "st": 4,
+     "name": "Gaylon D Wunsch",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-3.931",
+     "fl": 30.896
+    },
+    {
+     "fin": 5,
+     "st": 7,
+     "name": "Morgan Cook2",
+     "laps": 95,
+     "led": 8,
+     "inc": 0,
+     "int": "-7.495",
+     "fl": 31.061
+    },
+    {
+     "fin": 6,
+     "st": 10,
+     "name": "Derick McMurchy",
+     "laps": 95,
+     "led": 0,
+     "inc": 4,
+     "int": "-13.110",
+     "fl": 30.827
+    },
+    {
+     "fin": 7,
+     "st": 12,
+     "name": "Christian Ruckriegel",
+     "laps": 95,
+     "led": 0,
+     "inc": 6,
+     "int": "-15.492",
+     "fl": 31.068
+    },
+    {
+     "fin": 8,
+     "st": 9,
+     "name": "Marshall Newton",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-16.211",
+     "fl": 31.061
+    },
+    {
+     "fin": 9,
+     "st": 18,
+     "name": "Brent Allen",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-17.428",
+     "fl": 31.022
+    },
+    {
+     "fin": 10,
+     "st": 11,
+     "name": "Peter Hoppe",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-19.719",
+     "fl": 30.936
+    },
+    {
+     "fin": 11,
+     "st": 15,
+     "name": "Quinten Stewart",
+     "laps": 95,
+     "led": 0,
+     "inc": 4,
+     "int": "-20.614",
+     "fl": 31.025
+    },
+    {
+     "fin": 12,
+     "st": 3,
+     "name": "Dirk Likes",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-22.458",
+     "fl": 30.84
+    },
+    {
+     "fin": 13,
+     "st": 16,
+     "name": "CJ Gates",
+     "laps": 95,
+     "led": 1,
+     "inc": 8,
+     "int": "-28.466",
+     "fl": 30.963
+    },
+    {
+     "fin": 14,
+     "st": 21,
+     "name": "Frank Walsh",
+     "laps": 95,
+     "led": 0,
+     "inc": 8,
+     "int": "-46.028",
+     "fl": 31.051
+    },
+    {
+     "fin": 15,
+     "st": 13,
+     "name": "Tom Sciscoe",
+     "laps": 94,
+     "led": 0,
+     "inc": 2,
+     "int": "-1L",
+     "fl": 31.121
+    },
+    {
+     "fin": 16,
+     "st": 23,
+     "name": "Ryan Commons",
+     "laps": 94,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 31.318
+    },
+    {
+     "fin": 17,
+     "st": 19,
+     "name": "Spencer Johnson3",
+     "laps": 93,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "fl": 31.314
+    },
+    {
+     "fin": 18,
+     "st": 22,
+     "name": "Zach White6",
+     "laps": 93,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "fl": 31.005
+    },
+    {
+     "fin": 19,
+     "st": 8,
+     "name": "Joseph Turchiano",
+     "laps": 93,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "fl": 30.606
+    },
+    {
+     "fin": 20,
+     "st": 14,
+     "name": "Mike Petrin",
+     "laps": 45,
+     "led": 0,
+     "inc": 4,
+     "int": "-50L",
+     "fl": 31.238
+    },
+    {
+     "fin": 21,
+     "st": 5,
+     "name": "Mitchell Kostner",
+     "laps": 27,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-68L",
+     "fl": 30.896
+    },
+    {
+     "fin": 22,
+     "st": 17,
+     "name": "Chris Naill",
+     "laps": 20,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-75L",
+     "fl": 31.06
+    },
+    {
+     "fin": 23,
+     "st": 20,
+     "name": "Lucas Lyons",
+     "laps": 17,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-78L",
+     "fl": 31.302
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh266429",
    "series": "chase",
    "srh_season": "22159",
    "round": 2,
    "date": "2024-04-04",
    "track": "Atlanta Motor Speedway",
+   "track_full": "EchoPark Speedway (Atlanta) Oval - 2008",
    "laps": 100,
    "results": [
     {
@@ -6827,12 +9709,338 @@
    "stage_top10": []
   },
   {
+   "id": "srh266595",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 4,
+   "date": "2024-04-09",
+   "track": "Charlotte Motor Speedway",
+   "track_full": "[Retired] Charlotte Motor Speedway [Retired] Oval - 2018",
+   "laps": 95,
+   "results": [
+    {
+     "fin": 1,
+     "st": 10,
+     "name": "Kevin West",
+     "laps": 95,
+     "led": 12,
+     "inc": 0,
+     "int": "-",
+     "fl": 30.11
+    },
+    {
+     "fin": 2,
+     "st": 12,
+     "name": "Derick McMurchy",
+     "laps": 95,
+     "led": 25,
+     "inc": 3,
+     "int": "-0.921",
+     "fl": 30.208
+    },
+    {
+     "fin": 3,
+     "st": 24,
+     "name": "Jeremy O. Burns",
+     "laps": 95,
+     "led": 0,
+     "inc": 4,
+     "int": "-4.320",
+     "fl": 30.064
+    },
+    {
+     "fin": 4,
+     "st": 7,
+     "name": "Dirk Likes",
+     "laps": 95,
+     "led": 0,
+     "inc": 6,
+     "int": "-6.043",
+     "fl": 30.146
+    },
+    {
+     "fin": 5,
+     "st": 1,
+     "name": "Daniel Mulnix",
+     "laps": 95,
+     "led": 55,
+     "inc": 0,
+     "int": "-7.461",
+     "fl": 30.074
+    },
+    {
+     "fin": 6,
+     "st": 17,
+     "name": "Caleb Nelson",
+     "laps": 95,
+     "led": 1,
+     "inc": 8,
+     "int": "-9.855",
+     "fl": 30.223
+    },
+    {
+     "fin": 7,
+     "st": 9,
+     "name": "Quinten Stewart",
+     "laps": 95,
+     "led": 0,
+     "inc": 5,
+     "int": "-21.996",
+     "fl": 30.078
+    },
+    {
+     "fin": 8,
+     "st": 26,
+     "name": "Kendorian Davis",
+     "laps": 95,
+     "led": 2,
+     "inc": 9,
+     "int": "-24.040",
+     "fl": 30.139
+    },
+    {
+     "fin": 9,
+     "st": 5,
+     "name": "CJ Gates",
+     "laps": 95,
+     "led": 0,
+     "inc": 9,
+     "int": "-27.403",
+     "fl": 30.052
+    },
+    {
+     "fin": 10,
+     "st": 22,
+     "name": "Mike Petrin",
+     "laps": 94,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 30.274
+    },
+    {
+     "fin": 11,
+     "st": 11,
+     "name": "Jared Ziegler",
+     "laps": 92,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "fl": 30.186
+    },
+    {
+     "fin": 12,
+     "st": 23,
+     "name": "Spencer Johnson3",
+     "laps": 91,
+     "led": 0,
+     "inc": 4,
+     "int": "-4L",
+     "fl": 30.245
+    },
+    {
+     "fin": 13,
+     "st": 28,
+     "name": "Reid Sanders",
+     "laps": 90,
+     "led": 0,
+     "inc": 2,
+     "int": "-5L",
+     "fl": 30.285
+    },
+    {
+     "fin": 14,
+     "st": 15,
+     "name": "Ethan Wisnoski",
+     "laps": 86,
+     "led": 0,
+     "inc": 4,
+     "int": "-9L",
+     "fl": 30.514
+    },
+    {
+     "fin": 15,
+     "st": 2,
+     "name": "Trenton Wilken",
+     "laps": 81,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-14L",
+     "fl": 30.093
+    },
+    {
+     "fin": 16,
+     "st": 21,
+     "name": "Joseph Turchiano",
+     "laps": 80,
+     "led": 0,
+     "inc": 5,
+     "int": "-15L",
+     "fl": 30.07
+    },
+    {
+     "fin": 17,
+     "st": 18,
+     "name": "Austin Dowdy2",
+     "laps": 69,
+     "led": 0,
+     "inc": 9,
+     "int": "-26L",
+     "fl": 30.511
+    },
+    {
+     "fin": 18,
+     "st": 3,
+     "name": "Gaylon D Wunsch",
+     "laps": 55,
+     "led": 0,
+     "inc": 9,
+     "status": "Disconnected",
+     "int": "-40L",
+     "fl": 30.106
+    },
+    {
+     "fin": 19,
+     "st": 13,
+     "name": "Brent Allen",
+     "laps": 43,
+     "led": 0,
+     "inc": 9,
+     "status": "Disconnected",
+     "int": "-52L",
+     "fl": 32.665
+    },
+    {
+     "fin": 20,
+     "st": 4,
+     "name": "Bradley Cooper",
+     "laps": 32,
+     "led": 0,
+     "inc": 4,
+     "int": "-63L",
+     "fl": 30.249
+    },
+    {
+     "fin": 21,
+     "st": 6,
+     "name": "Marshall Newton",
+     "laps": 21,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-74L",
+     "fl": 30.332
+    },
+    {
+     "fin": 22,
+     "st": 19,
+     "name": "Steven McGough",
+     "laps": 20,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-75L",
+     "fl": 30.229
+    },
+    {
+     "fin": 23,
+     "st": 25,
+     "name": "Frank Walsh",
+     "laps": 12,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-83L",
+     "fl": 30.598
+    },
+    {
+     "fin": 24,
+     "st": 14,
+     "name": "Ronnie L Joyner",
+     "laps": 4,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-91L",
+     "fl": 30.444
+    },
+    {
+     "fin": 25,
+     "st": 16,
+     "name": "Chris Naill",
+     "laps": 2,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-93L",
+     "fl": 30.373
+    },
+    {
+     "fin": 26,
+     "st": 20,
+     "name": "Carter Lins",
+     "laps": 2,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-93L",
+     "fl": 30.571
+    },
+    {
+     "fin": 27,
+     "st": 27,
+     "name": "Waylon Turner",
+     "laps": 2,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-93L",
+     "fl": 30.645
+    },
+    {
+     "fin": 28,
+     "st": 30,
+     "name": "Zach White6",
+     "laps": 2,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-93L",
+     "fl": 30.575
+    },
+    {
+     "fin": 29,
+     "st": 29,
+     "name": "Peter Hoppe",
+     "laps": 2,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-93L",
+     "fl": 30.743
+    },
+    {
+     "fin": 30,
+     "st": 8,
+     "name": "Christian Ruckriegel",
+     "laps": 3,
+     "led": 0,
+     "inc": 5,
+     "status": "DQ/Scoring Invalidated",
+     "int": "-92L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh266796",
    "series": "chase",
    "srh_season": "22159",
    "round": 3,
    "date": "2024-04-11",
    "track": "Auto Club Speedway",
+   "track_full": "Auto Club Speedway Oval",
    "laps": 95,
    "results": [
     {
@@ -7081,12 +10289,228 @@
    "stage_top10": []
   },
   {
+   "id": "srh267506",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 5,
+   "date": "2024-04-16",
+   "track": "Sonoma Raceway",
+   "track_full": "Sonoma Raceway [Retired] NASCAR Short",
+   "laps": 28,
+   "results": [
+    {
+     "fin": 1,
+     "st": 3,
+     "name": "Jared Ziegler",
+     "laps": 28,
+     "led": 12,
+     "inc": 4,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 1,
+     "name": "Trenton Wilken",
+     "laps": 28,
+     "led": 5,
+     "inc": 4,
+     "int": "-5.903"
+    },
+    {
+     "fin": 3,
+     "st": 5,
+     "name": "Quinten Stewart",
+     "laps": 28,
+     "led": 0,
+     "inc": 4,
+     "int": "-15.338"
+    },
+    {
+     "fin": 4,
+     "st": 12,
+     "name": "Daniel Mulnix",
+     "laps": 28,
+     "led": 0,
+     "inc": 1,
+     "int": "-23.641"
+    },
+    {
+     "fin": 5,
+     "st": 2,
+     "name": "Gaylon D Wunsch",
+     "laps": 28,
+     "led": 0,
+     "inc": 5,
+     "int": "-25.256"
+    },
+    {
+     "fin": 6,
+     "st": 6,
+     "name": "Dirk Likes",
+     "laps": 28,
+     "led": 0,
+     "inc": 2,
+     "int": "-44.050"
+    },
+    {
+     "fin": 7,
+     "st": 14,
+     "name": "Ronnie L Joyner",
+     "laps": 28,
+     "led": 0,
+     "inc": 4,
+     "int": "-53.766"
+    },
+    {
+     "fin": 8,
+     "st": 18,
+     "name": "Derick McMurchy",
+     "laps": 28,
+     "led": 0,
+     "inc": 3,
+     "int": "-1:12.4957"
+    },
+    {
+     "fin": 9,
+     "st": 11,
+     "name": "Joseph Turchiano",
+     "laps": 28,
+     "led": 1,
+     "inc": 3,
+     "int": "-1:23.7885"
+    },
+    {
+     "fin": 10,
+     "st": 10,
+     "name": "Caleb Nelson",
+     "laps": 27,
+     "led": 0,
+     "inc": 6,
+     "int": "-1L"
+    },
+    {
+     "fin": 11,
+     "st": 15,
+     "name": "Brent Allen",
+     "laps": 27,
+     "led": 0,
+     "inc": 5,
+     "int": "-1L"
+    },
+    {
+     "fin": 12,
+     "st": 13,
+     "name": "CJ Gates",
+     "laps": 27,
+     "led": 0,
+     "inc": 5,
+     "int": "-1L"
+    },
+    {
+     "fin": 13,
+     "st": 21,
+     "name": "Reid Sanders",
+     "laps": 27,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L"
+    },
+    {
+     "fin": 14,
+     "st": 22,
+     "name": "Clay Nelson",
+     "laps": 27,
+     "led": 0,
+     "inc": 5,
+     "int": "-1L"
+    },
+    {
+     "fin": 15,
+     "st": 4,
+     "name": "Kevin West",
+     "laps": 26,
+     "led": 10,
+     "inc": 7,
+     "int": "-2L"
+    },
+    {
+     "fin": 16,
+     "st": 20,
+     "name": "Mike Petrin",
+     "laps": 26,
+     "led": 0,
+     "inc": 16,
+     "int": "-2L"
+    },
+    {
+     "fin": 17,
+     "st": 19,
+     "name": "Ethan Wisnoski",
+     "laps": 25,
+     "led": 0,
+     "inc": 16,
+     "int": "-3L"
+    },
+    {
+     "fin": 18,
+     "st": 23,
+     "name": "Spencer Johnson3",
+     "laps": 24,
+     "led": 0,
+     "inc": 12,
+     "int": "-4L"
+    },
+    {
+     "fin": 19,
+     "st": 8,
+     "name": "Morgan Cook2",
+     "laps": 18,
+     "led": 0,
+     "inc": 7,
+     "status": "Disconnected",
+     "int": "-10L"
+    },
+    {
+     "fin": 20,
+     "st": 7,
+     "name": "Marshall Newton",
+     "laps": 16,
+     "led": 0,
+     "inc": 20,
+     "status": "Disconnected",
+     "int": "-12L"
+    },
+    {
+     "fin": 21,
+     "st": 9,
+     "name": "Waylon Turner",
+     "laps": 4,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-24L"
+    },
+    {
+     "fin": 22,
+     "st": 17,
+     "name": "Austin Dowdy2",
+     "laps": 2,
+     "led": 0,
+     "inc": 3,
+     "status": "Disconnected",
+     "int": "-26L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh267644",
    "series": "chase",
    "srh_season": "22159",
    "round": 4,
    "date": "2024-04-18",
    "track": "Sonoma Raceway",
+   "track_full": "Sonoma Raceway [Retired] NASCAR Short",
    "laps": 30,
    "results": [
     {
@@ -7276,12 +10700,279 @@
    "stage_top10": []
   },
   {
+   "id": "srh267990",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 6,
+   "date": "2024-04-23",
+   "track": "Kentucky Speedway",
+   "track_full": "Kentucky Speedway Oval",
+   "laps": 92,
+   "results": [
+    {
+     "fin": 1,
+     "st": 3,
+     "name": "Kevin West",
+     "laps": 92,
+     "led": 60,
+     "inc": 0,
+     "int": "-",
+     "fl": 30.63
+    },
+    {
+     "fin": 2,
+     "st": 6,
+     "name": "Trenton Wilken",
+     "laps": 92,
+     "led": 0,
+     "inc": 0,
+     "int": "-2.685",
+     "fl": 30.539
+    },
+    {
+     "fin": 3,
+     "st": 7,
+     "name": "Ronnie L Joyner",
+     "laps": 92,
+     "led": 3,
+     "inc": 0,
+     "int": "-2.800",
+     "fl": 30.653
+    },
+    {
+     "fin": 4,
+     "st": 2,
+     "name": "Jared Ziegler",
+     "laps": 92,
+     "led": 1,
+     "inc": 0,
+     "int": "-3.256",
+     "fl": 30.714
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Caleb Nelson",
+     "laps": 92,
+     "led": 0,
+     "inc": 0,
+     "int": "-4.235",
+     "fl": 30.775
+    },
+    {
+     "fin": 6,
+     "st": 4,
+     "name": "Daniel Mulnix",
+     "laps": 92,
+     "led": 9,
+     "inc": 0,
+     "int": "-6.764",
+     "fl": 30.752
+    },
+    {
+     "fin": 7,
+     "st": 12,
+     "name": "Bradley Cooper",
+     "laps": 92,
+     "led": 0,
+     "inc": 0,
+     "int": "-7.021",
+     "fl": 30.751
+    },
+    {
+     "fin": 8,
+     "st": 1,
+     "name": "Gaylon D Wunsch",
+     "laps": 92,
+     "led": 15,
+     "inc": 0,
+     "int": "-8.923",
+     "fl": 30.502
+    },
+    {
+     "fin": 9,
+     "st": 14,
+     "name": "Brent Allen",
+     "laps": 92,
+     "led": 0,
+     "inc": 1,
+     "int": "-9.129",
+     "fl": 30.397
+    },
+    {
+     "fin": 10,
+     "st": 24,
+     "name": "Marshall Newton",
+     "laps": 92,
+     "led": 0,
+     "inc": 2,
+     "int": "-9.306",
+     "fl": 30.808
+    },
+    {
+     "fin": 11,
+     "st": 16,
+     "name": "CJ Gates",
+     "laps": 92,
+     "led": 0,
+     "inc": 0,
+     "int": "-13.579",
+     "fl": 30.685
+    },
+    {
+     "fin": 12,
+     "st": 13,
+     "name": "Quinten Stewart",
+     "laps": 92,
+     "led": 0,
+     "inc": 2,
+     "int": "-17.366",
+     "fl": 30.699
+    },
+    {
+     "fin": 13,
+     "st": 19,
+     "name": "Dirk Likes",
+     "laps": 92,
+     "led": 0,
+     "inc": 0,
+     "int": "-17.696",
+     "fl": 30.681
+    },
+    {
+     "fin": 14,
+     "st": 10,
+     "name": "Austin Dowdy2",
+     "laps": 92,
+     "led": 0,
+     "inc": 0,
+     "int": "-21.372",
+     "fl": 30.937
+    },
+    {
+     "fin": 15,
+     "st": 23,
+     "name": "Clay Nelson",
+     "laps": 92,
+     "led": 2,
+     "inc": 0,
+     "int": "-22.913",
+     "fl": 30.829
+    },
+    {
+     "fin": 16,
+     "st": 9,
+     "name": "Derick McMurchy",
+     "laps": 92,
+     "led": 2,
+     "inc": 0,
+     "int": "-23.192",
+     "fl": 30.765
+    },
+    {
+     "fin": 17,
+     "st": 22,
+     "name": "Steven McGough",
+     "laps": 92,
+     "led": 0,
+     "inc": 6,
+     "int": "-24.607",
+     "fl": 30.818
+    },
+    {
+     "fin": 18,
+     "st": 15,
+     "name": "Mike Petrin",
+     "laps": 91,
+     "led": 0,
+     "inc": 8,
+     "int": "-1L",
+     "fl": 30.837
+    },
+    {
+     "fin": 19,
+     "st": 25,
+     "name": "Peter Hoppe",
+     "laps": 91,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 30.575
+    },
+    {
+     "fin": 20,
+     "st": 11,
+     "name": "Ethan Wisnoski",
+     "laps": 91,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 31.082
+    },
+    {
+     "fin": 21,
+     "st": 18,
+     "name": "Spencer Johnson3",
+     "laps": 87,
+     "led": 0,
+     "inc": 5,
+     "int": "-5L",
+     "fl": 30.971
+    },
+    {
+     "fin": 22,
+     "st": 21,
+     "name": "Joseph Turchiano",
+     "laps": 82,
+     "led": 0,
+     "inc": 4,
+     "int": "-10L",
+     "fl": 30.419
+    },
+    {
+     "fin": 23,
+     "st": 17,
+     "name": "Austin Thomas6",
+     "laps": 61,
+     "led": 0,
+     "inc": 7,
+     "status": "Disconnected",
+     "int": "-31L",
+     "fl": 30.787
+    },
+    {
+     "fin": 24,
+     "st": 20,
+     "name": "Frank Walsh",
+     "laps": 17,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-75L",
+     "fl": 31.093
+    },
+    {
+     "fin": 25,
+     "st": 8,
+     "name": "Vernon Margheim",
+     "laps": 12,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-80L",
+     "fl": 30.757
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh268272",
    "series": "chase",
    "srh_season": "22159",
    "round": 5,
    "date": "2024-04-25",
    "track": "Las Vegas Motor Speedway",
+   "track_full": "Las Vegas Motor Speedway Oval",
    "laps": 100,
    "results": [
     {
@@ -7527,6 +11218,7 @@
    "round": 6,
    "date": "2024-05-02",
    "track": "Kansas Speedway",
+   "track_full": "Kansas Speedway Oval",
    "laps": 107,
    "results": [
     {
@@ -7724,12 +11416,493 @@
    "stage_top10": []
   },
   {
+   "id": "srh269319",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 7,
+   "date": "2024-05-07",
+   "track": "Darlington Raceway",
+   "track_full": "Darlington Raceway",
+   "laps": 95,
+   "results": [
+    {
+     "fin": 1,
+     "st": 2,
+     "name": "Jared Ziegler",
+     "laps": 95,
+     "led": 95,
+     "inc": 0,
+     "int": "-",
+     "fl": 28.879
+    },
+    {
+     "fin": 2,
+     "st": 4,
+     "name": "Daniel Mulnix",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-8.720",
+     "fl": 29.126
+    },
+    {
+     "fin": 3,
+     "st": 7,
+     "name": "Gaylon D Wunsch",
+     "laps": 95,
+     "led": 0,
+     "inc": 4,
+     "int": "-14.753",
+     "fl": 29.186
+    },
+    {
+     "fin": 4,
+     "st": 1,
+     "name": "Jeremy O. Burns",
+     "laps": 95,
+     "led": 0,
+     "inc": 4,
+     "int": "-18.486",
+     "fl": 29.193
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Marshall Newton",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-20.098",
+     "fl": 29.143
+    },
+    {
+     "fin": 6,
+     "st": 6,
+     "name": "Ronnie L Joyner",
+     "laps": 95,
+     "led": 0,
+     "inc": 0,
+     "int": "-22.377",
+     "fl": 29.08
+    },
+    {
+     "fin": 7,
+     "st": 11,
+     "name": "Trenton Wilken",
+     "laps": 95,
+     "led": 0,
+     "inc": 6,
+     "int": "-31.492",
+     "fl": 29.111
+    },
+    {
+     "fin": 8,
+     "st": 8,
+     "name": "Joseph Turchiano",
+     "laps": 94,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 29.141
+    },
+    {
+     "fin": 9,
+     "st": 20,
+     "name": "Spencer Johnson3",
+     "laps": 94,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 29.749
+    },
+    {
+     "fin": 10,
+     "st": 14,
+     "name": "Brent Allen",
+     "laps": 94,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 29.576
+    },
+    {
+     "fin": 11,
+     "st": 19,
+     "name": "Clay Nelson",
+     "laps": 94,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 29.595
+    },
+    {
+     "fin": 12,
+     "st": 18,
+     "name": "Ethan Wisnoski",
+     "laps": 93,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "fl": 29.552
+    },
+    {
+     "fin": 13,
+     "st": 15,
+     "name": "Mike Petrin",
+     "laps": 72,
+     "led": 0,
+     "inc": 2,
+     "int": "-23L",
+     "fl": 30.059
+    },
+    {
+     "fin": 14,
+     "st": 13,
+     "name": "CJ Gates",
+     "laps": 50,
+     "led": 0,
+     "inc": 12,
+     "status": "Disconnected",
+     "int": "-45L",
+     "fl": 29.5
+    },
+    {
+     "fin": 15,
+     "st": 17,
+     "name": "Derick McMurchy",
+     "laps": 47,
+     "led": 0,
+     "inc": 4,
+     "int": "-48L",
+     "fl": 29.623
+    },
+    {
+     "fin": 16,
+     "st": 12,
+     "name": "Austin Dowdy2",
+     "laps": 40,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-55L",
+     "fl": 29.518
+    },
+    {
+     "fin": 17,
+     "st": 10,
+     "name": "Chris Naill",
+     "laps": 28,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-67L",
+     "fl": 29.17
+    },
+    {
+     "fin": 18,
+     "st": 3,
+     "name": "Kevin West",
+     "laps": 26,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-69L",
+     "fl": 29.216
+    },
+    {
+     "fin": 19,
+     "st": 9,
+     "name": "Quinten Stewart",
+     "laps": 21,
+     "led": 0,
+     "inc": 4,
+     "int": "-74L",
+     "fl": 29.533
+    },
+    {
+     "fin": 20,
+     "st": 16,
+     "name": "Austin Thomas6",
+     "laps": 15,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-80L",
+     "fl": 29.864
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh270487",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 8,
+   "date": "2024-05-14",
+   "track": "Indianapolis Motor Speedway",
+   "track_full": "Indianapolis Motor Speedway NASCAR Oval - 2009",
+   "laps": 66,
+   "results": [
+    {
+     "fin": 1,
+     "st": 9,
+     "name": "CJ Gates",
+     "laps": 66,
+     "led": 10,
+     "inc": 0,
+     "int": "-",
+     "fl": 52.906
+    },
+    {
+     "fin": 2,
+     "st": 4,
+     "name": "Kevin West",
+     "laps": 66,
+     "led": 23,
+     "inc": 0,
+     "int": "-0.110",
+     "fl": 52.728
+    },
+    {
+     "fin": 3,
+     "st": 3,
+     "name": "Trenton Wilken",
+     "laps": 66,
+     "led": 0,
+     "inc": 6,
+     "int": "-0.290",
+     "fl": 52.716
+    },
+    {
+     "fin": 4,
+     "st": 7,
+     "name": "Morgan Cook2",
+     "laps": 66,
+     "led": 0,
+     "inc": 8,
+     "int": "-0.565",
+     "fl": 52.928
+    },
+    {
+     "fin": 5,
+     "st": 20,
+     "name": "Ethan Wisnoski",
+     "laps": 66,
+     "led": 0,
+     "inc": 4,
+     "int": "-0.856",
+     "fl": 53.443
+    },
+    {
+     "fin": 6,
+     "st": 8,
+     "name": "Marshall Newton",
+     "laps": 66,
+     "led": 0,
+     "inc": 6,
+     "int": "-1.206",
+     "fl": 52.918
+    },
+    {
+     "fin": 7,
+     "st": 19,
+     "name": "Shane Ferguson",
+     "laps": 66,
+     "led": 0,
+     "inc": 7,
+     "int": "-1.706",
+     "fl": 53.848
+    },
+    {
+     "fin": 8,
+     "st": 16,
+     "name": "Randy W Sallee",
+     "laps": 66,
+     "led": 0,
+     "inc": 12,
+     "int": "-3.659",
+     "fl": 53.095
+    },
+    {
+     "fin": 9,
+     "st": 6,
+     "name": "Dirk Likes",
+     "laps": 65,
+     "led": 5,
+     "inc": 8,
+     "int": "-1L",
+     "fl": 53.094
+    },
+    {
+     "fin": 10,
+     "st": 24,
+     "name": "Ryan Commons",
+     "laps": 65,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 53.435
+    },
+    {
+     "fin": 11,
+     "st": 13,
+     "name": "Brent Allen",
+     "laps": 65,
+     "led": 6,
+     "inc": 8,
+     "int": "-1L",
+     "fl": 53.194
+    },
+    {
+     "fin": 12,
+     "st": 14,
+     "name": "Joseph Turchiano",
+     "laps": 62,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-4L",
+     "fl": 52.972
+    },
+    {
+     "fin": 13,
+     "st": 21,
+     "name": "Spencer Johnson3",
+     "laps": 61,
+     "led": 0,
+     "inc": 6,
+     "int": "-5L",
+     "fl": 53.301
+    },
+    {
+     "fin": 14,
+     "st": 11,
+     "name": "Caleb Nelson",
+     "laps": 60,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-6L",
+     "fl": 52.924
+    },
+    {
+     "fin": 15,
+     "st": 2,
+     "name": "Ronnie L Joyner",
+     "laps": 60,
+     "led": 2,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-6L",
+     "fl": 52.757
+    },
+    {
+     "fin": 16,
+     "st": 5,
+     "name": "Daniel Mulnix",
+     "laps": 58,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-8L",
+     "fl": 52.862
+    },
+    {
+     "fin": 17,
+     "st": 15,
+     "name": "Mike Petrin",
+     "laps": 57,
+     "led": 0,
+     "inc": 4,
+     "int": "-9L",
+     "fl": 53.481
+    },
+    {
+     "fin": 18,
+     "st": 12,
+     "name": "Derick McMurchy",
+     "laps": 56,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-10L",
+     "fl": 53.043
+    },
+    {
+     "fin": 19,
+     "st": 1,
+     "name": "Jared Ziegler",
+     "laps": 30,
+     "led": 20,
+     "inc": 6,
+     "int": "-36L",
+     "fl": 52.698
+    },
+    {
+     "fin": 20,
+     "st": 18,
+     "name": "Austin Dowdy2",
+     "laps": 27,
+     "led": 0,
+     "inc": 5,
+     "int": "-39L",
+     "fl": 53.329
+    },
+    {
+     "fin": 21,
+     "st": 10,
+     "name": "Gaylon D Wunsch",
+     "laps": 18,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-48L",
+     "fl": 53.476
+    },
+    {
+     "fin": 22,
+     "st": 22,
+     "name": "Frank Walsh",
+     "laps": 16,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-50L",
+     "fl": 53.333
+    },
+    {
+     "fin": 23,
+     "st": 17,
+     "name": "Vernon Margheim",
+     "laps": 16,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-50L",
+     "fl": 53.064
+    },
+    {
+     "fin": 24,
+     "st": 23,
+     "name": "Clay Nelson",
+     "laps": 16,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-50L",
+     "fl": 53.317
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh270488",
    "series": "chase",
    "srh_season": "22159",
    "round": 7,
    "date": "2024-05-16",
    "track": "Talladega Superspeedway",
+   "track_full": "Talladega Superspeedway",
    "laps": 60,
    "results": [
     {
@@ -7989,12 +12162,261 @@
    "stage_top10": []
   },
   {
+   "id": "srh270979",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 9,
+   "date": "2024-05-21",
+   "track": "Homestead-Miami Speedway",
+   "track_full": "Homestead Miami Speedway Oval",
+   "laps": 90,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Caleb Nelson",
+     "laps": 90,
+     "led": 83,
+     "inc": 0,
+     "int": "-",
+     "fl": 32.98
+    },
+    {
+     "fin": 2,
+     "st": 3,
+     "name": "Jared Ziegler",
+     "laps": 90,
+     "led": 1,
+     "inc": 0,
+     "int": "-3.283",
+     "fl": 32.99
+    },
+    {
+     "fin": 3,
+     "st": 11,
+     "name": "Kevin West",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-4.296",
+     "fl": 33.158
+    },
+    {
+     "fin": 4,
+     "st": 5,
+     "name": "Trenton Wilken",
+     "laps": 90,
+     "led": 5,
+     "inc": 0,
+     "int": "-13.557",
+     "fl": 32.956
+    },
+    {
+     "fin": 5,
+     "st": 12,
+     "name": "Bradley Cooper",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-14.880",
+     "fl": 32.951
+    },
+    {
+     "fin": 6,
+     "st": 8,
+     "name": "Marshall Newton",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-17.533",
+     "fl": 33.136
+    },
+    {
+     "fin": 7,
+     "st": 7,
+     "name": "Ronnie L Joyner",
+     "laps": 90,
+     "led": 0,
+     "inc": 1,
+     "int": "-18.893",
+     "fl": 33.175
+    },
+    {
+     "fin": 8,
+     "st": 4,
+     "name": "Antonio Bianchi",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-19.199",
+     "fl": 33.125
+    },
+    {
+     "fin": 9,
+     "st": 2,
+     "name": "Daniel Mulnix",
+     "laps": 90,
+     "led": 1,
+     "inc": 0,
+     "int": "-19.931",
+     "fl": 33.06
+    },
+    {
+     "fin": 10,
+     "st": 13,
+     "name": "CJ Gates",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-31.965",
+     "fl": 33.044
+    },
+    {
+     "fin": 11,
+     "st": 23,
+     "name": "Steven McGough",
+     "laps": 89,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 33.386
+    },
+    {
+     "fin": 12,
+     "st": 20,
+     "name": "Joseph Turchiano",
+     "laps": 89,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 32.924
+    },
+    {
+     "fin": 13,
+     "st": 9,
+     "name": "Jaylen L Hankamp",
+     "laps": 88,
+     "led": 0,
+     "inc": 1,
+     "int": "-2L",
+     "fl": 33.013
+    },
+    {
+     "fin": 14,
+     "st": 16,
+     "name": "Austin Thomas6",
+     "laps": 87,
+     "led": 0,
+     "inc": 4,
+     "int": "-3L",
+     "fl": 33.085
+    },
+    {
+     "fin": 15,
+     "st": 21,
+     "name": "Quinten Stewart",
+     "laps": 81,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-9L",
+     "fl": 33.033
+    },
+    {
+     "fin": 16,
+     "st": 14,
+     "name": "Randy W Sallee",
+     "laps": 77,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-13L",
+     "fl": 33.281
+    },
+    {
+     "fin": 17,
+     "st": 15,
+     "name": "Mike Petrin",
+     "laps": 58,
+     "led": 0,
+     "inc": 5,
+     "int": "-32L",
+     "fl": 33.526
+    },
+    {
+     "fin": 18,
+     "st": 6,
+     "name": "Gaylon D Wunsch",
+     "laps": 45,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-45L",
+     "fl": 33.284
+    },
+    {
+     "fin": 19,
+     "st": 18,
+     "name": "Derick McMurchy",
+     "laps": 34,
+     "led": 0,
+     "inc": 5,
+     "status": "Disconnected",
+     "int": "-56L",
+     "fl": 33.69
+    },
+    {
+     "fin": 20,
+     "st": 10,
+     "name": "Brent Allen",
+     "laps": 33,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-57L",
+     "fl": 33.133
+    },
+    {
+     "fin": 21,
+     "st": 17,
+     "name": "Spencer Johnson3",
+     "laps": 25,
+     "led": 0,
+     "inc": 5,
+     "int": "-65L",
+     "fl": 34.814
+    },
+    {
+     "fin": 22,
+     "st": 19,
+     "name": "Ethan Wisnoski",
+     "laps": 2,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-88L"
+    },
+    {
+     "fin": 23,
+     "st": 22,
+     "name": "Frank Walsh",
+     "laps": 1,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-89L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh271315",
    "series": "chase",
    "srh_season": "22159",
    "round": 8,
    "date": "2024-05-23",
    "track": "Rockingham Speedway",
+   "track_full": "Rockingham Speedway Oval - 2012",
    "laps": 105,
    "results": [
     {
@@ -8184,12 +12606,281 @@
    "stage_top10": []
   },
   {
+   "id": "srh271316",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 10,
+   "date": "2024-05-28",
+   "track": "Talladega Superspeedway",
+   "track_full": "Talladega Superspeedway",
+   "laps": 60,
+   "results": [
+    {
+     "fin": 1,
+     "st": 19,
+     "name": "Morgan Cook2",
+     "laps": 60,
+     "led": 4,
+     "inc": 12,
+     "int": "-",
+     "fl": 50.876
+    },
+    {
+     "fin": 2,
+     "st": 2,
+     "name": "Kevin West",
+     "laps": 60,
+     "led": 10,
+     "inc": 16,
+     "int": "-0.004",
+     "fl": 50.774
+    },
+    {
+     "fin": 3,
+     "st": 13,
+     "name": "Jared Ziegler",
+     "laps": 60,
+     "led": 22,
+     "inc": 1,
+     "int": "-0.006",
+     "fl": 50.625
+    },
+    {
+     "fin": 4,
+     "st": 10,
+     "name": "Daniel Mulnix",
+     "laps": 60,
+     "led": 0,
+     "inc": 16,
+     "int": "-0.012",
+     "fl": 50.782
+    },
+    {
+     "fin": 5,
+     "st": 16,
+     "name": "Quinten Stewart",
+     "laps": 60,
+     "led": 0,
+     "inc": 8,
+     "int": "-0.343",
+     "fl": 50.753
+    },
+    {
+     "fin": 6,
+     "st": 24,
+     "name": "Reid Sanders",
+     "laps": 60,
+     "led": 0,
+     "inc": 8,
+     "int": "-3.766",
+     "fl": 50.675
+    },
+    {
+     "fin": 7,
+     "st": 5,
+     "name": "Marshall Newton",
+     "laps": 60,
+     "led": 0,
+     "inc": 8,
+     "int": "-6.629",
+     "fl": 50.599
+    },
+    {
+     "fin": 8,
+     "st": 3,
+     "name": "Derick McMurchy",
+     "laps": 60,
+     "led": 0,
+     "inc": 12,
+     "int": "-6.927",
+     "fl": 50.431
+    },
+    {
+     "fin": 9,
+     "st": 23,
+     "name": "Frank Walsh",
+     "laps": 60,
+     "led": 0,
+     "inc": 12,
+     "int": "-12.263",
+     "fl": 50.754
+    },
+    {
+     "fin": 10,
+     "st": 21,
+     "name": "Jaylen L Hankamp",
+     "laps": 60,
+     "led": 0,
+     "inc": 19,
+     "int": "-14.885",
+     "fl": 50.702
+    },
+    {
+     "fin": 11,
+     "st": 9,
+     "name": "Mike Petrin",
+     "laps": 60,
+     "led": 1,
+     "inc": 14,
+     "int": "-16.581",
+     "fl": 50.739
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "Kayden Diederich",
+     "laps": 60,
+     "led": 0,
+     "inc": 15,
+     "int": "-19.263",
+     "fl": 50.683
+    },
+    {
+     "fin": 13,
+     "st": 22,
+     "name": "Tyler Giffin",
+     "laps": 60,
+     "led": 0,
+     "inc": 14,
+     "int": "-21.142",
+     "fl": 50.662
+    },
+    {
+     "fin": 14,
+     "st": 20,
+     "name": "Ronnie L Joyner",
+     "laps": 60,
+     "led": 6,
+     "inc": 17,
+     "int": "-1:16.4724",
+     "fl": 50.768
+    },
+    {
+     "fin": 15,
+     "st": 8,
+     "name": "Caleb Nelson",
+     "laps": 59,
+     "led": 1,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 50.672
+    },
+    {
+     "fin": 16,
+     "st": 1,
+     "name": "Trenton Wilken",
+     "laps": 59,
+     "led": 2,
+     "inc": 5,
+     "int": "-1L",
+     "fl": 50.816
+    },
+    {
+     "fin": 17,
+     "st": 6,
+     "name": "Gaylon D Wunsch",
+     "laps": 59,
+     "led": 0,
+     "inc": 8,
+     "int": "-1L",
+     "fl": 50.857
+    },
+    {
+     "fin": 18,
+     "st": 11,
+     "name": "Brent Allen",
+     "laps": 58,
+     "led": 6,
+     "inc": 4,
+     "int": "-2L",
+     "fl": 50.719
+    },
+    {
+     "fin": 19,
+     "st": 7,
+     "name": "Randy W Sallee",
+     "laps": 54,
+     "led": 3,
+     "inc": 9,
+     "int": "-6L",
+     "fl": 50.652
+    },
+    {
+     "fin": 20,
+     "st": 18,
+     "name": "Steven McGough",
+     "laps": 52,
+     "led": 0,
+     "inc": 12,
+     "int": "-8L",
+     "fl": 50.55
+    },
+    {
+     "fin": 21,
+     "st": 15,
+     "name": "CJ Gates",
+     "laps": 42,
+     "led": 5,
+     "inc": 12,
+     "status": "Disconnected",
+     "int": "-18L",
+     "fl": 50.769
+    },
+    {
+     "fin": 22,
+     "st": 25,
+     "name": "Ryan Commons",
+     "laps": 36,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-24L",
+     "fl": 50.569
+    },
+    {
+     "fin": 23,
+     "st": 14,
+     "name": "Ethan Wisnoski",
+     "laps": 36,
+     "led": 0,
+     "inc": 16,
+     "status": "Disconnected",
+     "int": "-24L",
+     "fl": 50.776
+    },
+    {
+     "fin": 24,
+     "st": 17,
+     "name": "Spencer Johnson3",
+     "laps": 35,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-25L",
+     "fl": 50.933
+    },
+    {
+     "fin": 25,
+     "st": 4,
+     "name": "Joseph Turchiano",
+     "laps": 30,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-30L",
+     "fl": 50.774
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh271699",
    "series": "chase",
    "srh_season": "22159",
    "round": 9,
    "date": "2024-05-30",
    "track": "Indianapolis Motor Speedway",
+   "track_full": "Indianapolis Motor Speedway NASCAR Oval - 2009",
    "laps": 60,
    "results": [
     {
@@ -8446,12 +13137,229 @@
    "stage_top10": []
   },
   {
+   "id": "srh271853",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 11,
+   "date": "2024-06-04",
+   "track": "Rockingham Speedway",
+   "track_full": "Rockingham Speedway Oval - 2012",
+   "laps": 110,
+   "results": [
+    {
+     "fin": 1,
+     "st": 3,
+     "name": "Kevin West",
+     "laps": 110,
+     "led": 92,
+     "inc": 0,
+     "int": "-",
+     "fl": 24.804
+    },
+    {
+     "fin": 2,
+     "st": 6,
+     "name": "Caleb Nelson",
+     "laps": 110,
+     "led": 0,
+     "inc": 0,
+     "int": "-6.232",
+     "fl": 25.041
+    },
+    {
+     "fin": 3,
+     "st": 1,
+     "name": "Jared Ziegler",
+     "laps": 110,
+     "led": 16,
+     "inc": 14,
+     "int": "-6.341",
+     "fl": 25.005
+    },
+    {
+     "fin": 4,
+     "st": 2,
+     "name": "Daniel Mulnix",
+     "laps": 110,
+     "led": 2,
+     "inc": 8,
+     "int": "-6.856",
+     "fl": 25.036
+    },
+    {
+     "fin": 5,
+     "st": 10,
+     "name": "CJ Gates",
+     "laps": 110,
+     "led": 0,
+     "inc": 0,
+     "int": "-6.979",
+     "fl": 24.908
+    },
+    {
+     "fin": 6,
+     "st": 5,
+     "name": "Marshall Newton",
+     "laps": 110,
+     "led": 0,
+     "inc": 4,
+     "int": "-7.204",
+     "fl": 25.058
+    },
+    {
+     "fin": 7,
+     "st": 7,
+     "name": "Steven McGough",
+     "laps": 110,
+     "led": 0,
+     "inc": 0,
+     "int": "-14.717",
+     "fl": 25.169
+    },
+    {
+     "fin": 8,
+     "st": 14,
+     "name": "Brent Allen",
+     "laps": 110,
+     "led": 0,
+     "inc": 4,
+     "int": "-25.460",
+     "fl": 25.185
+    },
+    {
+     "fin": 9,
+     "st": 11,
+     "name": "Derick McMurchy",
+     "laps": 109,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 25.024
+    },
+    {
+     "fin": 10,
+     "st": 12,
+     "name": "Quinten Stewart",
+     "laps": 109,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 25.108
+    },
+    {
+     "fin": 11,
+     "st": 19,
+     "name": "Brandon H Yates",
+     "laps": 109,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 25.46
+    },
+    {
+     "fin": 12,
+     "st": 15,
+     "name": "Austin Dowdy2",
+     "laps": 109,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 25.109
+    },
+    {
+     "fin": 13,
+     "st": 16,
+     "name": "Randy W Sallee",
+     "laps": 109,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 25.207
+    },
+    {
+     "fin": 14,
+     "st": 18,
+     "name": "Spencer Johnson3",
+     "laps": 108,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "fl": 25.243
+    },
+    {
+     "fin": 15,
+     "st": 20,
+     "name": "Ethan Wisnoski",
+     "laps": 108,
+     "led": 0,
+     "inc": 0,
+     "int": "-2L",
+     "fl": 25.161
+    },
+    {
+     "fin": 16,
+     "st": 8,
+     "name": "Ronnie L Joyner",
+     "laps": 101,
+     "led": 0,
+     "inc": 6,
+     "int": "-9L",
+     "fl": 24.849
+    },
+    {
+     "fin": 17,
+     "st": 9,
+     "name": "Frank Walsh",
+     "laps": 98,
+     "led": 0,
+     "inc": 4,
+     "int": "-12L",
+     "fl": 25.213
+    },
+    {
+     "fin": 18,
+     "st": 17,
+     "name": "Mike Petrin",
+     "laps": 50,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-60L",
+     "fl": 25.198
+    },
+    {
+     "fin": 19,
+     "st": 4,
+     "name": "Gaylon D Wunsch",
+     "laps": 48,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-62L",
+     "fl": 25.019
+    },
+    {
+     "fin": 20,
+     "st": 13,
+     "name": "Morgan Cook2",
+     "laps": 35,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-75L",
+     "fl": 25.177
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh272215",
    "series": "chase",
    "srh_season": "22159",
    "round": 10,
    "date": "2024-06-06",
    "track": "Darlington Raceway",
+   "track_full": "Darlington Raceway",
    "laps": 100,
    "results": [
     {
@@ -8672,12 +13580,271 @@
    "stage_top10": []
   },
   {
+   "id": "srh272685",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 12,
+   "date": "2024-06-11",
+   "track": "Richmond Raceway",
+   "track_full": "Richmond Raceway [Retired] Richmond - 2007",
+   "laps": 120,
+   "results": [
+    {
+     "fin": 1,
+     "st": 2,
+     "name": "Caleb Nelson",
+     "laps": 120,
+     "led": 119,
+     "inc": 2,
+     "int": "-",
+     "fl": 22.31
+    },
+    {
+     "fin": 2,
+     "st": 1,
+     "name": "Jared Ziegler",
+     "laps": 120,
+     "led": 0,
+     "inc": 0,
+     "int": "-2.107",
+     "fl": 22.297
+    },
+    {
+     "fin": 3,
+     "st": 6,
+     "name": "Kevin West",
+     "laps": 120,
+     "led": 0,
+     "inc": 0,
+     "int": "-2.256",
+     "fl": 22.336
+    },
+    {
+     "fin": 4,
+     "st": 3,
+     "name": "Ronnie L Joyner",
+     "laps": 120,
+     "led": 0,
+     "inc": 0,
+     "int": "-4.626",
+     "fl": 22.278
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Bradley Cooper",
+     "laps": 120,
+     "led": 0,
+     "inc": 0,
+     "int": "-4.948",
+     "fl": 22.325
+    },
+    {
+     "fin": 6,
+     "st": 9,
+     "name": "Marshall Newton",
+     "laps": 120,
+     "led": 0,
+     "inc": 0,
+     "int": "-7.005",
+     "fl": 22.301
+    },
+    {
+     "fin": 7,
+     "st": 10,
+     "name": "Joseph Turchiano",
+     "laps": 120,
+     "led": 0,
+     "inc": 4,
+     "int": "-7.118",
+     "fl": 22.333
+    },
+    {
+     "fin": 8,
+     "st": 7,
+     "name": "BJ Hall",
+     "laps": 120,
+     "led": 1,
+     "inc": 2,
+     "int": "-11.137",
+     "fl": 22.514
+    },
+    {
+     "fin": 9,
+     "st": 11,
+     "name": "Ryan Philbrick",
+     "laps": 120,
+     "led": 0,
+     "inc": 4,
+     "int": "-13.260",
+     "fl": 22.454
+    },
+    {
+     "fin": 10,
+     "st": 15,
+     "name": "Quinten Stewart",
+     "laps": 120,
+     "led": 0,
+     "inc": 0,
+     "int": "-15.286",
+     "fl": 22.5
+    },
+    {
+     "fin": 11,
+     "st": 8,
+     "name": "Randy W Sallee",
+     "laps": 120,
+     "led": 0,
+     "inc": 0,
+     "int": "-16.104",
+     "fl": 22.527
+    },
+    {
+     "fin": 12,
+     "st": 16,
+     "name": "Brent Allen",
+     "laps": 120,
+     "led": 0,
+     "inc": 12,
+     "int": "-17.879",
+     "fl": 22.641
+    },
+    {
+     "fin": 13,
+     "st": 17,
+     "name": "Austin Thomas6",
+     "laps": 120,
+     "led": 0,
+     "inc": 8,
+     "int": "-18.684",
+     "fl": 22.58
+    },
+    {
+     "fin": 14,
+     "st": 12,
+     "name": "Derick McMurchy",
+     "laps": 120,
+     "led": 0,
+     "inc": 4,
+     "int": "-18.931",
+     "fl": 22.537
+    },
+    {
+     "fin": 15,
+     "st": 23,
+     "name": "Ethan Wisnoski",
+     "laps": 120,
+     "led": 0,
+     "inc": 4,
+     "int": "-23.557",
+     "fl": 22.942
+    },
+    {
+     "fin": 16,
+     "st": 18,
+     "name": "Spencer Johnson3",
+     "laps": 118,
+     "led": 0,
+     "inc": 12,
+     "int": "-2L",
+     "fl": 22.852
+    },
+    {
+     "fin": 17,
+     "st": 20,
+     "name": "Brandon H Yates",
+     "laps": 116,
+     "led": 0,
+     "inc": 4,
+     "int": "-4L",
+     "fl": 23.019
+    },
+    {
+     "fin": 18,
+     "st": 19,
+     "name": "Mike Petrin",
+     "laps": 103,
+     "led": 0,
+     "inc": 6,
+     "int": "-17L",
+     "fl": 22.715
+    },
+    {
+     "fin": 19,
+     "st": 22,
+     "name": "Gaylon D Wunsch",
+     "laps": 101,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-19L",
+     "fl": 22.384
+    },
+    {
+     "fin": 20,
+     "st": 13,
+     "name": "Frank Walsh",
+     "laps": 92,
+     "led": 0,
+     "inc": 8,
+     "int": "-28L",
+     "fl": 22.685
+    },
+    {
+     "fin": 21,
+     "st": 14,
+     "name": "CJ Gates",
+     "laps": 75,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-45L",
+     "fl": 22.498
+    },
+    {
+     "fin": 22,
+     "st": 4,
+     "name": "Trenton Wilken",
+     "laps": 31,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-89L",
+     "fl": 22.455
+    },
+    {
+     "fin": 23,
+     "st": 21,
+     "name": "Austin Dowdy2",
+     "laps": 28,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-92L",
+     "fl": 22.903
+    },
+    {
+     "fin": 24,
+     "st": 24,
+     "name": "Reid Sanders",
+     "laps": 14,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-106L",
+     "fl": 22.828
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh272771",
    "series": "chase",
    "srh_season": "22159",
    "round": 11,
    "date": "2024-06-13",
    "track": "Dover Motor Speedway",
+   "track_full": "Dover Motor Speedway",
    "laps": 105,
    "results": [
     {
@@ -8928,12 +14095,314 @@
    "stage_top10": []
   },
   {
+   "id": "srh273433",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 13,
+   "date": "2024-06-18",
+   "track": "Dover Motor Speedway",
+   "track_full": "Dover Motor Speedway",
+   "laps": 106,
+   "results": [
+    {
+     "fin": 1,
+     "st": 2,
+     "name": "Jared Ziegler",
+     "laps": 106,
+     "led": 106,
+     "inc": 2,
+     "int": "-",
+     "fl": 23.257
+    },
+    {
+     "fin": 2,
+     "st": 9,
+     "name": "Ronnie L Joyner",
+     "laps": 106,
+     "led": 0,
+     "inc": 0,
+     "int": "-0.235",
+     "fl": 23.19
+    },
+    {
+     "fin": 3,
+     "st": 1,
+     "name": "Caleb Nelson",
+     "laps": 106,
+     "led": 0,
+     "inc": 0,
+     "int": "-0.370",
+     "fl": 23.361
+    },
+    {
+     "fin": 4,
+     "st": 3,
+     "name": "Chuck Sweeting",
+     "laps": 106,
+     "led": 0,
+     "inc": 0,
+     "int": "-0.617",
+     "fl": 23.345
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Marshall Newton",
+     "laps": 106,
+     "led": 0,
+     "inc": 4,
+     "int": "-0.864",
+     "fl": 23.344
+    },
+    {
+     "fin": 6,
+     "st": 4,
+     "name": "Gaylon D Wunsch",
+     "laps": 106,
+     "led": 0,
+     "inc": 4,
+     "int": "-1.045",
+     "fl": 23.209
+    },
+    {
+     "fin": 7,
+     "st": 7,
+     "name": "Kevin West",
+     "laps": 106,
+     "led": 0,
+     "inc": 12,
+     "int": "-1.684",
+     "fl": 23.534
+    },
+    {
+     "fin": 8,
+     "st": 8,
+     "name": "Joseph Turchiano",
+     "laps": 106,
+     "led": 0,
+     "inc": 4,
+     "int": "-2.207",
+     "fl": 23.305
+    },
+    {
+     "fin": 9,
+     "st": 16,
+     "name": "Quinten Stewart",
+     "laps": 106,
+     "led": 0,
+     "inc": 12,
+     "int": "-2.429",
+     "fl": 23.39
+    },
+    {
+     "fin": 10,
+     "st": 26,
+     "name": "Reid Sanders",
+     "laps": 106,
+     "led": 0,
+     "inc": 4,
+     "int": "-3.586",
+     "fl": 23.583
+    },
+    {
+     "fin": 11,
+     "st": 14,
+     "name": "Ryan Philbrick",
+     "laps": 106,
+     "led": 0,
+     "inc": 8,
+     "int": "-3.797",
+     "fl": 23.569
+    },
+    {
+     "fin": 12,
+     "st": 24,
+     "name": "Ethan Wisnoski",
+     "laps": 106,
+     "led": 0,
+     "inc": 10,
+     "int": "-4.191",
+     "fl": 23.694
+    },
+    {
+     "fin": 13,
+     "st": 10,
+     "name": "Steven McGough",
+     "laps": 106,
+     "led": 0,
+     "inc": 4,
+     "int": "-9.526",
+     "fl": 23.564
+    },
+    {
+     "fin": 14,
+     "st": 13,
+     "name": "Austin Dowdy2",
+     "laps": 106,
+     "led": 0,
+     "inc": 8,
+     "int": "-10.227",
+     "fl": 23.38
+    },
+    {
+     "fin": 15,
+     "st": 25,
+     "name": "Frank Walsh",
+     "laps": 105,
+     "led": 0,
+     "inc": 4,
+     "int": "-1L",
+     "fl": 23.633
+    },
+    {
+     "fin": 16,
+     "st": 22,
+     "name": "Randy W Sallee",
+     "laps": 105,
+     "led": 0,
+     "inc": 8,
+     "int": "-1L",
+     "fl": 23.668
+    },
+    {
+     "fin": 17,
+     "st": 19,
+     "name": "Derick McMurchy",
+     "laps": 102,
+     "led": 0,
+     "inc": 4,
+     "int": "-4L",
+     "fl": 23.525
+    },
+    {
+     "fin": 18,
+     "st": 18,
+     "name": "Mike Petrin",
+     "laps": 97,
+     "led": 0,
+     "inc": 8,
+     "int": "-9L",
+     "fl": 23.588
+    },
+    {
+     "fin": 19,
+     "st": 27,
+     "name": "Brandon H Yates",
+     "laps": 95,
+     "led": 0,
+     "inc": 4,
+     "int": "-11L",
+     "fl": 23.879
+    },
+    {
+     "fin": 20,
+     "st": 15,
+     "name": "Bradley Cooper",
+     "laps": 93,
+     "led": 0,
+     "inc": 8,
+     "int": "-13L",
+     "fl": 23.599
+    },
+    {
+     "fin": 21,
+     "st": 23,
+     "name": "Tylor Clemann",
+     "laps": 79,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-27L",
+     "fl": 23.825
+    },
+    {
+     "fin": 22,
+     "st": 12,
+     "name": "CJ Gates",
+     "laps": 64,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-42L",
+     "fl": 23.544
+    },
+    {
+     "fin": 23,
+     "st": 28,
+     "name": "Ryan Commons",
+     "laps": 59,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-47L",
+     "fl": 23.907
+    },
+    {
+     "fin": 24,
+     "st": 20,
+     "name": "BJ Hall",
+     "laps": 46,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-60L",
+     "fl": 23.933
+    },
+    {
+     "fin": 25,
+     "st": 11,
+     "name": "Daniel Mulnix",
+     "laps": 43,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-63L",
+     "fl": 23.816
+    },
+    {
+     "fin": 26,
+     "st": 6,
+     "name": "Trenton Wilken",
+     "laps": 43,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-63L",
+     "fl": 23.689
+    },
+    {
+     "fin": 27,
+     "st": 21,
+     "name": "Brent Allen",
+     "laps": 5,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-101L",
+     "fl": 24.019
+    },
+    {
+     "fin": 28,
+     "st": 17,
+     "name": "Spencer Johnson3",
+     "laps": 5,
+     "led": 0,
+     "inc": 8,
+     "status": "Disconnected",
+     "int": "-101L",
+     "fl": 24.017
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh273859",
    "series": "chase",
    "srh_season": "22159",
    "round": 12,
    "date": "2024-06-20",
    "track": "Richmond Raceway",
+   "track_full": "Richmond Raceway [Retired] Richmond - 2007",
    "laps": 122,
    "results": [
     {
@@ -9182,12 +14651,300 @@
    "stage_top10": []
   },
   {
+   "id": "srh274644",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 14,
+   "date": "2024-06-25",
+   "track": "Auto Club Speedway",
+   "track_full": "Auto Club Speedway Oval",
+   "laps": 65,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Daniel Mulnix",
+     "laps": 65,
+     "led": 51,
+     "inc": 0,
+     "int": "-",
+     "fl": 42.687
+    },
+    {
+     "fin": 2,
+     "st": 4,
+     "name": "Ronnie L Joyner",
+     "laps": 65,
+     "led": 3,
+     "inc": 0,
+     "int": "-1.568",
+     "fl": 42.599
+    },
+    {
+     "fin": 3,
+     "st": 2,
+     "name": "Kevin West",
+     "laps": 65,
+     "led": 1,
+     "inc": 0,
+     "int": "-1.948",
+     "fl": 42.612
+    },
+    {
+     "fin": 4,
+     "st": 7,
+     "name": "Gaylon D Wunsch",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-5.106",
+     "fl": 42.666
+    },
+    {
+     "fin": 5,
+     "st": 6,
+     "name": "Jared Ziegler",
+     "laps": 65,
+     "led": 0,
+     "inc": 4,
+     "int": "-8.626",
+     "fl": 42.723
+    },
+    {
+     "fin": 6,
+     "st": 12,
+     "name": "Morgan Cook2",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-11.182",
+     "fl": 42.796
+    },
+    {
+     "fin": 7,
+     "st": 10,
+     "name": "Derick McMurchy",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-11.706",
+     "fl": 42.854
+    },
+    {
+     "fin": 8,
+     "st": 16,
+     "name": "Quinten Stewart",
+     "laps": 65,
+     "led": 0,
+     "inc": 4,
+     "int": "-12.910",
+     "fl": 42.794
+    },
+    {
+     "fin": 9,
+     "st": 13,
+     "name": "Marshall Newton",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-14.821",
+     "fl": 42.884
+    },
+    {
+     "fin": 10,
+     "st": 5,
+     "name": "Caleb Nelson",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-15.452",
+     "fl": 42.955
+    },
+    {
+     "fin": 11,
+     "st": 9,
+     "name": "Trenton Wilken",
+     "laps": 65,
+     "led": 0,
+     "inc": 2,
+     "int": "-18.383",
+     "fl": 42.784
+    },
+    {
+     "fin": 12,
+     "st": 19,
+     "name": "Steven McGough",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-23.234",
+     "fl": 42.814
+    },
+    {
+     "fin": 13,
+     "st": 11,
+     "name": "Joseph Turchiano",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-24.042",
+     "fl": 42.711
+    },
+    {
+     "fin": 14,
+     "st": 8,
+     "name": "CJ Gates",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-25.261",
+     "fl": 42.696
+    },
+    {
+     "fin": 15,
+     "st": 17,
+     "name": "Brent Allen",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-25.357",
+     "fl": 42.939
+    },
+    {
+     "fin": 16,
+     "st": 22,
+     "name": "Mitchell Kostner",
+     "laps": 65,
+     "led": 10,
+     "inc": 0,
+     "int": "-27.388",
+     "fl": 42.773
+    },
+    {
+     "fin": 17,
+     "st": 26,
+     "name": "Ryan Philbrick",
+     "laps": 65,
+     "led": 0,
+     "inc": 4,
+     "int": "-28.016",
+     "fl": 43.099
+    },
+    {
+     "fin": 18,
+     "st": 25,
+     "name": "Austin Dowdy2",
+     "laps": 65,
+     "led": 0,
+     "inc": 4,
+     "int": "-32.235",
+     "fl": 43.116
+    },
+    {
+     "fin": 19,
+     "st": 27,
+     "name": "Frank Walsh",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-35.157",
+     "fl": 43.063
+    },
+    {
+     "fin": 20,
+     "st": 23,
+     "name": "Waylon Turner",
+     "laps": 65,
+     "led": 0,
+     "inc": 0,
+     "int": "-44.654",
+     "fl": 43.023
+    },
+    {
+     "fin": 21,
+     "st": 18,
+     "name": "Mike Petrin",
+     "laps": 64,
+     "led": 0,
+     "inc": 1,
+     "int": "-1L",
+     "fl": 43.009
+    },
+    {
+     "fin": 22,
+     "st": 24,
+     "name": "BJ Hall",
+     "laps": 64,
+     "led": 0,
+     "inc": 1,
+     "int": "-1L",
+     "fl": 43.086
+    },
+    {
+     "fin": 23,
+     "st": 21,
+     "name": "Brandon H Yates",
+     "laps": 64,
+     "led": 0,
+     "inc": 1,
+     "int": "-1L",
+     "fl": 43.416
+    },
+    {
+     "fin": 24,
+     "st": 20,
+     "name": "Tylor Clemann",
+     "laps": 55,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-10L",
+     "fl": 42.916
+    },
+    {
+     "fin": 25,
+     "st": 28,
+     "name": "Reid Sanders",
+     "laps": 42,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-23L",
+     "fl": 43.041
+    },
+    {
+     "fin": 26,
+     "st": 3,
+     "name": "Chuck Sweeting",
+     "laps": 33,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-32L",
+     "fl": 42.651
+    },
+    {
+     "fin": 27,
+     "st": 15,
+     "name": "Kendorian Davis",
+     "laps": 14,
+     "led": 0,
+     "inc": 1,
+     "status": "Disconnected",
+     "int": "-51L",
+     "fl": 42.954
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh275123",
    "series": "chase",
    "srh_season": "22159",
    "round": 13,
    "date": "2024-06-27",
    "track": "Charlotte Motor Speedway",
+   "track_full": "Charlotte Motor Speedway [Retired] Oval",
    "laps": 120,
    "results": [
     {
@@ -9415,12 +15172,724 @@
    "stage_top10": []
   },
   {
+   "id": "srh275730",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 15,
+   "date": "2024-07-02",
+   "track": "Sonoma Raceway",
+   "track_full": "Sonoma Raceway [Retired] NASCAR Short",
+   "laps": 28,
+   "results": [
+    {
+     "fin": 1,
+     "st": 1,
+     "name": "Daniel Mulnix",
+     "laps": 28,
+     "led": 27,
+     "inc": 1,
+     "int": "-"
+    },
+    {
+     "fin": 2,
+     "st": 3,
+     "name": "Jared Ziegler",
+     "laps": 28,
+     "led": 0,
+     "inc": 0,
+     "int": "-8.250"
+    },
+    {
+     "fin": 3,
+     "st": 4,
+     "name": "Jesse Gordon2",
+     "laps": 28,
+     "led": 0,
+     "inc": 1,
+     "int": "-13.356"
+    },
+    {
+     "fin": 4,
+     "st": 2,
+     "name": "Gaylon D Wunsch",
+     "laps": 28,
+     "led": 0,
+     "inc": 6,
+     "int": "-20.258"
+    },
+    {
+     "fin": 5,
+     "st": 5,
+     "name": "Quinten Stewart",
+     "laps": 28,
+     "led": 0,
+     "inc": 5,
+     "int": "-24.446"
+    },
+    {
+     "fin": 6,
+     "st": 8,
+     "name": "Caleb Nelson",
+     "laps": 28,
+     "led": 0,
+     "inc": 5,
+     "int": "-25.340"
+    },
+    {
+     "fin": 7,
+     "st": 10,
+     "name": "Antonio Bianchi",
+     "laps": 28,
+     "led": 0,
+     "inc": 1,
+     "int": "-31.933"
+    },
+    {
+     "fin": 8,
+     "st": 11,
+     "name": "Kevin West",
+     "laps": 28,
+     "led": 0,
+     "inc": 0,
+     "int": "-33.794"
+    },
+    {
+     "fin": 9,
+     "st": 9,
+     "name": "CJ Gates",
+     "laps": 28,
+     "led": 0,
+     "inc": 1,
+     "int": "-36.826"
+    },
+    {
+     "fin": 10,
+     "st": 7,
+     "name": "Marshall Newton",
+     "laps": 28,
+     "led": 0,
+     "inc": 0,
+     "int": "-1:00.7594"
+    },
+    {
+     "fin": 11,
+     "st": 16,
+     "name": "Dakota Floyd2",
+     "laps": 27,
+     "led": 0,
+     "inc": 11,
+     "int": "-1L"
+    },
+    {
+     "fin": 12,
+     "st": 13,
+     "name": "Ronnie L Joyner",
+     "laps": 27,
+     "led": 0,
+     "inc": 9,
+     "int": "-1L"
+    },
+    {
+     "fin": 13,
+     "st": 14,
+     "name": "Brent Allen",
+     "laps": 27,
+     "led": 0,
+     "inc": 12,
+     "int": "-1L"
+    },
+    {
+     "fin": 14,
+     "st": 15,
+     "name": "Derick McMurchy",
+     "laps": 27,
+     "led": 0,
+     "inc": 7,
+     "int": "-1L"
+    },
+    {
+     "fin": 15,
+     "st": 12,
+     "name": "Morgan Cook2",
+     "laps": 18,
+     "led": 1,
+     "inc": 5,
+     "status": "Disconnected",
+     "int": "-10L"
+    },
+    {
+     "fin": 16,
+     "st": 18,
+     "name": "Joseph Turchiano",
+     "laps": 17,
+     "led": 0,
+     "inc": 12,
+     "status": "Disconnected",
+     "int": "-11L"
+    },
+    {
+     "fin": 17,
+     "st": 20,
+     "name": "Ethan Wisnoski",
+     "laps": 11,
+     "led": 0,
+     "inc": 3,
+     "status": "Disconnected",
+     "int": "-17L"
+    },
+    {
+     "fin": 18,
+     "st": 21,
+     "name": "Mike Petrin",
+     "laps": 8,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-20L"
+    },
+    {
+     "fin": 19,
+     "st": 6,
+     "name": "Trenton Wilken",
+     "laps": 2,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-26L"
+    },
+    {
+     "fin": 20,
+     "st": 19,
+     "name": "Austin Dowdy2",
+     "laps": 2,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-26L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh276471",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 16,
+   "date": "2024-07-09",
+   "track": "Atlanta Motor Speedway",
+   "track_full": "EchoPark Speedway (Atlanta) Oval - 2008",
+   "laps": 90,
+   "results": [
+    {
+     "fin": 1,
+     "st": 2,
+     "name": "Caleb Nelson",
+     "laps": 90,
+     "led": 66,
+     "inc": 0,
+     "int": "-",
+     "fl": 32.711
+    },
+    {
+     "fin": 2,
+     "st": 22,
+     "name": "Kevin West",
+     "laps": 90,
+     "led": 0,
+     "inc": 1,
+     "int": "-1.591",
+     "fl": 32.578
+    },
+    {
+     "fin": 3,
+     "st": 9,
+     "name": "Ronnie L Joyner",
+     "laps": 90,
+     "led": 1,
+     "inc": 1,
+     "int": "-2.709",
+     "fl": 32.686
+    },
+    {
+     "fin": 4,
+     "st": 7,
+     "name": "Trenton Wilken",
+     "laps": 90,
+     "led": 1,
+     "inc": 2,
+     "int": "-2.970",
+     "fl": 33.02
+    },
+    {
+     "fin": 5,
+     "st": 13,
+     "name": "Dakota Floyd2",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-3.138",
+     "fl": 32.904
+    },
+    {
+     "fin": 6,
+     "st": 8,
+     "name": "Chuck Sweeting",
+     "laps": 90,
+     "led": 3,
+     "inc": 0,
+     "int": "-3.275",
+     "fl": 32.588
+    },
+    {
+     "fin": 7,
+     "st": 10,
+     "name": "Daniel Mulnix",
+     "laps": 90,
+     "led": 0,
+     "inc": 1,
+     "int": "-3.323",
+     "fl": 32.843
+    },
+    {
+     "fin": 8,
+     "st": 16,
+     "name": "Brent Allen",
+     "laps": 90,
+     "led": 0,
+     "inc": 1,
+     "int": "-4.438",
+     "fl": 33.011
+    },
+    {
+     "fin": 9,
+     "st": 1,
+     "name": "Morgan Cook2",
+     "laps": 90,
+     "led": 3,
+     "inc": 2,
+     "int": "-5.385",
+     "fl": 32.688
+    },
+    {
+     "fin": 10,
+     "st": 11,
+     "name": "Marshall Newton",
+     "laps": 90,
+     "led": 0,
+     "inc": 2,
+     "int": "-7.187",
+     "fl": 32.911
+    },
+    {
+     "fin": 11,
+     "st": 19,
+     "name": "Derick McMurchy",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-8.538",
+     "fl": 32.767
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "CJ Gates",
+     "laps": 90,
+     "led": 0,
+     "inc": 1,
+     "int": "-9.291",
+     "fl": 32.712
+    },
+    {
+     "fin": 13,
+     "st": 3,
+     "name": "Gaylon D Wunsch",
+     "laps": 90,
+     "led": 1,
+     "inc": 2,
+     "int": "-11.113",
+     "fl": 32.785
+    },
+    {
+     "fin": 14,
+     "st": 14,
+     "name": "Joseph Turchiano",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-11.201",
+     "fl": 32.825
+    },
+    {
+     "fin": 15,
+     "st": 15,
+     "name": "Austin Thomas6",
+     "laps": 90,
+     "led": 0,
+     "inc": 3,
+     "int": "-13.374",
+     "fl": 32.828
+    },
+    {
+     "fin": 16,
+     "st": 4,
+     "name": "Jared Ziegler",
+     "laps": 90,
+     "led": 15,
+     "inc": 1,
+     "int": "-18.060",
+     "fl": 32.735
+    },
+    {
+     "fin": 17,
+     "st": 24,
+     "name": "Ethan Wisnoski",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-21.341",
+     "fl": 32.96
+    },
+    {
+     "fin": 18,
+     "st": 25,
+     "name": "Steven McGough",
+     "laps": 90,
+     "led": 0,
+     "inc": 4,
+     "int": "-25.883",
+     "fl": 32.931
+    },
+    {
+     "fin": 19,
+     "st": 23,
+     "name": "Brandon H Yates",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-35.401",
+     "fl": 33.059
+    },
+    {
+     "fin": 20,
+     "st": 21,
+     "name": "Randy W Sallee",
+     "laps": 89,
+     "led": 0,
+     "inc": 1,
+     "int": "-1L",
+     "fl": 33.125
+    },
+    {
+     "fin": 21,
+     "st": 20,
+     "name": "Mike Petrin",
+     "laps": 89,
+     "led": 0,
+     "inc": 0,
+     "int": "-1L",
+     "fl": 32.892
+    },
+    {
+     "fin": 22,
+     "st": 18,
+     "name": "Austin Dowdy2",
+     "laps": 67,
+     "led": 0,
+     "inc": 4,
+     "int": "-23L",
+     "fl": 32.854
+    },
+    {
+     "fin": 23,
+     "st": 6,
+     "name": "Ryan Philbrick",
+     "laps": 54,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-36L",
+     "fl": 32.668
+    },
+    {
+     "fin": 24,
+     "st": 5,
+     "name": "Chris Naill",
+     "laps": 49,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-41L",
+     "fl": 32.759
+    },
+    {
+     "fin": 25,
+     "st": 17,
+     "name": "Brody Duescher",
+     "laps": 9,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-81L",
+     "fl": 32.938
+    },
+    {
+     "fin": 26,
+     "st": 26,
+     "name": "Reid Sanders",
+     "laps": 3,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-87L",
+     "fl": 32.997
+    }
+   ],
+   "stage_top10": []
+  },
+  {
+   "id": "srh277114",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 17,
+   "date": "2024-07-16",
+   "track": "Las Vegas Motor Speedway",
+   "track_full": "Las Vegas Motor Speedway Oval",
+   "laps": 90,
+   "results": [
+    {
+     "fin": 1,
+     "st": 11,
+     "name": "Dakota Floyd2",
+     "laps": 90,
+     "led": 39,
+     "inc": 0,
+     "int": "-",
+     "fl": 31.099
+    },
+    {
+     "fin": 2,
+     "st": 6,
+     "name": "Chuck Sweeting",
+     "laps": 90,
+     "led": 2,
+     "inc": 0,
+     "int": "-0.252",
+     "fl": 31.07
+    },
+    {
+     "fin": 3,
+     "st": 3,
+     "name": "Caleb Nelson",
+     "laps": 90,
+     "led": 8,
+     "inc": 0,
+     "int": "-0.471",
+     "fl": 31.108
+    },
+    {
+     "fin": 4,
+     "st": 4,
+     "name": "Ronnie L Joyner",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-2.611",
+     "fl": 31.166
+    },
+    {
+     "fin": 5,
+     "st": 2,
+     "name": "Gaylon D Wunsch",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-2.733",
+     "fl": 31.069
+    },
+    {
+     "fin": 6,
+     "st": 13,
+     "name": "Morgan Cook2",
+     "laps": 90,
+     "led": 0,
+     "inc": 4,
+     "int": "-3.376",
+     "fl": 31.328
+    },
+    {
+     "fin": 7,
+     "st": 14,
+     "name": "Brent Allen",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-5.349",
+     "fl": 31.102
+    },
+    {
+     "fin": 8,
+     "st": 5,
+     "name": "Jared Ziegler",
+     "laps": 90,
+     "led": 0,
+     "inc": 5,
+     "int": "-5.594",
+     "fl": 31.122
+    },
+    {
+     "fin": 9,
+     "st": 8,
+     "name": "Derick McMurchy",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-5.989",
+     "fl": 31.127
+    },
+    {
+     "fin": 10,
+     "st": 16,
+     "name": "CJ Gates",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-6.511",
+     "fl": 31.213
+    },
+    {
+     "fin": 11,
+     "st": 7,
+     "name": "Austin Thomas6",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-7.255",
+     "fl": 31.064
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "Joseph Turchiano",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-7.619",
+     "fl": 31.119
+    },
+    {
+     "fin": 13,
+     "st": 19,
+     "name": "Steven McGough",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-7.984",
+     "fl": 31.324
+    },
+    {
+     "fin": 14,
+     "st": 18,
+     "name": "Randy W Sallee",
+     "laps": 90,
+     "led": 0,
+     "inc": 1,
+     "int": "-11.032",
+     "fl": 31.318
+    },
+    {
+     "fin": 15,
+     "st": 17,
+     "name": "Mike Petrin",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-14.545",
+     "fl": 31.412
+    },
+    {
+     "fin": 16,
+     "st": 21,
+     "name": "Frank Walsh",
+     "laps": 90,
+     "led": 0,
+     "inc": 0,
+     "int": "-18.422",
+     "fl": 31.487
+    },
+    {
+     "fin": 17,
+     "st": 15,
+     "name": "Marshall Newton",
+     "laps": 90,
+     "led": 0,
+     "inc": 9,
+     "int": "-20.415",
+     "fl": 31.365
+    },
+    {
+     "fin": 18,
+     "st": 1,
+     "name": "Daniel Mulnix",
+     "laps": 77,
+     "led": 41,
+     "inc": 1,
+     "status": "Disconnected",
+     "int": "-13L",
+     "fl": 31.105
+    },
+    {
+     "fin": 19,
+     "st": 9,
+     "name": "Kevin West",
+     "laps": 70,
+     "led": 0,
+     "inc": 8,
+     "int": "-20L",
+     "fl": 31.284
+    },
+    {
+     "fin": 20,
+     "st": 20,
+     "name": "Ethan Wisnoski",
+     "laps": 60,
+     "led": 0,
+     "inc": 4,
+     "int": "-30L",
+     "fl": 31.207
+    },
+    {
+     "fin": 21,
+     "st": 10,
+     "name": "Quinten Stewart",
+     "laps": 53,
+     "led": 0,
+     "inc": 4,
+     "int": "-37L",
+     "fl": 31.433
+    },
+    {
+     "fin": 22,
+     "st": 24,
+     "name": "Clay Nelson",
+     "laps": 26,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-64L",
+     "fl": 31.384
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh277277",
    "series": "chase",
    "srh_season": "22159",
    "round": 14,
    "date": "2024-07-18",
    "track": "Homestead-Miami Speedway",
+   "track_full": "Homestead Miami Speedway Oval",
    "laps": 110,
    "results": [
     {
@@ -9587,12 +16056,271 @@
    "stage_top10": []
   },
   {
+   "id": "srh277991",
+   "series": "xfinity",
+   "srh_season": "22033",
+   "round": 18,
+   "date": "2024-07-23",
+   "track": "Kansas Speedway",
+   "track_full": "Kansas Speedway Oval",
+   "laps": 100,
+   "results": [
+    {
+     "fin": 1,
+     "st": 4,
+     "name": "Kevin West",
+     "laps": 100,
+     "led": 49,
+     "inc": 0,
+     "int": "-",
+     "fl": 32.646
+    },
+    {
+     "fin": 2,
+     "st": 6,
+     "name": "Daniel Mulnix",
+     "laps": 100,
+     "led": 3,
+     "inc": 4,
+     "int": "-1.362",
+     "fl": 32.777
+    },
+    {
+     "fin": 3,
+     "st": 1,
+     "name": "Caleb Nelson",
+     "laps": 100,
+     "led": 24,
+     "inc": 0,
+     "int": "-2.399",
+     "fl": 32.66
+    },
+    {
+     "fin": 4,
+     "st": 7,
+     "name": "Gaylon D Wunsch",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-3.147",
+     "fl": 32.834
+    },
+    {
+     "fin": 5,
+     "st": 2,
+     "name": "Jared Ziegler",
+     "laps": 100,
+     "led": 0,
+     "inc": 8,
+     "int": "-9.688",
+     "fl": 32.622
+    },
+    {
+     "fin": 6,
+     "st": 5,
+     "name": "Dakota Floyd2",
+     "laps": 100,
+     "led": 3,
+     "inc": 5,
+     "int": "-10.963",
+     "fl": 32.868
+    },
+    {
+     "fin": 7,
+     "st": 19,
+     "name": "Ryan Philbrick",
+     "laps": 100,
+     "led": 0,
+     "inc": 4,
+     "int": "-13.883",
+     "fl": 32.849
+    },
+    {
+     "fin": 8,
+     "st": 10,
+     "name": "Ethan Wisnoski",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-14.866",
+     "fl": 32.999
+    },
+    {
+     "fin": 9,
+     "st": 23,
+     "name": "Brent Allen",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-19.849",
+     "fl": 32.988
+    },
+    {
+     "fin": 10,
+     "st": 11,
+     "name": "Mike Petrin",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-25.035",
+     "fl": 32.899
+    },
+    {
+     "fin": 11,
+     "st": 21,
+     "name": "Chuck Sweeting",
+     "laps": 100,
+     "led": 20,
+     "inc": 2,
+     "int": "-28.544",
+     "fl": 32.596
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "Marshall Newton",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-30.388",
+     "fl": 32.822
+    },
+    {
+     "fin": 13,
+     "st": 17,
+     "name": "Austin Thomas6",
+     "laps": 100,
+     "led": 0,
+     "inc": 9,
+     "int": "-31.613",
+     "fl": 32.91
+    },
+    {
+     "fin": 14,
+     "st": 24,
+     "name": "Frank Walsh",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-31.845",
+     "fl": 32.826
+    },
+    {
+     "fin": 15,
+     "st": 3,
+     "name": "Morgan Cook2",
+     "laps": 99,
+     "led": 0,
+     "inc": 2,
+     "int": "-1L",
+     "fl": 32.729
+    },
+    {
+     "fin": 16,
+     "st": 8,
+     "name": "Quinten Stewart",
+     "laps": 98,
+     "led": 0,
+     "inc": 1,
+     "int": "-2L",
+     "fl": 32.861
+    },
+    {
+     "fin": 17,
+     "st": 13,
+     "name": "Brandon H Yates",
+     "laps": 98,
+     "led": 0,
+     "inc": 6,
+     "int": "-2L",
+     "fl": 33.006
+    },
+    {
+     "fin": 18,
+     "st": 20,
+     "name": "Jaylen L Hankamp",
+     "laps": 84,
+     "led": 0,
+     "inc": 9,
+     "status": "Disconnected",
+     "int": "-16L",
+     "fl": 32.72
+    },
+    {
+     "fin": 19,
+     "st": 14,
+     "name": "Wyatt Walker",
+     "laps": 81,
+     "led": 0,
+     "inc": 3,
+     "int": "-19L",
+     "fl": 33.035
+    },
+    {
+     "fin": 20,
+     "st": 9,
+     "name": "Ronnie L Joyner",
+     "laps": 66,
+     "led": 1,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-34L",
+     "fl": 32.85
+    },
+    {
+     "fin": 21,
+     "st": 18,
+     "name": "Austin Dowdy2",
+     "laps": 49,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-51L",
+     "fl": 33.476
+    },
+    {
+     "fin": 22,
+     "st": 22,
+     "name": "Derick McMurchy",
+     "laps": 26,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-74L",
+     "fl": 32.736
+    },
+    {
+     "fin": 23,
+     "st": 15,
+     "name": "CJ Gates",
+     "laps": 6,
+     "led": 0,
+     "inc": 2,
+     "status": "Disconnected",
+     "int": "-94L",
+     "fl": 46.651
+    },
+    {
+     "fin": 24,
+     "st": 16,
+     "name": "Randy W Sallee",
+     "laps": 2,
+     "led": 0,
+     "inc": 5,
+     "status": "Disconnected",
+     "int": "-98L"
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh281178",
    "series": "tnt",
    "srh_season": "23316",
    "round": 1,
    "date": "2024-08-20",
    "track": "Daytona International Speedway",
+   "track_full": "Daytona International Speedway Oval",
    "laps": 82,
    "results": [
     {
@@ -9928,6 +16656,7 @@
    "round": 2,
    "date": "2024-08-27",
    "track": "Watkins Glen International",
+   "track_full": "Watkins Glen International Cup",
    "laps": 40,
    "results": [
     {
@@ -10206,6 +16935,7 @@
    "round": 3,
    "date": "2024-09-03",
    "track": "Michigan International Speedway",
+   "track_full": "Michigan International Speedway",
    "laps": 100,
    "results": [
     {
@@ -10575,6 +17305,7 @@
    "round": 1,
    "date": "2024-09-05",
    "track": "Daytona International Speedway",
+   "track_full": "Daytona International Speedway Oval - 2008",
    "laps": 38,
    "results": [
     {
@@ -10840,6 +17571,7 @@
    "round": 4,
    "date": "2024-09-10",
    "track": "Iowa Speedway",
+   "track_full": "Iowa Speedway Oval - 2011",
    "laps": 123,
    "results": [
     {
@@ -11176,6 +17908,7 @@
    "round": 2,
    "date": "2024-09-12",
    "track": "Kansas Speedway",
+   "track_full": "Kansas Speedway Oval",
    "laps": 120,
    "results": [
     {
@@ -11412,6 +18145,7 @@
    "round": 5,
    "date": "2024-09-17",
    "track": "Charlotte Motor Speedway",
+   "track_full": "[Retired] Charlotte Motor Speedway [Retired] Oval - 2018",
    "laps": 110,
    "results": [
     {
@@ -11747,6 +18481,7 @@
    "round": 3,
    "date": "2024-09-19",
    "track": "Iowa Speedway",
+   "track_full": "Iowa Speedway Oval - 2011",
    "laps": 155,
    "results": [
     {
@@ -11917,12 +18652,322 @@
    ]
   },
   {
+   "id": "srh285622",
+   "series": "tnt",
+   "srh_season": "23316",
+   "round": 6,
+   "date": "2024-09-24",
+   "track": "Auto Club Speedway",
+   "track_full": "Auto Club Speedway Oval",
+   "laps": 100,
+   "results": [
+    {
+     "fin": 1,
+     "st": 8,
+     "name": "Carter Lins",
+     "laps": 100,
+     "led": 6,
+     "inc": 2,
+     "int": "-",
+     "fl": 41.607
+    },
+    {
+     "fin": 2,
+     "st": 5,
+     "name": "Ronnie L Joyner",
+     "laps": 100,
+     "led": 0,
+     "inc": 5,
+     "int": "-0.441",
+     "fl": 41.621
+    },
+    {
+     "fin": 3,
+     "st": 6,
+     "name": "Marty Phillips",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-0.605",
+     "fl": 41.555
+    },
+    {
+     "fin": 4,
+     "st": 4,
+     "name": "Jason Foskey",
+     "laps": 100,
+     "led": 14,
+     "inc": 4,
+     "int": "-0.626",
+     "fl": 41.498
+    },
+    {
+     "fin": 5,
+     "st": 24,
+     "name": "CJ Gates",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-0.760",
+     "fl": 41.485
+    },
+    {
+     "fin": 6,
+     "st": 1,
+     "name": "Daniel Mulnix",
+     "laps": 100,
+     "led": 58,
+     "inc": 4,
+     "int": "-1.888",
+     "fl": 41.519
+    },
+    {
+     "fin": 7,
+     "st": 10,
+     "name": "Steven McGough",
+     "laps": 100,
+     "led": 0,
+     "inc": 4,
+     "int": "-1.946",
+     "fl": 41.695
+    },
+    {
+     "fin": 8,
+     "st": 15,
+     "name": "Austin Thomas6",
+     "laps": 100,
+     "led": 0,
+     "inc": 8,
+     "int": "-2.286",
+     "fl": 41.57
+    },
+    {
+     "fin": 9,
+     "st": 29,
+     "name": "R. Chase Barry",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-2.712",
+     "fl": 41.656
+    },
+    {
+     "fin": 10,
+     "st": 17,
+     "name": "Ethan Wisnoski",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-2.735",
+     "fl": 41.658
+    },
+    {
+     "fin": 11,
+     "st": 3,
+     "name": "Jesse Gordon2",
+     "laps": 100,
+     "led": 11,
+     "inc": 4,
+     "int": "-4.838",
+     "fl": 41.432
+    },
+    {
+     "fin": 12,
+     "st": 12,
+     "name": "Frank Walsh",
+     "laps": 100,
+     "led": 0,
+     "inc": 1,
+     "int": "-5.887",
+     "fl": 41.697
+    },
+    {
+     "fin": 13,
+     "st": 2,
+     "name": "Tristan Pena",
+     "laps": 100,
+     "led": 11,
+     "inc": 9,
+     "int": "-7.745",
+     "fl": 41.626
+    },
+    {
+     "fin": 14,
+     "st": 7,
+     "name": "Christian Ruckriegel",
+     "laps": 100,
+     "led": 0,
+     "inc": 6,
+     "int": "-8.386",
+     "fl": 41.814
+    },
+    {
+     "fin": 15,
+     "st": 9,
+     "name": "Patrick Mcpeak",
+     "laps": 100,
+     "led": 0,
+     "inc": 0,
+     "int": "-8.848",
+     "fl": 41.782
+    },
+    {
+     "fin": 16,
+     "st": 13,
+     "name": "Jacob B Reeves",
+     "laps": 100,
+     "led": 0,
+     "inc": 14,
+     "int": "-9.616",
+     "fl": 41.46
+    },
+    {
+     "fin": 17,
+     "st": 28,
+     "name": "Ryan Philbrick",
+     "laps": 100,
+     "led": 0,
+     "inc": 8,
+     "int": "-12.323",
+     "fl": 41.743
+    },
+    {
+     "fin": 18,
+     "st": 14,
+     "name": "Waylon Turner",
+     "laps": 100,
+     "led": 0,
+     "inc": 8,
+     "int": "-12.800",
+     "fl": 41.696
+    },
+    {
+     "fin": 19,
+     "st": 23,
+     "name": "Brandon H Yates",
+     "laps": 100,
+     "led": 0,
+     "inc": 4,
+     "int": "-15.628",
+     "fl": 41.785
+    },
+    {
+     "fin": 20,
+     "st": 26,
+     "name": "Austin Dowdy2",
+     "laps": 99,
+     "led": 0,
+     "inc": 14,
+     "int": "-1L",
+     "fl": 41.798
+    },
+    {
+     "fin": 21,
+     "st": 21,
+     "name": "Ace Dillard",
+     "laps": 98,
+     "led": 0,
+     "inc": 4,
+     "int": "-2L",
+     "fl": 41.646
+    },
+    {
+     "fin": 22,
+     "st": 25,
+     "name": "Reid Sanders",
+     "laps": 94,
+     "led": 0,
+     "inc": 4,
+     "int": "-6L",
+     "fl": 41.965
+    },
+    {
+     "fin": 23,
+     "st": 20,
+     "name": "Derick McMurchy",
+     "laps": 83,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-17L",
+     "fl": 41.651
+    },
+    {
+     "fin": 24,
+     "st": 18,
+     "name": "Quinten Stewart",
+     "laps": 68,
+     "led": 0,
+     "inc": 2,
+     "int": "-32L",
+     "fl": 41.782
+    },
+    {
+     "fin": 25,
+     "st": 11,
+     "name": "Larry Mcclellan",
+     "laps": 67,
+     "led": 0,
+     "inc": 6,
+     "status": "Disconnected",
+     "int": "-33L",
+     "fl": 42.03
+    },
+    {
+     "fin": 26,
+     "st": 16,
+     "name": "Dirk Likes",
+     "laps": 53,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-47L",
+     "fl": 41.745
+    },
+    {
+     "fin": 27,
+     "st": 22,
+     "name": "Brent Allen",
+     "laps": 47,
+     "led": 0,
+     "inc": 0,
+     "status": "Disconnected",
+     "int": "-53L",
+     "fl": 42.149
+    },
+    {
+     "fin": 28,
+     "st": 19,
+     "name": "Gerald Sensabaugh",
+     "laps": 23,
+     "led": 0,
+     "inc": 5,
+     "status": "Disconnected",
+     "int": "-77L",
+     "fl": 41.855
+    },
+    {
+     "fin": 29,
+     "st": 27,
+     "name": "Tylar Autery",
+     "laps": 21,
+     "led": 0,
+     "inc": 4,
+     "status": "Disconnected",
+     "int": "-79L",
+     "fl": 41.976
+    }
+   ],
+   "stage_top10": []
+  },
+  {
    "id": "srh285621",
    "series": "chase",
    "srh_season": "23466",
    "round": 4,
    "date": "2024-09-26",
    "track": "Chicagoland Speedway",
+   "track_full": "Chicagoland Speedway",
    "laps": 120,
    "results": [
     {
@@ -12141,6 +19186,7 @@
    "round": 5,
    "date": "2024-10-03",
    "track": "Sonoma Raceway",
+   "track_full": "Sonoma Raceway [Retired] NASCAR Short",
    "laps": 40,
    "results": [
     {
@@ -12297,6 +19343,7 @@
    "round": 6,
    "date": "2024-10-10",
    "track": "Dover Motor Speedway",
+   "track_full": "Dover Motor Speedway",
    "laps": 120,
    "results": [
     {
@@ -12537,6 +19584,7 @@
    "round": 7,
    "date": "2024-10-17",
    "track": "Michigan International Speedway",
+   "track_full": "[Legacy] Michigan International Speedway - 2009",
    "laps": 85,
    "results": [
     {
@@ -12774,6 +19822,7 @@
    "round": 8,
    "date": "2024-10-24",
    "track": "Rockingham Speedway",
+   "track_full": "Rockingham Speedway Oval - 2012",
    "laps": 135,
    "results": [
     {
@@ -12930,6 +19979,7 @@
    "round": 9,
    "date": "2024-11-07",
    "track": "Darlington Raceway",
+   "track_full": "Darlington Raceway",
    "laps": 95,
    "results": [
     {
@@ -13035,6 +20085,7 @@
    "round": 1,
    "date": "2025-02-11",
    "track": "Daytona International Speedway",
+   "track_full": "Daytona International Speedway Oval",
    "laps": 84,
    "results": [
     {
@@ -13342,6 +20393,7 @@
    "round": 2,
    "date": "2025-02-18",
    "track": "Auto Club Speedway",
+   "track_full": "Auto Club Speedway Oval",
    "laps": 87,
    "results": [
     {
@@ -13661,6 +20713,7 @@
    "round": 3,
    "date": "2025-02-25",
    "track": "Atlanta Motor Speedway",
+   "track_full": "EchoPark Speedway (Atlanta) Oval",
    "laps": 109,
    "results": [
     {
@@ -13980,6 +21033,7 @@
    "round": 4,
    "date": "2025-03-04",
    "track": "Pocono Raceway",
+   "track_full": "Pocono Raceway",
    "laps": 86,
    "results": [
     {
@@ -14328,6 +21382,7 @@
    "round": 5,
    "date": "2025-03-11",
    "track": "Kansas Speedway",
+   "track_full": "Kansas Speedway Oval",
    "laps": 110,
    "results": [
     {
@@ -14585,6 +21640,7 @@
    "round": 6,
    "date": "2025-03-18",
    "track": "Kentucky Speedway",
+   "track_full": "Kentucky Speedway Oval",
    "laps": 124,
    "results": [
     {
@@ -14874,6 +21930,7 @@
    "round": 7,
    "date": "2025-03-25",
    "track": "Watkins Glen International",
+   "track_full": "Watkins Glen International Cup",
    "laps": 43,
    "results": [
     {
@@ -15129,6 +22186,7 @@
    "round": 8,
    "date": "2025-04-01",
    "track": "Bristol Motor Speedway",
+   "track_full": "Bristol Motor Speedway Dual Pit Roads",
    "laps": 200,
    "results": [
     {
@@ -15387,6 +22445,7 @@
    "round": 9,
    "date": "2025-04-08",
    "track": "Texas Motor Speedway",
+   "track_full": "Texas Motor Speedway Oval",
    "laps": 115,
    "results": [
     {
@@ -15646,6 +22705,7 @@
    "round": 10,
    "date": "2025-04-15",
    "track": "Michigan International Speedway",
+   "track_full": "Michigan International Speedway",
    "laps": 85,
    "results": [
     {
@@ -15902,6 +22962,7 @@
    "round": 11,
    "date": "2025-04-22",
    "track": "Talladega Superspeedway",
+   "track_full": "Talladega Superspeedway",
    "laps": 94,
    "results": [
     {
@@ -16189,6 +23250,7 @@
    "round": 12,
    "date": "2025-04-29",
    "track": "Las Vegas Motor Speedway",
+   "track_full": "Las Vegas Motor Speedway Oval",
    "laps": 115,
    "results": [
     {
@@ -16435,6 +23497,7 @@
    "round": 13,
    "date": "2025-05-06",
    "track": "Nashville Superspeedway",
+   "track_full": "Nashville Superspeedway",
    "laps": 120,
    "results": [
     {
@@ -16643,6 +23706,7 @@
    "round": 1,
    "date": "2025-07-15",
    "track": "Daytona International Speedway",
+   "track_full": "Daytona International Speedway Oval",
    "laps": 104,
    "results": [
     {
@@ -17039,6 +24103,7 @@
    "round": 2,
    "date": "2025-07-22",
    "track": "Charlotte Motor Speedway",
+   "track_full": "[Retired] Charlotte Motor Speedway [Retired] Oval - 2018",
    "laps": 129,
    "results": [
     {
@@ -17417,6 +24482,7 @@
    "round": 3,
    "date": "2025-07-29",
    "track": "Auto Club Speedway",
+   "track_full": "Auto Club Speedway Oval",
    "laps": 90,
    "results": [
     {
@@ -17815,6 +24881,7 @@
    "round": 4,
    "date": "2025-08-05",
    "track": "Sonoma Raceway",
+   "track_full": "Sonoma Raceway [Retired] NASCAR Short",
    "laps": 43,
    "results": [
     {
@@ -18129,6 +25196,7 @@
    "round": 5,
    "date": "2025-08-12",
    "track": "Iowa Speedway",
+   "track_full": "Iowa Speedway Oval",
    "laps": 130,
    "results": [
     {
@@ -18456,6 +25524,7 @@
    "round": 6,
    "date": "2025-08-19",
    "track": "World Wide Technology Raceway",
+   "track_full": "World Wide Technology Raceway (Gateway) [Retired] Oval",
    "laps": 130,
    "results": [
     {
@@ -18827,6 +25896,7 @@
    "round": 7,
    "date": "2025-08-26",
    "track": "Atlanta Motor Speedway",
+   "track_full": "EchoPark Speedway (Atlanta) Oval",
    "laps": 102,
    "results": [
     {
@@ -19161,6 +26231,7 @@
    "round": 8,
    "date": "2025-09-02",
    "track": "Circuit of the Americas",
+   "track_full": "Circuit of the Americas West",
    "laps": 40,
    "results": [
     {
@@ -19456,6 +26527,7 @@
    "round": 9,
    "date": "2025-09-09",
    "track": "Homestead-Miami Speedway",
+   "track_full": "Homestead Miami Speedway Oval",
    "laps": 121,
    "results": [
     {
@@ -19780,6 +26852,7 @@
    "round": 10,
    "date": "2025-09-16",
    "track": "New Hampshire Motor Speedway",
+   "track_full": "New Hampshire Motor Speedway Oval",
    "laps": 143,
    "results": [
     {
@@ -20108,6 +27181,7 @@
    "round": 11,
    "date": "2025-09-23",
    "track": "Bristol Motor Speedway",
+   "track_full": "Bristol Motor Speedway Single Pit Roads",
    "laps": 200,
    "results": [
     {
@@ -20404,6 +27478,7 @@
    "round": 12,
    "date": "2025-09-30",
    "track": "Darlington Raceway",
+   "track_full": "Darlington Raceway",
    "laps": 120,
    "results": [
     {
@@ -20659,6 +27734,7 @@
    "round": 13,
    "date": "2025-10-07",
    "track": "Kentucky Speedway",
+   "track_full": "Kentucky Speedway Oval",
    "laps": 125,
    "results": [
     {
@@ -20933,6 +28009,7 @@
    "round": 14,
    "date": "2025-10-14",
    "track": "Las Vegas Motor Speedway",
+   "track_full": "Las Vegas Motor Speedway Oval",
    "laps": 125,
    "results": [
     {
@@ -21197,6 +28274,7 @@
    "round": 15,
    "date": "2025-10-21",
    "track": "Talladega Superspeedway",
+   "track_full": "Talladega Superspeedway",
    "laps": 92,
    "results": [
     {
@@ -21472,6 +28550,7 @@
    "round": 16,
    "date": "2025-10-28",
    "track": "Pocono Raceway",
+   "track_full": "Pocono Raceway",
    "laps": 94,
    "results": [
     {
@@ -21709,6 +28788,7 @@
    "round": 17,
    "date": "2025-11-04",
    "track": "Texas Motor Speedway",
+   "track_full": "Texas Motor Speedway Oval",
    "laps": 125,
    "results": [
     {
@@ -21946,6 +29026,7 @@
    "round": 18,
    "date": "2025-11-11",
    "track": "Watkins Glen International",
+   "track_full": "Watkins Glen International Cup",
    "laps": 48,
    "results": [
     {
@@ -22092,6 +29173,7 @@
    "round": 19,
    "date": "2025-11-18",
    "track": "Chicagoland Speedway",
+   "track_full": "Chicagoland Speedway",
    "laps": 125,
    "results": [
     {
@@ -22277,41 +29359,22 @@
   "chase": {
    "races": 66,
    "of": 66,
-   "complete": true,
-   "srh_seasons": [
-    "20738",
-    "22159",
-    "23466",
-    "25108",
-    "26523"
-   ]
+   "complete": true
   },
   "tnt": {
-   "races": 5,
+   "races": 6,
    "of": 6,
-   "complete": false,
-   "srh_seasons": [
-    "23316"
-   ],
-   "missing": [
-    "Race 6, Sep 24 2024, Auto Club Speedway (won by Carter Lins)"
-   ]
+   "complete": true
   },
   "xfinity": {
-   "races": 0,
+   "races": 18,
    "of": 18,
-   "complete": false,
-   "missing": [
-    "whole series: its seasons were not linked on my_leagues.php"
-   ]
+   "complete": true
   },
   "route66": {
-   "races": 0,
+   "races": 8,
    "of": 8,
-   "complete": false,
-   "missing": [
-    "whole series: its seasons were not linked on my_leagues.php"
-   ]
+   "complete": true
   }
  },
  "current_schedule": [
