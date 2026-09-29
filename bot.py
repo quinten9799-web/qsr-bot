@@ -2343,6 +2343,9 @@ async def race_announcement_scheduler():
     if rw and rw.get("storylines"):
         picks = [x for x in QH.pick_storylines(rw, 4) if "never raced QSR here" not in x][:3]
         msg += f"\n📜 **{QH.track_short(rw['track'])} History**\n" + "\n".join(f"• {x}" for x in picks) + "\n"
+        ms = [m for m in rw.get("milestones", []) if m not in picks][:2]
+        if ms:
+            msg += "🎯 **On the Doorstep**\n" + "\n".join(f"• {m}" for m in ms) + "\n"
     msg += f"\n{hype}"
 
     view = RSVPView()
@@ -2510,6 +2513,82 @@ async def trackcard_cmd(ctx, race: int = 0):
 
 
 # ─────────────────────────────────────────────────────────────────
+#  WEDNESDAY THROWBACK — This Week in QSR History
+# ─────────────────────────────────────────────────────────────────
+THROWBACK_FILE = os.path.join(_DATA_DIR, "throwbacks.json")
+
+def _throwbacks_used() -> list:
+    try:
+        with open(THROWBACK_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+async def post_throwback(channel, record: bool = True) -> str:
+    import qsr_cards as QC
+    hist = load_history()
+    if not hist.get("races"):
+        return "Race-by-race history isn't loaded."
+    now = now_et()
+    up = upcoming_race(now)
+    track = up[1].replace(" — SEASON FINALE", "") if up else None
+    used = _throwbacks_used()
+    tb = QH.throwback(hist, load_data(), now.date(), track, used)
+    if not tb:
+        return "No past races to throw back to."
+    logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qsr_league_logo.png")
+    png = QC.render_throwback(tb, logo)
+    head = (f"⏪ **QSR Throwback:** {tb['track']}, {tb['series']} ({tb['ago'].lower()})" if tb["this_week_track"]
+            else f"⏪ **This Week in QSR History:** {tb['track']}, {tb['series']} ({tb['ago'].lower()})")
+    caption = head
+    if ANTHROPIC_API_KEY:
+        try:
+            take = await ask_claude(
+                f"You're Dale Earnhardt Sr. doing a 'This Week in QSR History' throwback post about this past QSR race: "
+                f"{tb['date']} at {tb['track']} ({tb['series']}), {tb['laps']} laps, {tb['field']} starters. Winner {tb['winner']}. "
+                f"Top 5: " + ", ".join(f"P{x['fin']} {x['driver']}" + (f" (started P{x['start']})" if x.get('start') else "") for x in tb["top5"]) + ". "
+                f"Facts: " + " ".join(tb["facts"]) + " Give a 1-2 sentence nostalgic take. Only use these facts, quote numbers exactly.",
+                user_context=mood_context())
+            if take:
+                caption += f"\n{take.strip()}"
+        except Exception as e:
+            print(f"⚠️ throwback take failed: {e}")
+    await channel.send(caption[:1900], file=discord.File(io.BytesIO(png), filename="qsr_throwback.png"))
+    if record:
+        try:
+            with open(THROWBACK_FILE, "w") as f:
+                json.dump((used + [tb["id"]])[-200:], f)
+        except Exception as e:
+            print(f"⚠️ could not save throwback list: {e}")
+    return f"Posted throwback: {tb['track']} {tb['date']}"
+
+
+@tasks.loop(minutes=1)
+async def throwback_post():
+    """Wednesday 12:00 PM ET in #pitlane."""
+    now = now_et()
+    if not should_fire_weekday("throwback", 2, 12, 0, now):   # 2 = Wednesday
+        return
+    guild = bot.get_guild(GUILD_ID)
+    ch = discord.utils.get(guild.text_channels, name="pitlane") if guild else None
+    if ch:
+        try:
+            print("✅ " + await post_throwback(ch))
+        except Exception as e:
+            print(f"⚠️ throwback failed: {e}")
+    mark_fired("throwback", now)
+
+
+@bot.hybrid_command(name="throwback", description="Post a This Week in QSR History throwback (admin)")
+@is_admin()
+async def throwback_cmd(ctx):
+    async with ctx.typing():
+        msg = await post_throwback(ctx.channel)
+    if not msg.startswith("Posted"):
+        await ctx.send(msg)
+
+
+# ─────────────────────────────────────────────────────────────────
 #  POST-RACE REACTION & RECAP
 # ─────────────────────────────────────────────────────────────────
 
@@ -2608,6 +2687,15 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
     streak_callouts  = update_streaks(results)
     rivalry_callouts = update_rivalries(results)
     rivalry_ctx      = get_rivalry_context()
+    made = []
+    try:
+        hist = load_history()
+        if hist.get("races"):
+            made = QH.history_made(hist, load_data(), race_num)
+    except Exception as e:
+        print(f"⚠️ history_made failed: {e}")
+    if made:
+        results_summary += " QSR RECORD BOOK, what this race changed (real, quote exactly): " + " ".join(made) + " "
 
     # Team championship. Recalc first so this reflects the race just scored,
     # and so drops/join-date windows are applied rather than stale totals.
@@ -2646,6 +2734,8 @@ async def post_race_reaction(guild: discord.Guild, race_num: int, results: list,
             color=0xE8272A,
             timestamp=datetime.utcnow()
         )
+        if made:
+            embed.add_field(name="📜 History Made", value="\n".join(f"• {m}" for m in made[:6])[:1020], inline=False)
         if streak_callouts:
             embed.add_field(name="🔥 Streak Alert", value="\n".join(streak_callouts), inline=False)
         if rivalry_callouts:
@@ -2959,6 +3049,7 @@ async def on_ready():
     dales_weekly_take.start()
     pre_race_trash_talk.start()
     track_history_post.start()
+    throwback_post.start()
     race_prediction.start()
     weekly_settlement.start()
     race_announcement_scheduler.start()
@@ -6144,6 +6235,7 @@ async def help_cmd(ctx):
               "`/trackhistory [track]` — past winners at a track (default: next race)\n"
               "`/headtohead Name vs Name` — all-time: who's come out ahead when they raced each other\n"
               "`/trackcard [race]` — (admin) post the track history graphic\n"
+              "`/throwback` — (admin) post a This Week in QSR History throwback\n"
               "…or just `/ask` Dale about any stat from any series",
         inline=False)
     embed.add_field(

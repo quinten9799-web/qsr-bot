@@ -250,3 +250,122 @@ def render_track_history(rw, race_num=None, date_text="", logo_path=None, series
     out = io.BytesIO()
     img.save(out, "PNG", optimize=True)
     return out.getvalue()
+
+
+
+def _wrap(d, text, f, max_w):
+    words, lines, cur = text.split(), [], ""
+    for wd in words:
+        t = (cur + " " + wd).strip()
+        if tw(d, t, f) > max_w and cur:
+            lines.append(cur)
+            cur = wd
+        else:
+            cur = t
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def render_throwback(tb, logo_path=None):
+    """'This Week in QSR History' card from qsr_history.throwback()."""
+    import datetime as _dt
+    img = _background()
+    d = ImageDraw.Draw(img, "RGBA")
+    M = 60
+    top = 52
+    if logo_path and os.path.exists(logo_path):
+        try:
+            lg = Image.open(logo_path).convert("RGBA")
+            lg.thumbnail((230, 84))
+            img.paste(lg, (M, top), lg)
+        except Exception:
+            pass
+    try:
+        dt = _dt.date.fromisoformat(tb["date"])
+        dtxt = dt.strftime("%b %d, %Y").upper().replace(" 0", " ")
+    except Exception:
+        dtxt = tb["date"]
+    tag = f"{tb['ago'].upper()}  ·  {dtxt}"
+    f = font(34, "b")
+    d.text((W - M - tw(d, tag, f), top + 22), tag, font=f, fill=WHITE)
+    y = 158
+    kicker = "QSR THROWBACK  ·  BEFORE WE GO BACK" if tb.get("this_week_track") else "THIS WEEK IN QSR HISTORY"
+    spaced(d, (M, y), kicker, font(36, "b"), ORANGE, 5)
+    y += 44
+    ft = fit(d, tb["track"].upper(), W - 2 * M, 104)
+    d.text((M, y), tb["track"].upper(), font=ft, fill=WHITE)
+    y += ft.size + 12
+    sub = f"{tb['series'].upper()}  ·  {tb['laps']} LAPS  ·  {tb['field']} STARTERS"
+    d.text((M, y), sub, font=font(32, "sb"), fill=GREY)
+    y += 60
+
+    # winner hero
+    w = tb["top5"][0]
+    y0 = y
+    d.rounded_rectangle((M, y0, W - M, y0 + 190), radius=18, fill=(255, 106, 0, 40), outline=ORANGE, width=3)
+    spaced(d, (M + 30, y0 + 20), "WINNER", font(32, "b"), ORANGE, 4)
+    nf = fit(d, w["driver"].upper(), W - 2 * M - 60, 96)
+    d.text((M + 28, y0 + 60), w["driver"].upper(), font=nf, fill=WHITE)
+    bits = []
+    if w.get("start"):
+        bits.append(f"FROM P{w['start']}")
+    if w.get("led"):
+        bits.append(f"LED {w['led']}")
+    if bits:
+        bt = "  ·  ".join(bits)
+        d.text((W - M - 30 - tw(d, bt, font(34, "b")), y0 + 22), bt, font=font(34, "b"), fill=GOLD)
+    y = y0 + 190 + 26
+
+    # top 5
+    rows = tb["top5"][1:5]
+    y0 = y
+    h = 78 + 42 + 50 * len(rows)
+    yy = _panel(d, (M, y0, W - M, y0 + h), "REST OF THE TOP 5")
+    cols = [("POS", M + 28), ("DRIVER", M + 110), ("START", 780), ("LED", 920)]
+    for label, x in cols:
+        d.text((x, yy), label, font=font(26, "sb"), fill=DIM)
+    yy += 42
+    for r in rows:
+        d.text((M + 28, yy), f"P{r['fin']}", font=font(38, "b"), fill=ORANGE)
+        nm_ = clip(d, r["driver"].upper(), font(38, "b"), 560)
+        d.text((M + 110, yy), nm_, font=font(38, "b"), fill=WHITE)
+        if r.get("now"):
+            x = M + 110 + tw(d, nm_, font(38, "b")) + 16
+            d.ellipse((x, yy + 15, x + 14, yy + 29), fill=ORANGE)
+        d.text((780, yy), f"P{r['start']}" if r.get("start") else "-", font=font(38, "b"), fill=WHITE)
+        d.text((920, yy), str(r["led"]) if r.get("led") else "-", font=font(38, "b"), fill=WHITE)
+        yy += 50
+    y = y0 + h + 26
+
+    # the story
+    facts = tb.get("facts") or []
+    if facts and y < H - 190:
+        nf2 = font(32, "m")
+        lines = []
+        for fct in facts:
+            for i, ln in enumerate(_wrap(d, fct, nf2, W - 2 * M - 90)):
+                lines.append((i == 0, ln))
+        room = (H - 100) - (y + 78 + 14)
+        while lines and len(lines) * 42 > room:
+            lines.pop()
+        yy = _panel(d, (M, y, W - M, y + 78 + 42 * len(lines) + 14), "THE STORY")
+        for first, ln in lines:
+            if first:
+                d.ellipse((M + 30, yy + 14, M + 42, yy + 26), fill=ORANGE)
+            d.text((M + 58, yy), ln, font=nf2, fill=WHITE)
+            yy += 42
+
+    legend = any(r.get("now") for r in tb["top5"][1:])
+    foot = ("STILL RACING IN QSR  ·  " if legend else "") + "QSR RECORD BOOK  ·  ASK DALE"
+    ff = font(26, "sb")
+    fx = (W - tw(d, foot, ff) - (26 if legend else 0)) // 2
+    if legend:
+        d.ellipse((fx, H - 52, fx + 14, H - 38), fill=ORANGE)
+        fx += 26
+    d.text((fx, H - 62), foot, font=ff, fill=DIM)
+    d.rectangle((0, H - 10, W, H), fill=RED)
+    d.rectangle((W * 2 // 3, H - 10, W, H), fill=ORANGE)
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()

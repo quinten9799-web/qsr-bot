@@ -698,6 +698,7 @@ def race_week(hist, data, track, field=None, cs=None):
                 ms_lines.append((0, f"{r['driver']}: {m}."))
     ms_lines.sort(key=lambda t: t[0])
     story.extend(m for _, m in ms_lines[:2])
+    milestone_lines = [m for _, m in ms_lines]
     road = None
     if t in ROAD_COURSES:
         fk = {r["key"] for r in rows}
@@ -715,7 +716,7 @@ def race_week(hist, data, track, field=None, cs=None):
         elif not rs:
             story.insert(1, "Nobody in this field has won a QSR road course yet. First one's up for grabs.")
     return {"track": t, "races": len(rs), "past": past, "field": rows, "been": been, "fresh": fresh,
-            "road": road, "storylines": story}
+            "road": road, "storylines": story, "milestones": milestone_lines}
 
 
 def pick_storylines(rw, n=3, skip=()):
@@ -741,6 +742,168 @@ def race_week_text(rw, max_lines=5):
     if not rw:
         return ""
     return "\n".join("• " + s for s in rw["storylines"][:max_lines])
+
+
+
+# ── history made, live alerts, throwbacks ──────────────────────────────
+def _without_race(data, race_num):
+    """data.json as it stood before race_num was scored."""
+    d = dict(data or {})
+    d["race_history"] = {k: v for k, v in (d.get("race_history") or {}).items()
+                         if str(k).split("_")[-1] != str(race_num)}
+    d["race_results"] = {n: [r for r in (rows or []) if not (isinstance(r, dict) and r.get("race") == race_num)]
+                         for n, rows in (d.get("race_results") or {}).items()}
+    return d
+
+
+def _nth(n):
+    return _ord(n)
+
+
+def history_made(hist, data, race_num):
+    """What this HHPS race changed in the QSR record books, as short lines."""
+    before, after = careers(hist, _without_race(data, race_num)), careers(hist, data)
+    races = all_races(hist, data)
+    label = data.get("season_label") or "Season 1"
+    rid = f"{CURRENT_ID}_{norm(label).replace(' ', '')}_r{race_num}"
+    race = next((r for r in races if r.get("id") == rid), None)
+    if not race:
+        return []
+    nm = _Names(after)
+    for r in races:
+        for x in r["results"]:
+            nm.seen(x["name"])
+    out = []
+    R = sorted(race["results"], key=lambda x: x["fin"])
+    win = R[0]
+    wk = nm.key(win["name"])
+    ca, cb = after.get(wk), before.get(wk)
+    t = race.get("track")
+    if ca:
+        n, st = ca["totals"]["wins"], ca["totals"]["starts"]
+        if n == 1:
+            out.append(f"{ca['name']} gets a first career QSR win, in start #{st}.")
+        else:
+            ra = rank_of(after, ca)
+            rb = rank_of(before, cb) if cb else None
+            tied = [o["name"] for o in after.values() if o is not ca and o["totals"]["wins"] == n]
+            if rb and ra < rb:
+                if tied:
+                    out.append(f"{ca['name']} (win #{n}) moves into a tie for {_nth(ra)} all-time with {', '.join(tied[:2])}.")
+                else:
+                    passed = [o["name"] for o in before.values() if o["key"] != wk and o["totals"]["wins"] == n - 1]
+                    out.append(f"{ca['name']} (win #{n}) moves to {_nth(ra)} all-time in wins"
+                               + (f", passing {', '.join(passed[:2])}." if passed else "."))
+            elif n in MILESTONES:
+                out.append(f"{ca['name']} hits {n} career QSR wins.")
+        tw = sum(1 for r in races if r.get("track") == t for x in r["results"] if x.get("fin") == 1 and nm.key(x["name"]) == wk)
+        here = [r for r in races if r.get("track") == t]
+        if tw == 1 and len(here) > 1:
+            out.append(f"First QSR win at {track_short(t)} for {ca['name']} ({len(here)} QSR races there now).")
+        elif tw >= 2:
+            best = max((sum(1 for r in here for x in r["results"] if x.get("fin") == 1 and nm.key(x["name"]) == k)
+                        for k in {nm.key(x["name"]) for r in here for x in r["results"] if x.get("fin") == 1}), default=0)
+            out.append(f"{ca['name']} now has {tw} wins at {track_short(t)}" + (", the most in QSR history." if tw >= best else "."))
+    # round-number milestones for anyone in the race
+    for x in R:
+        k = nm.key(x["name"])
+        a, b = after.get(k), before.get(k)
+        if not a or not b:
+            continue
+        for stat, word in (("starts", "starts"), ("top5", "top 5s"), ("top10", "top 10s")):
+            va, vb = a["totals"].get(stat) or 0, b["totals"].get(stat) or 0
+            hit = [m for m in MILESTONES if vb < m <= va and m >= (25 if stat == "starts" else 10)]
+            if hit:
+                out.append(f"{a['name']} reaches {hit[-1]} career QSR {word}.")
+    # streaks that tie or set the all-time record
+    recs = {r["id"]: r for r in race_records(hist, data, after)}
+    for label2, test, rid2 in (("winning streak", lambda f: f == 1, "win_streak"), ("top-5 streak", lambda f: f <= 5, "top5_streak"),
+                               ("top-10 streak", lambda f: f <= 10, "top10_streak")):
+        _, cur = _streaks(races, nm, test)
+        rec = recs.get(rid2)
+        top = int(rec["value"].split()[0]) if rec else 0
+        for (k, sid), v in cur.items():
+            if sid == race.get("series") and v[0] >= max(top, 3) and any(nm.key(x["name"]) == k for x in R):
+                out.append(f"{nm.name(k)} is on a {v[0]}-race {label2}, {'tying' if v[0] == top else 'setting'} the QSR record.")
+    seen, uniq = set(), []
+    for o in out:
+        if o not in seen:
+            seen.add(o)
+            uniq.append(o)
+    return uniq
+
+
+def live_alerts(cs, leader, track=None, hist=None, data=None):
+    """What it would mean if the current leader wins. For the broadcast ticker/talking points."""
+    c = find(cs, leader)
+    if not c:
+        return [f"{pretty_base(leader)} is chasing a first career QSR win."]
+    t = c["totals"]
+    out = []
+    n = t["wins"] + 1
+    if n == 1:
+        out.append(f"{c['name']} is leading, chasing a first career QSR win in start #{t['starts'] + 1}.")
+    else:
+        tied = sorted([o for o in cs.values() if o is not c and o["totals"]["wins"] == n], key=lambda o: o["name"])
+        spot = 1 + sum(1 for o in cs.values() if o is not c and o["totals"]["wins"] > n)
+        if tied:
+            out.append(f"A win ties {c['name']} with {', '.join(o['name'] for o in tied[:2])} for {_ord(spot)} all-time ({n} wins).")
+        elif n in MILESTONES:
+            out.append(f"A win would be number {n} for {c['name']}.")
+        else:
+            above = [o for o in cs.values() if o["totals"]["wins"] == t["wins"] and o is not c]
+            if above:
+                out.append(f"A win breaks {c['name']}'s tie with {above[0]['name']}, moving to sole {_ord(spot)} all-time ({n}).")
+    if track and hist is not None:
+        tb = track_book(hist, data, track, cs, n=99)
+        me = next((x for x in (tb or {}).get("leaders", []) if x["driver"] == c["name"]), None)
+        if not me or not me["wins"]:
+            out.append(f"{c['name']} has never won at {track_short(track)} in QSR.")
+        else:
+            out.append(f"{c['name']} already has {me['wins']} QSR win{'s' if me['wins'] != 1 else ''} at {track_short(track)}.")
+    return out
+
+
+def throwback(hist, data, today, track=None, used=(), cs=None):
+    """A past race for 'This Week in QSR History'. Prefers this week's track,
+    then the race closest to this calendar week in an earlier year."""
+    import datetime as _dt
+    cs, nm, races, sn = _ctx(hist, data, cs)
+    pool = [r for r in races if not r.get("live") and r["id"] not in set(used) and r.get("date")]
+    if not pool:
+        pool = [r for r in races if not r.get("live") and r.get("date")]
+    if not pool:
+        return None
+    t = track_name(track) if track else None
+    doy = today.timetuple().tm_yday
+
+    def dist(r):
+        d = _dt.date.fromisoformat(r["date"]).timetuple().tm_yday
+        return min(abs(d - doy), 365 - abs(d - doy))
+    at = [r for r in pool if t and r["track"] == t]
+    pick = sorted(at, key=lambda r: r["date"])[0] if at else min(pool, key=dist)
+    R = sorted([x for x in pick["results"] if isinstance(x.get("fin"), int)], key=lambda x: x["fin"])
+    w = R[0]
+    years = today.year - int(pick["date"][:4])
+    field = {norm(n) for n in ((data or {}).get("standings") or {})}
+    top5 = [{"fin": x["fin"], "driver": nm.name(nm.key(x["name"])), "start": x.get("st"), "led": x.get("led") or 0,
+             "now": norm(x["name"]) in field or any(norm(n) == norm(x["name"]) for n in field)} for x in R[:5]]
+    facts = []
+    if w.get("st"):
+        facts.append(f"{nm.name(nm.key(w['name']))} started P{w['st']}" + (f" and led {w['led']} of {pick['laps']} laps" if w.get("led") else "") + ".")
+    m = _margin(pick)
+    if m is not None:
+        facts.append(f"Margin of victory: {m:.3f}s.")
+    led = max(R, key=lambda x: x.get("led") or 0)
+    if (led.get("led") or 0) > (w.get("led") or 0):
+        facts.append(f"{nm.name(nm.key(led['name']))} led the most laps ({led['led']}) but finished P{led['fin']}.")
+    back = [x for x in top5 if x["now"]]
+    if back:
+        facts.append("Still racing in QSR today: " + ", ".join(x["driver"] for x in back[:3]) + ".")
+    ago = "Last year" if years == 1 else (f"{years} years ago" if years > 1 else "Earlier this year")
+    return {"id": pick["id"], "date": pick["date"], "ago": ago, "track": pick["track"], "series": sn.get(pick["series"], pick["series"]),
+            "laps": pick.get("laps"), "field": len(R), "winner": nm.name(nm.key(w["name"])), "top5": top5, "facts": facts,
+            "this_week_track": bool(at)}
 
 # ── careers ────────────────────────────────────────────────────────────
 def _keymap(hist, series):
