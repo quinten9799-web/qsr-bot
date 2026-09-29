@@ -24,6 +24,7 @@ Race by race (hist["races"] from Sim Racer Hub + every scored HHPS race):
   milestones(cs, name)           -> "one win from 15", "one win from tying X for 2nd"
   next_race(hist, data)          -> the next HHPS round and its track
 """
+import functools
 import json
 import os
 import re
@@ -41,11 +42,13 @@ def load(path):
         return {"version": 1, "aliases": {}, "series": []}
 
 
+@functools.lru_cache(maxsize=50000)
 def norm(name):
     s = re.sub(r"[^a-z0-9 ]", " ", str(name or "").lower())
     return re.sub(r"\s+", " ", s).strip()
 
 
+@functools.lru_cache(maxsize=50000)
 def base(name):
     """Name without iRacing's duplicate-name number ('austin dowdy2' -> 'austin dowdy')."""
     return re.sub(r"\d+$", "", norm(name)).strip()

@@ -151,15 +151,465 @@ def race_week_facts(race_num: int, n: int = 5) -> str:
 
 def track_card_file(race_num: int):
     """(discord.File, race_week) for the weekly track history graphic."""
-    import qsr_cards as QC
     rw = race_week_for(race_num)
     if not rw:
         return None, None
     d = _parse_sched_date(SCHEDULE[race_num - 1].get("date", ""))
     date_text = d.strftime("%a %b %-d") if d else ""
     logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qsr_league_logo.png")
-    png = QC.render_track_history(rw, race_num, date_text, logo)
+    png = render_track_history(rw, race_num, date_text, logo)
     return discord.File(io.BytesIO(png), filename=f"qsr_track_history_race{race_num}.png"), rw
+
+
+# ─────────────────────────────────────────────────────────────────
+#  QSR CARDS — graphics Dale posts (Pillow, bundled Barlow Condensed)
+# ─────────────────────────────────────────────────────────────────
+from PIL import Image, ImageDraw, ImageFilter
+
+CARD_W, CARD_H = 1080, 1350
+CARD_BG = (10, 10, 12)
+CARD_PANEL = (22, 22, 26)
+CARD_LINE = (44, 44, 50)
+CARD_WHITE = (245, 245, 245)
+CARD_GREY = (150, 150, 158)
+CARD_DIM = (95, 95, 104)
+CARD_ORANGE = (255, 106, 0)
+CARD_RED = (232, 39, 42)
+CARD_GOLD = (255, 196, 0)
+
+CARD_HERE = os.path.dirname(os.path.abspath(__file__))
+CARD_FONTS = {"xb": "BarlowCondensed-ExtraBold.ttf", "b": "BarlowCondensed-Bold.ttf",
+          "sb": "BarlowCondensed-SemiBold.ttf", "m": "BarlowCondensed-Medium.ttf"}
+CARD_CACHE = {}
+
+
+def _card_font(size, w="b"):
+    k = (size, w)
+    if k not in CARD_CACHE:
+        from PIL import ImageFont
+        p = os.path.join(CARD_HERE, "fonts", CARD_FONTS[w])
+        try:
+            CARD_CACHE[k] = ImageFont.truetype(p, size)
+        except Exception:
+            try:
+                CARD_CACHE[k] = ImageFont.load_default(size=size)
+            except TypeError:
+                CARD_CACHE[k] = ImageFont.load_default()
+    return CARD_CACHE[k]
+
+
+def _card_tw(d, t, f):
+    b = d.textbbox((0, 0), t, font=f)
+    return b[2] - b[0]
+
+
+def _card_fit(d, t, max_w, start, w="xb", min_size=28):
+    s = start
+    while s > min_size and _card_tw(d, t, _card_font(s, w)) > max_w:
+        s -= 2
+    return _card_font(s, w)
+
+
+def _card_clip(d, t, f, max_w):
+    if _card_tw(d, t, f) <= max_w:
+        return t
+    while t and _card_tw(d, t + "…", f) > max_w:
+        t = t[:-1]
+    return t + "…"
+
+
+def _card_spaced(d, xy, text, f, fill, gap=4):
+    x, y = xy
+    for ch in text:
+        d.text((x, y), ch, font=f, fill=fill)
+        x += _card_tw(d, ch, f) + gap
+    return x
+
+
+def _card_background():
+    img = Image.new("RGB", (CARD_W, CARD_H), CARD_BG)
+    glow = Image.new("RGBA", (CARD_W, CARD_H), (0, 0, 0, 0))
+    g = ImageDraw.Draw(glow)
+    g.ellipse((-420, -520, 760, 520), fill=(232, 39, 42, 70))
+    g.ellipse((520, -380, 1500, 380), fill=(255, 106, 0, 45))
+    glow = glow.filter(ImageFilter.GaussianBlur(160))
+    img.paste(glow, (0, 0), glow)
+    d = ImageDraw.Draw(img, "RGBA")
+    for i, c in enumerate([(232, 39, 42, 255), (255, 106, 0, 255), (255, 150, 40, 200)]):   # racing stripes
+        x = 1000 + i * 30
+        d.polygon([(x, 0), (x + 18, 0), (x - 12, 50), (x - 30, 50)], fill=c)
+    return img
+
+
+def _card_panel(d, box, title):
+    x0, y0, x1, y1 = box
+    d.rounded_rectangle(box, radius=18, fill=CARD_PANEL + (235,), outline=CARD_LINE, width=2)
+    d.rectangle((x0, y0 + 20, x0 + 6, y0 + 52), fill=CARD_ORANGE)
+    _card_spaced(d, (x0 + 26, y0 + 16), title, _card_font(32, "b"), CARD_ORANGE, 3)
+    return y0 + 66
+
+
+def render_track_history(rw, race_num=None, date_text="", logo_path=None, series_tag="HHPS"):
+    img = _card_background()
+    d = ImageDraw.Draw(img, "RGBA")
+    M = 60
+    # logo + race tag
+    top = 52
+    if logo_path and os.path.exists(logo_path):
+        try:
+            lg = Image.open(logo_path).convert("RGBA")
+            lg.thumbnail((230, 84))
+            img.paste(lg, (M, top), lg)
+        except Exception:
+            pass
+    tag = " · ".join(x for x in [f"RACE {race_num}" if race_num else "", date_text.upper(), "8PM ET"] if x)
+    f = _card_font(34, "b")
+    d.text((CARD_W - M - _card_tw(d, tag, f), top + 22), tag, font=f, fill=CARD_WHITE)
+    # title
+    y = 158
+    _card_spaced(d, (M, y), "TRACK HISTORY", _card_font(36, "b"), CARD_ORANGE, 6)
+    y += 44
+    tname = rw["track"].upper()
+    ft = _card_fit(d, tname, CARD_W - 2 * M, 104)
+    d.text((M, y), tname, font=ft, fill=CARD_WHITE)
+    y += ft.size + 12
+    been = len(rw["been"])
+    sub = (f"{rw['races']} QSR RACE{'S' if rw['races'] != 1 else ''} HERE  ·  {been} OF THIS FIELD HAVE RACED IT"
+           if rw["races"] else "QSR HAS NEVER RACED HERE  ·  CLEAN SLATE")
+    d.text((M, y), sub, font=_card_font(32, "sb"), fill=CARD_GREY)
+    y += 56
+
+    if rw["races"]:
+        # past winners, newest first
+        past = list(reversed(rw["past"]))[:4]
+        y0 = y
+        yy = _card_panel(d, (M, y0, CARD_W - M, y0 + 78 + 52 * len(past)), "PAST WINNERS")
+        infield = {r["driver"] for r in rw["field"]}
+        for w in past:
+            d.text((M + 28, yy), w["year"], font=_card_font(38, "b"), fill=CARD_ORANGE)
+            name_col = CARD_WHITE if w["driver"] in infield else CARD_GREY
+            nf = _card_font(40, "b")
+            d.text((M + 120, yy - 2), _card_clip(d, w["driver"].upper(), nf, 400), font=nf, fill=name_col)
+            d.text((M + 540, yy + 6), _card_clip(d, w["series"], _card_font(30, "m"), 250), font=_card_font(30, "m"), fill=CARD_DIM)
+            extra = f"FROM P{w['start']}" if w.get("start") else ""
+            if w.get("margin") is not None and w["margin"] < 0.5:
+                extra = f"BY {w['margin']:.3f}s"
+            if extra:
+                ef = _card_font(30, "sb")
+                d.text((CARD_W - M - 28 - _card_tw(d, extra, ef), yy + 6), extra, font=ef, fill=CARD_GREY)
+            yy += 52
+        y = yy + 26
+
+        # the field at this track
+        rows = rw["been"][:5]
+        y0 = y
+        h = 78 + 42 + (50 * len(rows) if rows else 70)
+        yy = _card_panel(d, (M, y0, CARD_W - M, y0 + h), "IN THIS FIELD")
+        cols = [("DRIVER", M + 28), ("ST", 610), ("W", 690), ("T5", 770), ("AVG", 850), ("LED", 950)]
+        hf = _card_font(26, "sb")
+        for label, x in cols:
+            d.text((x, yy), label, font=hf, fill=CARD_DIM)
+        yy += 42
+        if not rows:
+            d.text((M + 28, yy + 8), "Nobody entered has raced QSR here. Wide open.", font=_card_font(34, "m"), fill=CARD_GREY)
+        for r in rows:
+            winner = r["wins"] > 0
+            if winner:
+                d.rounded_rectangle((M + 12, yy - 5, CARD_W - M - 12, yy + 44), radius=10, fill=(255, 106, 0, 38))
+            nf = _card_font(38, "b")
+            d.text((M + 28, yy), _card_clip(d, r["driver"].upper(), nf, 500), font=nf, fill=CARD_WHITE)
+            vals = [str(r["starts"]), str(r["wins"]), str(r["top5"]), f"{r['avg']:.1f}" if r["avg"] is not None else "-",
+                    str(r["led"]) if r["led"] else "-"]
+            for (label, x), v in zip(cols[1:], vals):
+                vf = _card_font(38, "b")
+                col = CARD_GOLD if (label == "W" and r["wins"]) else CARD_WHITE
+                d.text((x, yy), v, font=vf, fill=col)
+            yy += 50
+        y = y0 + h + 26
+    else:
+        # first visit: who in the field has won the most anywhere
+        if rw.get("road"):
+            y0 = y
+            rr = rw["road"][:4]
+            h = 78 + 52 * len(rr) + 8
+            yy = _card_panel(d, (M, y0, CARD_W - M, y0 + h), "ROAD-COURSE WINNERS IN THE FIELD")
+            for r in rr:
+                nf = _card_font(40, "b")
+                d.text((M + 28, yy), _card_clip(d, r["driver"].upper(), nf, 400), font=nf, fill=CARD_WHITE)
+                tt = _card_clip(d, ", ".join(r["tracks"]), _card_font(30, "m"), 390)
+                d.text((M + 450, yy + 6), tt, font=_card_font(30, "m"), fill=CARD_GREY)
+                v = f"{r['wins']}W"
+                d.text((CARD_W - M - 28 - _card_tw(d, v, _card_font(40, "b")), yy), v, font=_card_font(40, "b"), fill=CARD_GOLD)
+                yy += 52
+            y = y0 + h + 26
+        rows = sorted([r for r in rw["field"] if r["career_wins"]], key=lambda r: -r["career_wins"])[:(5 if rw.get("road") else 8)]
+        y0 = y
+        h = 78 + 50 * max(1, len(rows)) + 8
+        yy = _card_panel(d, (M, y0, CARD_W - M, y0 + h), "FIELD'S ALL-TIME QSR WINNERS")
+        for r in rows:
+            nf = _card_font(40, "b")
+            d.text((M + 28, yy), _card_clip(d, r["driver"].upper(), nf, 620), font=nf, fill=CARD_WHITE)
+            v = f"{r['career_wins']} WIN{'S' if r['career_wins'] != 1 else ''}"
+            d.text((CARD_W - M - 28 - _card_tw(d, v, _card_font(40, "b")), yy), v, font=_card_font(40, "b"), fill=CARD_GOLD)
+            yy += 50
+        y = y0 + h + 26
+
+    # Dale's notes
+    skip = ["Last time", "QSR has never"] + (["Road-course"] if rw.get("road") else [])
+    try:
+        from qsr_history import pick_storylines
+        notes = pick_storylines(rw, 3, skip)
+    except Exception:
+        notes = [x for x in rw["storylines"] if not any(x.startswith(k) for k in skip)][:3]
+    if notes and y < CARD_H - 190:
+        y0 = y
+        nf = _card_font(32, "m")
+        lines = []
+        for s in notes:
+            words, cur = s.split(), ""
+            for wd in words:
+                t = (cur + " " + wd).strip()
+                if _card_tw(d, t, nf) > CARD_W - 2 * M - 80:
+                    lines.append(("", cur))
+                    cur = wd
+                else:
+                    cur = t
+            lines.append(("", cur))
+            lines.append(("gap", ""))
+        lines = lines[:-1]
+        room = (CARD_H - 100) - (y0 + 82)
+        need = sum(40 if k == "" else 12 for k, _ in lines)
+        while need > room and lines:
+            # drop whole notes from the end, never half a sentence
+            cut = max((i for i, (k, _) in enumerate(lines) if k == "gap"), default=-1)
+            lines = lines[:cut] if cut > 0 else []
+            need = sum(40 if k == "" else 12 for k, _ in lines)
+        yy = _card_panel(d, (M, y0, CARD_W - M, y0 + 78 + need + 14), "DALE'S NOTES")
+        first = True
+        for k, t in lines:
+            if k == "gap":
+                yy += 12
+                first = True
+                continue
+            if first:
+                d.ellipse((M + 30, yy + 14, M + 42, yy + 26), fill=CARD_ORANGE)
+                first = False
+            d.text((M + 58, yy), t, font=nf, fill=CARD_WHITE)
+            yy += 40
+
+    # footer
+    foot = "QSR RECORD BOOK  ·  ASK DALE: !trackhistory  !legacy  !headtohead"
+    ff = _card_font(26, "sb")
+    d.text(((CARD_W - _card_tw(d, foot, ff)) // 2, CARD_H - 62), foot, font=ff, fill=CARD_DIM)
+    d.rectangle((0, CARD_H - 10, CARD_W, CARD_H), fill=CARD_RED)
+    d.rectangle((CARD_W * 2 // 3, CARD_H - 10, CARD_W, CARD_H), fill=CARD_ORANGE)
+
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+
+def _card_wrap(d, text, f, max_w):
+    words, lines, cur = text.split(), [], ""
+    for wd in words:
+        t = (cur + " " + wd).strip()
+        if _card_tw(d, t, f) > max_w and cur:
+            lines.append(cur)
+            cur = wd
+        else:
+            cur = t
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def render_throwback(tb, logo_path=None):
+    """'This Week in QSR History' card from qsr_history.throwback()."""
+    import datetime as _dt
+    img = _card_background()
+    d = ImageDraw.Draw(img, "RGBA")
+    M = 60
+    top = 52
+    if logo_path and os.path.exists(logo_path):
+        try:
+            lg = Image.open(logo_path).convert("RGBA")
+            lg.thumbnail((230, 84))
+            img.paste(lg, (M, top), lg)
+        except Exception:
+            pass
+    try:
+        dt = _dt.date.fromisoformat(tb["date"])
+        dtxt = dt.strftime("%b %d, %Y").upper().replace(" 0", " ")
+    except Exception:
+        dtxt = tb["date"]
+    tag = f"{tb['ago'].upper()}  ·  {dtxt}"
+    f = _card_font(34, "b")
+    d.text((CARD_W - M - _card_tw(d, tag, f), top + 22), tag, font=f, fill=CARD_WHITE)
+    y = 158
+    kicker = "QSR THROWBACK  ·  BEFORE WE GO BACK" if tb.get("this_week_track") else "THIS WEEK IN QSR HISTORY"
+    _card_spaced(d, (M, y), kicker, _card_font(36, "b"), CARD_ORANGE, 5)
+    y += 44
+    ft = _card_fit(d, tb["track"].upper(), CARD_W - 2 * M, 104)
+    d.text((M, y), tb["track"].upper(), font=ft, fill=CARD_WHITE)
+    y += ft.size + 12
+    sub = f"{tb['series'].upper()}  ·  {tb['laps']} LAPS  ·  {tb['field']} STARTERS"
+    d.text((M, y), sub, font=_card_font(32, "sb"), fill=CARD_GREY)
+    y += 60
+
+    # winner hero
+    w = tb["top5"][0]
+    y0 = y
+    d.rounded_rectangle((M, y0, CARD_W - M, y0 + 190), radius=18, fill=(255, 106, 0, 40), outline=CARD_ORANGE, width=3)
+    _card_spaced(d, (M + 30, y0 + 20), "WINNER", _card_font(32, "b"), CARD_ORANGE, 4)
+    nf = _card_fit(d, w["driver"].upper(), CARD_W - 2 * M - 60, 96)
+    d.text((M + 28, y0 + 60), w["driver"].upper(), font=nf, fill=CARD_WHITE)
+    bits = []
+    if w.get("start"):
+        bits.append(f"FROM P{w['start']}")
+    if w.get("led"):
+        bits.append(f"LED {w['led']}")
+    if bits:
+        bt = "  ·  ".join(bits)
+        d.text((CARD_W - M - 30 - _card_tw(d, bt, _card_font(34, "b")), y0 + 22), bt, font=_card_font(34, "b"), fill=CARD_GOLD)
+    y = y0 + 190 + 26
+
+    # top 5
+    rows = tb["top5"][1:5]
+    y0 = y
+    h = 78 + 42 + 50 * len(rows)
+    yy = _card_panel(d, (M, y0, CARD_W - M, y0 + h), "REST OF THE TOP 5")
+    cols = [("POS", M + 28), ("DRIVER", M + 110), ("START", 780), ("LED", 920)]
+    for label, x in cols:
+        d.text((x, yy), label, font=_card_font(26, "sb"), fill=CARD_DIM)
+    yy += 42
+    for r in rows:
+        d.text((M + 28, yy), f"P{r['fin']}", font=_card_font(38, "b"), fill=CARD_ORANGE)
+        nm_ = _card_clip(d, r["driver"].upper(), _card_font(38, "b"), 560)
+        d.text((M + 110, yy), nm_, font=_card_font(38, "b"), fill=CARD_WHITE)
+        if r.get("now"):
+            x = M + 110 + _card_tw(d, nm_, _card_font(38, "b")) + 16
+            d.ellipse((x, yy + 15, x + 14, yy + 29), fill=CARD_ORANGE)
+        d.text((780, yy), f"P{r['start']}" if r.get("start") else "-", font=_card_font(38, "b"), fill=CARD_WHITE)
+        d.text((920, yy), str(r["led"]) if r.get("led") else "-", font=_card_font(38, "b"), fill=CARD_WHITE)
+        yy += 50
+    y = y0 + h + 26
+
+    # the story
+    facts = tb.get("facts") or []
+    if facts and y < CARD_H - 190:
+        nf2 = _card_font(32, "m")
+        lines = []
+        for fct in facts:
+            for i, ln in enumerate(_card_wrap(d, fct, nf2, CARD_W - 2 * M - 90)):
+                lines.append((i == 0, ln))
+        room = (CARD_H - 100) - (y + 78 + 14)
+        while lines and len(lines) * 42 > room:
+            lines.pop()
+        yy = _card_panel(d, (M, y, CARD_W - M, y + 78 + 42 * len(lines) + 14), "THE STORY")
+        for first, ln in lines:
+            if first:
+                d.ellipse((M + 30, yy + 14, M + 42, yy + 26), fill=CARD_ORANGE)
+            d.text((M + 58, yy), ln, font=nf2, fill=CARD_WHITE)
+            yy += 42
+
+    legend = any(r.get("now") for r in tb["top5"][1:])
+    foot = ("STILL RACING IN QSR  ·  " if legend else "") + "QSR RECORD BOOK  ·  ASK DALE"
+    ff = _card_font(26, "sb")
+    fx = (CARD_W - _card_tw(d, foot, ff) - (26 if legend else 0)) // 2
+    if legend:
+        d.ellipse((fx, CARD_H - 52, fx + 14, CARD_H - 38), fill=CARD_ORANGE)
+        fx += 26
+    d.text((fx, CARD_H - 62), foot, font=ff, fill=CARD_DIM)
+    d.rectangle((0, CARD_H - 10, CARD_W, CARD_H), fill=CARD_RED)
+    d.rectangle((CARD_W * 2 // 3, CARD_H - 10, CARD_W, CARD_H), fill=CARD_ORANGE)
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+def render_odds_card(board, race_num, lock_dt=None, logo_path=None):
+    """Dale's Book board: favorites with a history note, matchups, props, parlay."""
+    logo_path = logo_path or os.path.join(CARD_HERE, "qsr_league_logo.png")
+    img = _card_background()
+    d = ImageDraw.Draw(img, "RGBA")
+    M = 60
+    top = 52
+    if os.path.exists(logo_path):
+        try:
+            lg = Image.open(logo_path).convert("RGBA")
+            lg.thumbnail((230, 84))
+            img.paste(lg, (M, top), lg)
+        except Exception:
+            pass
+    tag = f"RACE {race_num}" + (f"  ·  LOCKS {lock_dt.strftime('%a %-I%p').upper()} ET" if lock_dt else "")
+    f = _card_font(34, "b")
+    d.text((CARD_W - M - _card_tw(d, tag, f), top + 22), tag, font=f, fill=CARD_WHITE)
+    y = 158
+    _card_spaced(d, (M, y), "DALE'S BOOK", _card_font(36, "b"), CARD_ORANGE, 6)
+    y += 44
+    ft = _card_fit(d, board["track"].upper(), CARD_W - 2 * M, 96)
+    d.text((M, y), board["track"].upper(), font=ft, fill=CARD_WHITE)
+    y += ft.size + 10
+    d.text((M, y), "FRESH $100 EVERY WEEK  ·  FOR FUN, NO REAL MONEY", font=_card_font(30, "sb"), fill=CARD_GREY)
+    y += 54
+
+    fav = sorted(board["markets"]["win"].items(), key=lambda kv: -kv[1]["p"])[:5]
+    y0 = y
+    h = 78 + 40 + 48 * len(fav)
+    yy = _card_panel(d, (M, y0, CARD_W - M, y0 + h), "TO WIN")
+    for label, x in (("DRIVER", M + 28), ("ODDS", 560), ("TOP 5", 700), ("HISTORY HERE", 810)):
+        d.text((x, yy), label, font=_card_font(24, "sb"), fill=CARD_DIM)
+    yy += 40
+    t5 = board["markets"]["top5"]
+    for name, x in fav:
+        d.text((M + 28, yy), _card_clip(d, name.upper(), _card_font(36, "b"), 450), font=_card_font(36, "b"), fill=CARD_WHITE)
+        d.text((560, yy), x["odds"], font=_card_font(36, "b"), fill=CARD_GOLD)
+        d.text((700, yy), t5[name]["odds"], font=_card_font(36, "b"), fill=CARD_WHITE)
+        d.text((810, yy + 4), _card_clip(d, board["notes"].get(name, ""), _card_font(30, "m"), 160), font=_card_font(30, "m"), fill=CARD_GREY)
+        yy += 48
+    y = y0 + h + 22
+
+    mus = board.get("matchups", [])[:4]
+    if mus:
+        y0 = y
+        h = 78 + 48 * len(mus)
+        yy = _card_panel(d, (M, y0, CARD_W - M, y0 + h), "MATCHUPS")
+        for m in mus:
+            fa = _card_font(34, "b")
+            a = f"{_card_clip(d, m['a'].upper(), fa, 300)} {m['odds_a']}"
+            b = f"{m['odds_b']} {_card_clip(d, m['b'].upper(), fa, 300)}"
+            d.text((M + 28, yy), a, font=fa, fill=CARD_WHITE)
+            vs = "VS"
+            d.text(((CARD_W - _card_tw(d, vs, _card_font(28, "sb"))) // 2, yy + 4), vs, font=_card_font(28, "sb"), fill=CARD_ORANGE)
+            d.text((CARD_W - M - 28 - _card_tw(d, b, fa), yy), b, font=fa, fill=CARD_WHITE)
+            yy += 48
+        y = y0 + h + 22
+
+    lines = []
+    if board.get("parlay"):
+        lines.append(f"Dale's Parlay ({len(board['parlay']['legs'])} legs)   {board['parlay']['odds']}")
+    for p in board.get("props", [])[:3]:
+        o = list(p["options"].values())
+        lines.append(f"{p['label']}   {o[0]['odds']} / {o[1]['odds']}")
+    room = (CARD_H - 100) - (y + 78)
+    lines = lines[:max(0, room // 44)]
+    if lines:
+        yy = _card_panel(d, (M, y, CARD_W - M, y + 78 + 44 * len(lines)), "PROPS & PARLAY")
+        for ln in lines:
+            d.ellipse((M + 30, yy + 13, M + 42, yy + 25), fill=CARD_ORANGE)
+            d.text((M + 58, yy), _card_clip(d, ln, _card_font(32, "m"), CARD_W - 2 * M - 90), font=_card_font(32, "m"), fill=CARD_WHITE)
+            yy += 44
+
+    foot = "TAP OPEN DALE'S BOOK IN #DALES-SPORTSBOOK  ·  /BOOK"
+    ff = _card_font(26, "sb")
+    d.text(((CARD_W - _card_tw(d, foot, ff)) // 2, CARD_H - 62), foot, font=ff, fill=CARD_DIM)
+    d.rectangle((0, CARD_H - 10, CARD_W, CARD_H), fill=CARD_RED)
+    d.rectangle((CARD_W * 2 // 3, CARD_H - 10, CARD_W, CARD_H), fill=CARD_ORANGE)
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -656,9 +1106,6 @@ def load_data():
     # Migrate existing files that don't have these keys yet
     d.setdefault("race_results", {})
     d.setdefault("driver_profiles", {})
-    d.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
-    d.setdefault("odds_board", {})
-    d.setdefault("bets", {})
     return d
 
 def save_data(data: dict):
@@ -683,551 +1130,664 @@ def save_data(data: dict):
 
 
 # ─────────────────────────────────────────────────────────────────
-#  VIRTUAL ECONOMY — "DALE DOLLARS"
-#  No-stakes-for-real fantasy sportsbook. Fake currency only: it can't be
-#  bought with real money and can't be redeemed for anything but the
-#  season-end prize (free entry to the next series), which is funded by
-#  QSR itself, not by other drivers' losses. That keeps this a free
-#  fantasy-contest structure rather than pooled wagering.
+#  DALE'S BOOK v2 — weekly pick'em sportsbook (for fun, no real money)
+#  Everyone gets $100 Dale Dollars every week to spread across the board.
+#  Weekly profit/loss adds up to a season leaderboard; the season leader
+#  (min BOOK_MIN_WEEKS weeks played) wins free entry to the next series,
+#  funded by QSR itself, never by other players' losses. Dale Dollars can't
+#  be bought and have no cash value.
+#
+#  Runs itself: opens Tuesday 9 AM ET of race week, re-prices daily for
+#  field changes, locks 7 PM ET race day (lobby up), settles as soon as
+#  Race Control posts results. State lives in book.json on the volume, NOT
+#  data.json, so a Race Control data push can never clobber a bet.
 # ─────────────────────────────────────────────────────────────────
+import numpy as np
 
-STARTING_BALANCE = 100
-PROP_ODDS        = "+100"   # flat even-money line on both sides of a two-outcome prop
-MIN_STAKE        = 1
-MIN_RACES_FOR_PRIZE = 6   # must have placed a bet in at least this many races
-                          # to be eligible for the season-end prize — otherwise
-                          # someone who never plays just sits on $100 and "wins"
-N_SIMULATIONS    = 8000     # Monte Carlo draws for the Plackett-Luce field simulation
-MANUFACTURER_MAX_STAKE      = 5
-MANUFACTURER_COVERAGE_FLOOR = 0.7   # need manufacturer data for ≥70% of the confirmed field
-IRATING_WEIGHT_START = 0.50   # trust iRating most when there's no in-series sample yet
-IRATING_WEIGHT_FLOOR  = 0.15   # never zero it out — it's still real signal
-IRATING_DECAY_RACES   = 8      # by ~race 8, in-series results dominate
-IRATING_SCALE         = 10.0   # rating points per std-dev of iRating edge
+BOOK_FILE        = os.path.join(_DATA_DIR, "book.json")
+BOOK_BUDGET      = 100
+BOOK_MIN_STAKE   = 5
+BOOK_MAX_STAKE   = 50
+BOOK_MAX_BETS    = 8
+BOOK_MIN_WEEKS   = 4        # weeks played to be prize-eligible
+BOOK_OPEN_HOUR   = 9        # Tuesday of race week, ET
+BOOK_LOCK_HOUR   = 19       # race day, ET (lobby up, before qualifying)
+BOOK_HOLD        = 0.05     # small edge so longshots aren't free money
+BOOK_ODDS_CAP    = {"win": 2000, "top5": 1000, "top10": 500, "prop": 1000, "parlay": 1500}   # longest price per market
+BOOK_LONGSHOT    = 1000     # anything at +1000 or longer ...
+BOOK_LONGSHOT_MAX = 25      # ... maxes out at $25 so one lucky hit can't decide the season
+DALE_BOOK_ID     = "dale"
 
-def ensure_balance(data: dict, discord_id: str) -> int:
-    """Create a driver's Dale Dollars account if it doesn't exist yet,
-    returning their current balance."""
-    econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
-    bal  = econ.setdefault("balances", {})
-    did  = str(discord_id)
-    if did not in bal:
-        bal[did] = STARTING_BALANCE
-    return bal[did]
+# ── odds model (backtested on every QSR race on file, Sept 29 2026:
+#    winner log-loss 2.52 vs 2.86 for the old model on HHPS races 2-8,
+#    top-5 Brier 0.150 vs 0.181; top-5 calibration within a few points) ──
+ODDS_HALF_LIFE   = 365.0    # days: a year-old race counts half
+ODDS_PRIOR_SD    = 1.0
+ODDS_KIND_SD     = 0.35     # how far a track-type specialty can pull someone
+ODDS_IR_COEF     = 0.45     # skill per 1 SD of iRating, for drivers with thin history
+ODDS_ROOKIE      = -0.15    # no history, no iRating
+ODDS_DNF_PRIOR_N = 6.0
+ODDS_DNF_LAPS    = 0.90     # ran <90% of the laps = DNF
+ODDS_CHAOS       = {"superspeedway": 1.0, "intermediate": 1.5, "short": 1.7, "road": 1.4}
+ODDS_SIMS        = 20000
+ODDS_KINDS       = ["superspeedway", "intermediate", "short", "road"]
+_SUPERSPEEDWAYS  = {"Daytona International Speedway", "Talladega Superspeedway", "Atlanta Motor Speedway"}
+_SHORT_TRACKS    = {"Bristol Motor Speedway", "Richmond Raceway", "Martinsville Speedway", "Dover Motor Speedway",
+                    "Iowa Speedway", "New Hampshire Motor Speedway", "Rockingham Speedway", "Phoenix Raceway",
+                    "North Wilkesboro Speedway"}
 
-def record_ledger(data: dict, discord_id: str, race_num: int, delta: int, reason: str):
-    econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
-    hist = econ.setdefault("history", {})
-    did  = str(discord_id)
-    hist.setdefault(did, []).append({"race": race_num, "delta": delta, "reason": reason})
 
-def races_bet_on(data: dict, discord_id: str) -> int:
-    """Count of distinct races a driver has placed at least one bet in —
-    win/loss doesn't matter, only participation. This is what gates season-
-    prize eligibility: sitting on the untouched starting balance shouldn't
-    be able to win over someone who actually played and took some losses."""
-    did = str(discord_id)
-    return sum(1 for race_bets in data.get("bets", {}).values()
-               if any(b.get("discord_id") == did for b in race_bets))
+def track_kind(track):
+    t = QH.track_name(track)
+    if t in QH.ROAD_COURSES:
+        return "road"
+    if t in _SUPERSPEEDWAYS:
+        return "superspeedway"
+    if t in _SHORT_TRACKS:
+        return "short"
+    return "intermediate"
 
-def resolve_driver_by_name(reg: dict, name: str):
-    """Fuzzy-match a typed name against the CONFIRMED roster, same
-    tokenized approach as resolve_result_key — exact match first, then
-    token-subset match, refusing ambiguous hits."""
-    name = (name or "").strip()
-    if not name:
+
+def _odds_live_races(data):
+    """This season's races from data.json race_history (keeps laps, so DNFs are known)."""
+    label = (data or {}).get("season_label") or "Season 1"
+    sid = f"{QH.CURRENT_ID}_{QH.norm(label).replace(' ', '')}"
+    tracks = {}
+    for rows in ((data or {}).get("race_results") or {}).values():
+        for r in rows or []:
+            if isinstance(r, dict) and r.get("race") and r.get("track"):
+                tracks[int(r["race"])] = r["track"]
+    out = []
+    for key, rh in ((data or {}).get("race_history") or {}).items():
+        try:
+            n = int(rh.get("race_number") or str(key).split("_")[-1])
+        except Exception:
+            continue
+        res = [x for x in rh.get("results") or [] if isinstance(x.get("pos"), (int, float)) and x.get("name")]
+        if not res:
+            continue
+        maxlaps = max((x.get("laps") or 0) for x in res) or None
+        out.append({"id": f"{sid}_r{n}", "series": sid, "round": n, "date": QH._parse_date(rh.get("date")) or "",
+                    "track": QH.track_name(tracks.get(n, "")), "laps": maxlaps, "live": True,
+                    "results": [{"fin": int(x["pos"]), "name": x["name"], "laps": x.get("laps")} for x in res]})
+    return out
+
+
+def _odds_races(hist, data):
+    srh = [dict(r, results=[x for x in r["results"] if not x.get("ai")]) for r in (hist.get("races") or [])]
+    races = [r for r in srh + _odds_live_races(data) if r.get("date") and r["results"]]
+    races.sort(key=lambda r: (r["date"], r.get("round") or 0))
+    return races
+
+
+def _odds_is_dnf(x, race):
+    laps, total = x.get("laps"), race.get("laps")
+    if isinstance(laps, (int, float)) and isinstance(total, (int, float)) and total:
+        return laps < ODDS_DNF_LAPS * total
+    return str(x.get("status", "")).lower().startswith(("disconnect", "retired"))
+
+
+def _irating_z(irating):
+    vals = {n: v for n, v in (irating or {}).items() if isinstance(v, (int, float)) and v > 0}
+    if len(vals) < 3:
+        return {}
+    arr = np.array(list(vals.values()), float)
+    mu, sd = arr.mean(), arr.std() or 1.0
+    return {n: float((v - mu) / sd) for n, v in vals.items()}
+
+
+class OddsModel:
+    """Plackett-Luce skill ratings over every QSR race, decayed by age, with
+    track-type adjustments and a per-driver DNF rate."""
+
+    def __init__(self):
+        self.idx, self.theta, self.delta = {}, None, None
+        self.dnf_rate, self.kind_dnf, self.names = {}, {}, None
+
+    def strength(self, name, kind, ir_z=None):
+        k = self.names.key(name)
+        if k in self.idx:
+            i = self.idx[k]
+            return float(self.theta[i] + self.delta[i, ODDS_KINDS.index(kind)])
+        return ODDS_IR_COEF * ir_z if ir_z is not None else ODDS_ROOKIE
+
+    def dnf(self, name, kind):
+        k = self.names.key(name)
+        base = self.kind_dnf.get(kind, 0.08)
+        d, n = self.dnf_rate.get((k, kind), (0, 0))
+        da, na = self.dnf_rate.get((k, "all"), (0, 0))
+        own = (da + ODDS_DNF_PRIOR_N * base) / (na + ODDS_DNF_PRIOR_N)
+        return (d + ODDS_DNF_PRIOR_N * own) / (n + ODDS_DNF_PRIOR_N)
+
+
+def odds_fit(hist, data, asof, irating=None, cs=None, iters=350):
+    """Fit on every race strictly before `asof` (a date)."""
+    import datetime as _dt
+    cs = cs if cs is not None else QH.careers(hist, data)
+    m = OddsModel()
+    m.names = QH._Names(cs)
+    races = [r for r in _odds_races(hist, data) if _dt.date.fromisoformat(r["date"]) < asof]
+    keys = []
+    for r in races:
+        for x in r["results"]:
+            k = m.names.key(x["name"])
+            if k not in m.idx:
+                m.idx[k] = len(keys)
+                keys.append(k)
+    N = len(keys)
+    pm = np.zeros(N)
+    for n, zz in _irating_z(irating).items():
+        k = m.names.key(n)
+        if k in m.idx:
+            pm[m.idx[k]] = ODDS_IR_COEF * zz
+    kind_tot = {k: [0, 0] for k in ODDS_KINDS}
+    ranks = []
+    for r in races:
+        kind = track_kind(r["track"])
+        for x in r["results"]:
+            k = m.names.key(x["name"])
+            d = 1 if _odds_is_dnf(x, r) else 0
+            kind_tot[kind][0] += d
+            kind_tot[kind][1] += 1
+            for kk in (kind, "all"):
+                a, b = m.dnf_rate.get((k, kk), (0, 0))
+                m.dnf_rate[(k, kk)] = (a + d, b + 1)
+        w = 0.5 ** ((asof - _dt.date.fromisoformat(r["date"])).days / ODDS_HALF_LIFE)
+        order = []
+        for x in sorted([x for x in r["results"] if isinstance(x.get("fin"), int) and not _odds_is_dnf(x, r)],
+                        key=lambda x: x["fin"]):
+            i = m.idx[m.names.key(x["name"])]
+            if i not in order:
+                order.append(i)
+        if len(order) >= 2:
+            ranks.append((np.array(order), w, ODDS_KINDS.index(kind)))
+    m.kind_dnf = {k: (v[0] + 1) / (v[1] + 12) for k, v in kind_tot.items()}
+    theta, delta = pm.copy(), np.zeros((N, len(ODDS_KINDS)))
+    mt, vt, md, vd = np.zeros(N), np.zeros(N), np.zeros_like(delta), np.zeros_like(delta)
+    lr, b1, b2, eps = 0.05, 0.9, 0.999, 1e-8
+    for t in range(1, iters + 1):
+        g = -(theta - pm) / ODDS_PRIOR_SD ** 2
+        gd = -delta / ODDS_KIND_SD ** 2
+        for order, w, kd in ranks:
+            s = theta[order] + delta[order, kd]
+            e = np.exp(s - s.max())
+            S = np.cumsum(e[::-1])[::-1]
+            gr = w * (1.0 - e * np.cumsum(1.0 / S))
+            np.add.at(g, order, gr)
+            np.add.at(gd[:, kd], order, gr)
+        mt = b1 * mt + (1 - b1) * g; vt = b2 * vt + (1 - b2) * g * g
+        md = b1 * md + (1 - b1) * gd; vd = b2 * vd + (1 - b2) * gd * gd
+        theta += lr * (mt / (1 - b1 ** t)) / (np.sqrt(vt / (1 - b2 ** t)) + eps)
+        delta += lr * (md / (1 - b1 ** t)) / (np.sqrt(vd / (1 - b2 ** t)) + eps)
+    m.theta, m.delta = theta, delta
+    return m
+
+
+def odds_simulate(model, field, track, irating=None, n_sims=ODDS_SIMS, seed=None):
+    """Plackett-Luce race sims (Gumbel trick) with a separate DNF roll.
+    Returns (names, finishing positions [sims x drivers], dnf mask)."""
+    kind = track_kind(track)
+    z = _irating_z(irating or {})
+    names = list(field)
+    s = np.array([model.strength(n, kind, z.get(n)) for n in names]) * ODDS_CHAOS.get(kind, 1.0)
+    p_dnf = np.array([model.dnf(n, kind) for n in names])
+    rng = np.random.default_rng(seed)
+    score = s[None, :] + rng.gumbel(size=(n_sims, len(names)))
+    dnf = rng.random((n_sims, len(names))) < p_dnf[None, :]
+    score = np.where(dnf, -1e6 + rng.random((n_sims, len(names))), score)
+    order = np.argsort(-score, axis=1)
+    pos = np.empty_like(order)
+    pos[np.arange(n_sims)[:, None], order] = np.arange(1, len(names) + 1)[None, :]
+    return names, pos, dnf
+
+
+def book_american(p, hold=BOOK_HOLD, cap=None):
+    p = min(max(p * (1 + hold), 0.004), 0.97)
+    if p >= 0.5:
+        return f"-{int(round(100 * p / (1 - p) / 5.0) * 5)}"
+    n = int(round(100 * (1 - p) / p / 5.0) * 5)
+    return f"+{min(n, cap) if cap else n}"
+
+
+def book_max_stake(odds) -> int:
+    n = int(str(odds).replace("+", ""))
+    return BOOK_LONGSHOT_MAX if n >= BOOK_LONGSHOT else BOOK_MAX_STAKE
+
+
+def money(x) -> str:
+    """+$45 / -$35 / $0"""
+    return f"+${x}" if x > 0 else (f"-${abs(x)}" if x < 0 else "$0")
+
+
+def book_payout(american, stake):
+    n = int(str(american).replace("+", ""))
+    return int(round(stake + (stake * n / 100 if n > 0 else stake * 100 / abs(n))))
+
+
+# ── book state (book.json) ──────────────────────────────────────────
+def load_book() -> dict:
+    try:
+        with open(BOOK_FILE) as f:
+            b = json.load(f)
+    except Exception:
+        b = {}
+    b.setdefault("version", 2)
+    b.setdefault("weeks", {})
+    return b
+
+
+def save_book(b: dict):
+    if os.path.exists(BOOK_FILE):
+        bdir = os.path.join(_DATA_DIR, "backups")
+        os.makedirs(bdir, exist_ok=True)
+        shutil.copy2(BOOK_FILE, os.path.join(bdir, f"book_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}.json"))
+        old = sorted([f for f in os.listdir(bdir) if f.startswith("book_")], reverse=True)
+        for f in old[20:]:
+            try:
+                os.remove(os.path.join(bdir, f))
+            except Exception:
+                pass
+    tmp = BOOK_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(b, f, indent=1)
+    os.replace(tmp, BOOK_FILE)
+
+
+def book_migrate(b: dict) -> bool:
+    """First run of v2: archive the old season-bankroll economy (then ignored)."""
+    if b.get("migrated"):
+        return False
+    data = load_data()
+    b["legacy_v1"] = {"archived_at": datetime.utcnow().isoformat(), "economy": data.get("economy"),
+                      "bets": data.get("bets"), "odds_board": data.get("odds_board")}
+    b["migrated"] = True
+    b["season"] = f"HHPS {data.get('season_label') or 'Season 1'}"
+    return True
+
+
+def race_date(n: int):
+    if not n or n > len(SCHEDULE):
         return None
-    confirmed = [d for d in reg.get("drivers", []) if d.get("status") == "Confirmed"]
-    for d in confirmed:
-        if d.get("name", "").strip().lower() == name.lower():
-            return d
-    want = _name_tokens(name)
-    if not want:
-        return None
-    hits = [d for d in confirmed
-            if (t := _name_tokens(d.get("name", ""))) and (want <= t or t <= want)]
-    return hits[0] if len(hits) == 1 else None
+    return _parse_sched_date(SCHEDULE[n - 1].get("date", ""))
+
+
+def book_open_dt(n: int):
+    d = race_date(n)
+    return datetime(d.year, d.month, d.day, BOOK_OPEN_HOUR, 0, tzinfo=ET) - timedelta(days=6) if d else None
+
+
+def book_lock_dt(n: int):
+    d = race_date(n)
+    return datetime(d.year, d.month, d.day, BOOK_LOCK_HOUR, 0, tzinfo=ET) if d else None
+
+
+def book_track(n: int) -> str:
+    return SCHEDULE[n - 1]["track"].replace(" — SEASON FINALE", "").strip() if n and n <= len(SCHEDULE) else ""
+
+
+def book_field(reg=None, data=None):
+    reg = reg or load_reg()
+    data = data or load_data()
+    field = [d.get("name") for d in reg.get("drivers", []) if d.get("name") and d.get("status") != "Withdrawn"]
+    if len(field) < 5:
+        field = list((data.get("standings") or {}).keys())
+    seen, out = set(), []
+    for n in field:
+        if n.lower() not in seen:
+            seen.add(n.lower())
+            out.append(n)
+    return out
+
+
+def build_book_board(n: int, seed=None) -> dict:
+    """Price race n: fit on every race before it, simulate, build all markets
+    from the SAME simulated races so they stay consistent."""
+    hist, data = load_history(), load_data()
+    track = book_track(n)
+    rd = race_date(n)
+    irating = {k: v.get("irating") for k, v in (data.get("driver_profiles") or {}).items()}
+    cs = QH.careers(hist, data)
+    model = odds_fit(hist, data, rd, irating, cs)
+    field = book_field(data=data)
+    names, pos, dnf = odds_simulate(model, field, track, irating, seed=seed)
+    N = len(names)
+    win, t5, t10 = (pos == 1).mean(0), (pos <= 5).mean(0), (pos <= 10).mean(0)
+    avg = pos.mean(0)
+    tb = QH.track_book(hist, data, track, cs, n=999) or {}
+    here = {x["driver"]: x for x in tb.get("leaders", [])}
+
+    def note(name):
+        c = QH.find(cs, name)
+        h = here.get(c["name"]) if c else None
+        if h and h["wins"]:
+            return f"{h['wins']} win{'s' if h['wins'] != 1 else ''} here"
+        if h:
+            return f"avg {h['avg_finish']:g} here"
+        return "new here" if c else "QSR debut"
+
+    mk = {"win": {}, "top5": {}, "top10": {}}
+    for i, nm_ in enumerate(names):
+        for key, arr in (("win", win), ("top5", t5), ("top10", t10)):
+            mk[key][nm_] = {"p": round(float(arr[i]), 4), "odds": book_american(float(arr[i]), cap=BOOK_ODDS_CAP[key])}
+    # matchups: close in expected finish, prefer real all-time history between them
+    ranked = sorted(range(N), key=lambda i: avg[i])[:24]
+    used, matchups = set(), []
+    for a_i in ranked:
+        if a_i in used or len(matchups) >= 6:
+            continue
+        best = None
+        for b_i in ranked:
+            if b_i == a_i or b_i in used:
+                continue
+            pa = float((pos[:, a_i] < pos[:, b_i]).mean())
+            if abs(pa - 0.5) > 0.22:
+                continue
+            h = QH.head_to_head(hist, data, names[a_i], names[b_i], cs) or {}
+            score = (0.5 - abs(pa - 0.5)) + 0.15 * min(h.get("races", 0), 10) / 10
+            if best is None or score > best[0]:
+                best = (score, b_i, pa, h)
+        if best:
+            _, b_i, pa, h = best
+            used |= {a_i, b_i}
+            lab = ""
+            if h.get("races"):
+                lead = h["a"] if h["a_ahead"] >= h["b_ahead"] else h["b"]
+                lab = f"All-time: {lead} leads {max(h['a_ahead'], h['b_ahead'])}-{min(h['a_ahead'], h['b_ahead'])}"
+            matchups.append({"id": f"m{len(matchups) + 1}", "a": names[a_i], "b": names[b_i],
+                             "pa": round(pa, 4), "odds_a": book_american(pa), "odds_b": book_american(1 - pa), "h2h": lab})
+    # props
+    props = []
+    dcount = dnf.sum(1)
+    line = float(np.median(dcount)) + 0.5
+    po = float((dcount > line).mean())
+    props.append({"id": "dnf_ou", "label": f"Cars that DNF: over/under {line:g}", "line": line, "kind": "dnf_ou",
+                  "options": {"over": {"p": round(po, 4), "odds": book_american(po), "label": f"Over {line:g} DNFs"},
+                              "under": {"p": round(1 - po, 4), "odds": book_american(1 - po), "label": f"Under {line:g} DNFs"}}})
+    winless = [nm_ for nm_ in names if not ((QH.find(cs, nm_) or {}).get("totals", {}).get("wins"))]
+    pf = float(np.isin(pos.argmin(1), [names.index(x) for x in winless]).mean()) if winless else 0
+    if 0.08 < pf < 0.92:
+        props.append({"id": "first_winner", "label": "First-time QSR winner tonight?", "kind": "names_win", "names": winless,
+                      "options": {"yes": {"p": round(pf, 4), "odds": book_american(pf, cap=BOOK_ODDS_CAP["prop"]), "label": "Yes, a first-time winner"},
+                                  "no": {"p": round(1 - pf, 4), "odds": book_american(1 - pf), "label": "No first-time winner"}}})
+    past = [nm_ for nm_ in names if (here.get((QH.find(cs, nm_) or {}).get("name")) or {}).get("wins")]
+    pp = float(np.isin(pos.argmin(1), [names.index(x) for x in past]).mean()) if past else 0
+    if past and 0.05 < pp < 0.95:
+        short = QH.track_short(track)
+        props.append({"id": "past_winner", "label": f"A past {short} winner wins again?", "kind": "names_win", "names": past,
+                      "options": {"yes": {"p": round(pp, 4), "odds": book_american(pp, cap=BOOK_ODDS_CAP["prop"]), "label": f"Yes ({', '.join(past[:3])})"},
+                                  "no": {"p": round(1 - pp, 4), "odds": book_american(1 - pp), "label": "No past winner wins"}}})
+    meta = data.get("race_meta") or {}
+    for key, label in (("cautions", "Cautions"), ("lead_changes", "Lead changes")):
+        vals = [v.get(key) for v in meta.values() if isinstance(v.get(key), (int, float))]
+        if len(vals) >= 3:
+            ln = float(np.median(vals)) + 0.5
+            p_over = (sum(1 for v in vals if v > ln) + 1) / (len(vals) + 2)
+            props.append({"id": f"{key}_ou", "label": f"{label}: over/under {ln:g}", "line": ln, "kind": key,
+                          "options": {"over": {"p": round(p_over, 4), "odds": book_american(p_over), "label": f"Over {ln:g} {label.lower()}"},
+                                      "under": {"p": round(1 - p_over, 4), "odds": book_american(1 - p_over), "label": f"Under {ln:g} {label.lower()}"}}})
+    # Dale's Parlay: favorite top 5 + closest matchup favorite + DNF side, priced jointly from the same sims
+    parlay = None
+    fav = int(np.argmax(win))
+    legs = [("top5", names[fav], f"{names[fav]} top 5", pos[:, fav] <= 5)]
+    if matchups:
+        mm = min(matchups, key=lambda x: abs(x["pa"] - 0.5))
+        side = "a" if mm["pa"] >= 0.5 else "b"
+        ia, ib = names.index(mm["a"]), names.index(mm["b"])
+        ok = (pos[:, ia] < pos[:, ib]) if side == "a" else (pos[:, ib] < pos[:, ia])
+        legs.append((mm["id"], side, f"{mm[side]} over {mm['b' if side == 'a' else 'a']}", ok))
+    side = "over" if po >= 0.5 else "under"
+    legs.append(("dnf_ou", side, f"{side.title()} {line:g} DNFs", (dcount > line) if side == "over" else (dcount < line)))
+    pj = float(np.logical_and.reduce([l[3] for l in legs]).mean())
+    if 0.03 < pj < 0.5:
+        parlay = {"id": "parlay", "legs": [{"market": l[0], "sel": l[1], "label": l[2]} for l in legs],
+                  "p": round(pj, 4), "odds": book_american(pj, hold=0.10, cap=BOOK_ODDS_CAP["parlay"]),
+                  "label": "Dale's Parlay: " + " + ".join(l[2] for l in legs)}
+    return {"race": n, "track": track, "kind": track_kind(track), "priced_at": datetime.utcnow().isoformat(),
+            "field": names, "markets": mk, "matchups": matchups, "props": props, "parlay": parlay,
+            "notes": {nm_: note(nm_) for nm_ in names},
+            "dnf": {nm_: round(float(dnf[:, i].mean()), 3) for i, nm_ in enumerate(names)}}
+
+
+def book_price(board: dict, market: str, sel: str):
+    """(probability, american odds, label) for a selection, or None."""
+    if market in ("win", "top5", "top10"):
+        x = board["markets"][market].get(sel)
+        if not x:
+            return None
+        return x["p"], x["odds"], f"{sel} " + {"win": "to win", "top5": "top 5", "top10": "top 10"}[market]
+    if market.startswith("m"):
+        mm = next((m for m in board.get("matchups", []) if m["id"] == market), None)
+        if not mm or sel not in ("a", "b"):
+            return None
+        p = mm["pa"] if sel == "a" else 1 - mm["pa"]
+        return p, mm["odds_a"] if sel == "a" else mm["odds_b"], f"{mm[sel]} over {mm['b' if sel == 'a' else 'a']}"
+    if market == "parlay":
+        pl = board.get("parlay")
+        return (pl["p"], pl["odds"], pl["label"]) if pl else None
+    pr = next((p for p in board.get("props", []) if p["id"] == market), None)
+    if pr and sel in pr["options"]:
+        o = pr["options"][sel]
+        return o["p"], o["odds"], o["label"]
+    return None
+
 
 def team_of(reg: dict, discord_id: str):
-    """Team name for a discord_id, or None if not on a team."""
     did = str(discord_id)
     for d in reg.get("drivers", []):
         if str(d.get("discord_id")) == did:
             return d.get("team")
     return None
 
-def manufacturer_of(reg: dict, data: dict, discord_id: str):
-    """Best-known manufacturer for a discord_id, from driver_profiles
-    keyed by name. Returns None if unknown — callers must not guess."""
+
+def book_identity(discord_id, fallback=""):
+    """(display name, set of names this person can't bet against: themselves + teammates)."""
+    reg = load_reg()
     did = str(discord_id)
-    name = next((d.get("name") for d in reg.get("drivers", [])
-                 if str(d.get("discord_id")) == did), None)
-    if not name:
+    me = next((d for d in reg.get("drivers", []) if str(d.get("discord_id")) == did), None)
+    name = me.get("name") if me else fallback
+    mine = set()
+    if me:
+        mine.add(me.get("name"))
+        if me.get("team"):
+            mine |= {d.get("name") for d in reg.get("drivers", []) if d.get("team") == me.get("team")}
+    return name or fallback, {x for x in mine if x}
+
+
+def book_fades_self(board, market, sel, mine) -> bool:
+    """True if this bet only cashes when you or a teammate finish worse."""
+    def fade(mk, s):
+        if mk.startswith("m"):
+            mm = next((m for m in board.get("matchups", []) if m["id"] == mk), None)
+            if mm:
+                pick, opp = mm[s], mm["b" if s == "a" else "a"]
+                return opp in mine and pick not in mine
+        return False
+    if market == "parlay" and board.get("parlay"):
+        return any(fade(l["market"], l["sel"]) for l in board["parlay"]["legs"])
+    return fade(market, sel)
+
+
+def book_slip(week: dict, did: str) -> dict:
+    return week.setdefault("slips", {}).setdefault(str(did), {"bets": []})
+
+
+def book_spent(slip: dict) -> int:
+    return sum(b["stake"] for b in slip.get("bets", []))
+
+
+def book_place(n: int, did: str, name: str, market: str, sel: str, stake: int, mine=frozenset()):
+    """Place a bet. Returns (ok, message)."""
+    b = load_book()
+    week = b["weeks"].get(str(n))
+    if not week or week.get("status") != "open":
+        return False, "The book isn't open right now."
+    if now_et() >= book_lock_dt(n):
+        return False, "Too late, the book's locked for this race."
+    price = book_price(week["board"], market, sel)
+    if not price:
+        return False, "That line isn't on the board anymore."
+    if book_fades_self(week["board"], market, sel, mine):
+        return False, "Can't bet against yourself or a teammate. Back 'em instead. 😤"
+    slip = book_slip(week, did)
+    slip["name"] = name
+    if any(x["market"] == market and x["sel"] == sel for x in slip["bets"]):
+        return False, "You already have that one. Remove it from your slip first to change the stake."
+    if len(slip["bets"]) >= BOOK_MAX_BETS:
+        return False, f"Max {BOOK_MAX_BETS} bets per week."
+    left = BOOK_BUDGET - book_spent(slip)
+    p, odds, label = price
+    cap = book_max_stake(odds)
+    if stake < BOOK_MIN_STAKE or stake > cap:
+        return False, (f"Stakes run ${BOOK_MIN_STAKE} to ${cap}" + (" on longshots +1000 or longer." if cap < BOOK_MAX_STAKE else "."))
+    if stake > left:
+        return False, f"You've only got ${left} left this week."
+    slip["bets"].append({"market": market, "sel": sel, "label": label, "odds": odds, "p": p, "stake": int(stake),
+                         "placed_at": datetime.utcnow().isoformat()})
+    save_book(b)
+    return True, f"✅ ${stake} on **{label}** at **{odds}**. Pays ${book_payout(odds, stake)} if it hits."
+
+
+def book_remove(n: int, did: str, index: int):
+    b = load_book()
+    week = b["weeks"].get(str(n))
+    if not week or week.get("status") != "open" or now_et() >= book_lock_dt(n):
+        return False, "The book's locked, bets are final."
+    slip = book_slip(week, did)
+    if not (0 <= index < len(slip["bets"])):
+        return False, "Couldn't find that bet."
+    gone = slip["bets"].pop(index)
+    save_book(b)
+    return True, f"🗑️ Removed {gone['label']} (${gone['stake']} back in your pocket)."
+
+
+# ── grading ─────────────────────────────────────────────────────────
+def book_results(n: int, data=None):
+    """{name: {"pos", "dnf"}} for race n from data.json race_history, or None if not posted."""
+    data = data or load_data()
+    rh = (data.get("race_history") or {}).get(f"race_{n}")
+    res = [x for x in (rh or {}).get("results") or [] if isinstance(x.get("pos"), (int, float)) and x.get("name")]
+    if not res:
         return None
-    return data.get("driver_profiles", {}).get(name, {}).get("manufacturer")
+    maxlaps = max((x.get("laps") or 0) for x in res)
+    out = {}
+    for x in res:
+        laps = x.get("laps")
+        out[x["name"]] = {"pos": int(x["pos"]),
+                          "dnf": bool(maxlaps and isinstance(laps, (int, float)) and laps < ODDS_DNF_LAPS * maxlaps)}
+    return out
 
-def compute_track_type(race_num: int) -> str:
-    return TRACK_TYPE.get(race_num, "intermediate")
 
-def _zscores(values: dict) -> dict:
-    """{key: value} -> {key: z-score}. Returns all zeros if the sample is
-    too small or has no spread — a flat prior beats a divide-by-zero."""
-    if len(values) < 2:
-        return {k: 0.0 for k in values}
-    vals = list(values.values())
-    mean = sum(vals) / len(vals)
-    var  = sum((v - mean) ** 2 for v in vals) / len(vals)
-    std  = var ** 0.5
-    if std < 1e-9:
-        return {k: 0.0 for k in values}
-    return {k: (v - mean) / std for k, v in values.items()}
+def _book_find(results, name):
+    if name in results:
+        return results[name]
+    low = {k.lower(): v for k, v in results.items()}
+    if name.lower() in low:
+        return low[name.lower()]
+    key = resolve_result_key(name, results) if "resolve_result_key" in globals() else None
+    return results.get(key) if key else None
 
-def compute_power_ratings(data: dict, upcoming_race_num: int) -> dict:
-    """Blend season form, recent form, track-type history, and iRating
-    into a single per-driver rating. Higher = stronger favorite.
 
-    iRating acts as a shrinking prior: it's weighted heavily when a driver
-    has little or no in-series sample, and that weight decays toward a
-    floor as real QSR results accumulate — the in-series data is always
-    the more relevant signal once there's enough of it, but iRating never
-    goes fully to zero since it's still a real skill signal.
+def book_grade_leg(board, market, sel, results, meta):
+    """'won' | 'lost' | 'void'"""
+    if market in ("win", "top5", "top10"):
+        r = _book_find(results, sel)
+        if not r:
+            return "void"   # didn't start
+        return "won" if r["pos"] <= {"win": 1, "top5": 5, "top10": 10}[market] else "lost"
+    if market.startswith("m"):
+        mm = next((m for m in board.get("matchups", []) if m["id"] == market), None)
+        ra, rb = (_book_find(results, mm["a"]), _book_find(results, mm["b"])) if mm else (None, None)
+        if not ra or not rb:
+            return "void"
+        a_ahead = ra["pos"] < rb["pos"]
+        return "won" if (a_ahead if sel == "a" else not a_ahead) else "lost"
+    if market == "parlay":
+        pl = board.get("parlay") or {}
+        legs = [book_grade_leg(board, l["market"], l["sel"], results, meta) for l in pl.get("legs", [])]
+        if not legs or "void" in legs:
+            return "void"
+        return "won" if all(l == "won" for l in legs) else "lost"
+    pr = next((p for p in board.get("props", []) if p["id"] == market), None)
+    if not pr:
+        return "void"
+    if pr["kind"] == "dnf_ou":
+        v = sum(1 for r in results.values() if r["dnf"])
+    elif pr["kind"] in ("cautions", "lead_changes"):
+        v = (meta or {}).get(pr["kind"])
+        if not isinstance(v, (int, float)):
+            return "void"
+    elif pr["kind"] == "names_win":
+        winner = min(results.items(), key=lambda kv: kv[1]["pos"])[0]
+        hit = any(winner.lower() == x.lower() for x in pr["names"])
+        return "won" if (hit if sel == "yes" else not hit) else "lost"
+    else:
+        return "void"
+    return "won" if ((v > pr["line"]) if sel == "over" else (v < pr["line"])) else "lost"
 
-    Returns {driver_name: rating}. Only includes drivers with at least
-    one race under their belt — nobody gets priced off zero data.
-    """
-    standings    = compute_adjusted_standings(data)
-    race_results = data.get("race_results", {})
-    profiles     = data.get("driver_profiles", {})
-    track_type   = compute_track_type(upcoming_race_num)
-    races_completed = max(0, upcoming_race_num - 1)
 
-    base_ratings = {}
-    for name, info in standings.items():
-        races = info.get("races", 0)
-        hist  = race_results.get(name, [])
-        finishes = [e.get("finish") for e in hist if e.get("finish")]
-        if not races or not finishes:
+def book_settle(n: int) -> dict | None:
+    """Grade every slip for race n once results are in. Returns the week or None."""
+    b = load_book()
+    week = b["weeks"].get(str(n))
+    if not week or week.get("status") == "settled":
+        return None
+    data = load_data()
+    results = book_results(n, data)
+    if not results:
+        return None
+    meta = (data.get("race_meta") or {}).get(str(n), {})
+    for did, slip in week.get("slips", {}).items():
+        staked = paid = 0
+        for bet in slip["bets"]:
+            res = book_grade_leg(week["board"], bet["market"], bet["sel"], results, meta)
+            bet["result"] = res
+            bet["paid"] = book_payout(bet["odds"], bet["stake"]) if res == "won" else (bet["stake"] if res == "void" else 0)
+            staked += bet["stake"]
+            paid += bet["paid"]
+        slip["profit"] = paid - staked
+    week["status"] = "settled"
+    week["settled_at"] = datetime.utcnow().isoformat()
+    week["winner"] = min(results.items(), key=lambda kv: kv[1]["pos"])[0]
+    save_book(b)
+    return week
+
+
+def book_leaderboard(b=None):
+    """[(did, name, season profit, weeks played, best week)] best first. Dale included, flagged."""
+    b = b or load_book()
+    rows = {}
+    for n, week in b.get("weeks", {}).items():
+        if week.get("status") != "settled":
             continue
-        avg_finish    = sum(finishes) / len(finishes)
-        recent        = finishes[-3:]
-        recent_avg    = sum(recent) / len(recent)
-        same_type     = [e.get("finish") for e in hist
-                          if TRACK_TYPE.get(e.get("race")) == track_type and e.get("finish")]
-        track_avg     = (sum(same_type) / len(same_type)) if same_type else avg_finish
-        # Track history counts more as the sample grows, capped so one
-        # early result at a similar track can't swing things wildly.
-        track_weight  = min(0.5, 0.15 * len(same_type))
-        blended       = track_avg * track_weight + avg_finish * (1 - track_weight)
-        blended       = blended * 0.7 + recent_avg * 0.3   # recent form nudge
-        variance      = sum((f - avg_finish) ** 2 for f in finishes) / len(finishes)
-        consistency   = max(0.0, 5 - variance ** 0.5)       # small bump for steady drivers
-        incidents     = info.get("incidents", 0)
-        inc_rate      = incidents / races if races else 0
-        risk_penalty  = min(10.0, inc_rate * 1.5)
-        base_ratings[name] = max(1.0, 100 - blended * 2 - risk_penalty + consistency)
+        for did, slip in week.get("slips", {}).items():
+            if not slip.get("bets"):
+                continue
+            r = rows.setdefault(did, {"did": did, "name": slip.get("name") or did, "profit": 0, "weeks": 0, "best": None})
+            r["profit"] += slip.get("profit", 0)
+            r["weeks"] += 1
+            r["name"] = slip.get("name") or r["name"]
+            if r["best"] is None or slip.get("profit", 0) > r["best"]:
+                r["best"] = slip.get("profit", 0)
+    return sorted(rows.values(), key=lambda r: (-r["profit"], -r["weeks"]))
 
-    if not base_ratings:
-        return {}
 
-    # iRating adjustment — only for drivers we actually have a value for.
-    ir_values = {n: profiles.get(n, {}).get("irating") for n in base_ratings}
-    ir_values = {n: v for n, v in ir_values.items() if isinstance(v, (int, float))}
-    ir_z = _zscores(ir_values) if len(ir_values) >= 2 else {}
-
-    w_ir = max(IRATING_WEIGHT_FLOOR,
-               IRATING_WEIGHT_START - (IRATING_WEIGHT_START - IRATING_WEIGHT_FLOOR)
-               * min(1.0, races_completed / IRATING_DECAY_RACES))
-
-    ratings = {}
-    for name, base in base_ratings.items():
-        adj = 0.0
-        if name in ir_z:
-            adj = w_ir * ir_z[name] * IRATING_SCALE
-        ratings[name] = max(1.0, base + adj)
-    return ratings
-
-def simulate_field(ratings: dict, n_sims: int = N_SIMULATIONS, seed: int = None) -> dict:
-    """Monte Carlo Plackett-Luce simulation of the finishing order.
-
-    Each simulated race draws 1st place from the whole field weighted by
-    rating, removes them, draws 2nd from what's left, and so on through
-    10th. Win/top5/top10 probabilities all come out of the SAME simulated
-    races, which is what guarantees win% <= top5% <= top10% for every
-    driver — they can't drift out of sync the way separately-fit formulas
-    could.
-
-    Returns {driver_name: {"win": p, "top5": p, "top10": p}}.
-    """
-    names = list(ratings.keys())
-    if not names:
-        return {}
-    n = len(names)
-    depth = min(10, n)
-    weights_base = [max(0.01, ratings[nm]) for nm in names]
-    rng = random.Random(seed)
-    win_count  = {nm: 0 for nm in names}
-    top5_count = {nm: 0 for nm in names}
-    top10_count = {nm: 0 for nm in names}
-
-    for _ in range(n_sims):
-        pool_names   = list(names)
-        pool_weights = list(weights_base)
-        for pos in range(1, depth + 1):
-            total = sum(pool_weights)
-            pick  = rng.random() * total
-            cum   = 0.0
-            idx   = len(pool_weights) - 1
-            for i, w in enumerate(pool_weights):
-                cum += w
-                if pick <= cum:
-                    idx = i
-                    break
-            drv = pool_names.pop(idx)
-            pool_weights.pop(idx)
-            if pos == 1:
-                win_count[drv] += 1
-            if pos <= 5:
-                top5_count[drv] += 1
-            if pos <= 10:
-                top10_count[drv] += 1
-
-    return {nm: {"win": win_count[nm] / n_sims,
-                 "top5": top5_count[nm] / n_sims,
-                 "top10": top10_count[nm] / n_sims} for nm in names}
-
-def prob_to_american(p: float) -> str:
-    """Implied probability -> American odds string, e.g. +450 / -150."""
-    p = min(max(p, 0.001), 0.999)
-    if p >= 0.5:
-        odds = -100 * p / (1 - p)
-        return f"{int(round(odds))}"
-    else:
-        odds = 100 * (1 - p) / p
-        return f"+{int(round(odds))}"
-
-def american_to_payout(odds_str: str, stake: int) -> int:
-    """Total return (stake + profit) if the bet wins, at the odds locked
-    in when the bet was placed."""
-    odds_str = odds_str.strip()
-    n = int(odds_str)
-    if n > 0:
-        profit = stake * n / 100
-    else:
-        profit = stake * 100 / abs(n)
-    return int(round(stake + profit))
-
-def stake_cap_for_prob(prob: float) -> int:
-    """The core 'easier pick, lower max stake' rule. Ties the cap directly
-    to how likely the specific outcome is, so it applies automatically to
-    any market — a heavy favorite's top-5 pick gets capped the same way a
-    heavy-favorite moneyline pick would, not just manufacturer bets."""
-    if prob >= 0.55:
-        return 5
-    if prob >= 0.35:
-        return 10
-    if prob >= 0.15:
-        return 15
-    return 20
-
-def field_incidents_for_race(data: dict, race_num: int) -> int:
-    """Sum of every driver's recorded incidents for a specific race."""
-    total = 0
-    for entries in data.get("race_results", {}).values():
-        for e in entries:
-            if e.get("race") == race_num:
-                total += e.get("incidents", 0) or 0
-    return total
-
-def manufacturer_field_coverage(reg: dict, data: dict) -> tuple:
-    """(known_count, total_confirmed) — how much of the confirmed field
-    has a known manufacturer on file."""
-    confirmed = [d for d in reg.get("drivers", []) if d.get("status") == "Confirmed"]
-    if not confirmed:
-        return 0, 0
-    profiles = data.get("driver_profiles", {})
-    known = sum(1 for d in confirmed if profiles.get(d.get("name"), {}).get("manufacturer"))
-    return known, len(confirmed)
-
-def validate_board(board: dict) -> list:
-    """Internal-consistency check run before every post. Returns a list of
-    problems — empty means clean. This is the actual enforcement of
-    'no errors', not just a hope: if this comes back non-empty, the board
-    does not get posted."""
-    problems = []
-    EPS = 0.03   # simulation noise tolerance
-
-    ml = board.get("moneyline", {})
-    if ml:
-        total = sum(v["prob"] for v in ml.values())
-        if not (0.9 <= total <= 1.1):
-            problems.append(f"moneyline probabilities sum to {total:.3f}, expected ~1.0")
-
-    for market_name in ("top5", "top10"):
-        for name, info in board.get(market_name, {}).items():
-            p = info.get("prob", -1)
-            if not (0 <= p <= 1):
-                problems.append(f"{market_name}[{name}] prob out of range: {p}")
-
-    top5  = board.get("top5", {})
-    top10 = board.get("top10", {})
-    for name, info in ml.items():
-        wp = info["prob"]
-        if name in top5 and top5[name]["prob"] < wp - EPS:
-            problems.append(f"{name}: top5 ({top5[name]['prob']:.3f}) < win ({wp:.3f})")
-        if name in top5 and name in top10 and top10[name]["prob"] < top5[name]["prob"] - EPS:
-            problems.append(f"{name}: top10 ({top10[name]['prob']:.3f}) < top5 ({top5[name]['prob']:.3f})")
-
-    manu = board.get("manufacturer", {})
-    if manu:
-        mtotal = sum(v["prob"] for v in manu.values())
-        if not (0.9 <= mtotal <= 1.1):
-            problems.append(f"manufacturer probabilities sum to {mtotal:.3f}, expected ~1.0")
-
-    return problems
-
-def build_odds_board(data: dict, reg: dict) -> tuple:
-    """Build the full Vegas-style board: moneyline, top5, top10,
-    manufacturer (if there's enough data to trust it), and the two O/U
-    props. Stores the FULL field on data["odds_board"] (not just the
-    favorites shown in the embed) so /wager can price any driver and
-    settlement can grade any bet.
-
-    Returns (board, problems). If problems is non-empty, the board was
-    NOT written to data["odds_board"] and must not be posted.
-    """
-    race_num  = data.get("race_number", 1)
-    schedule  = data.get("schedule") or SCHEDULE
-    track     = schedule[race_num - 1]["track"] if race_num <= len(schedule) else "Unknown"
-
-    ratings = compute_power_ratings(data, race_num)
-    sim     = simulate_field(ratings)
-
-    moneyline = {n: {"prob": round(s["win"], 4), "american": prob_to_american(s["win"])}
-                 for n, s in sim.items()}
-    top5 = {n: {"prob": round(s["top5"], 4), "american": prob_to_american(s["top5"])}
-            for n, s in sim.items()}
-    top10 = {n: {"prob": round(s["top10"], 4), "american": prob_to_american(s["top10"])}
-             for n, s in sim.items()}
-
-    # Manufacturer — only built if there's real coverage. Win probability
-    # per manufacturer is just the sum of its drivers' win probabilities
-    # from the SAME simulation, so it stays consistent with the moneyline
-    # board rather than being priced separately.
-    manufacturer = {}
-    manu_note = None
-    known, total = manufacturer_field_coverage(reg, data)
-    if total and (known / total) >= MANUFACTURER_COVERAGE_FLOOR:
-        profiles = data.get("driver_profiles", {})
-        by_manu = {}
-        for n, s in sim.items():
-            m = profiles.get(n, {}).get("manufacturer")
-            if m:
-                by_manu[m] = by_manu.get(m, 0.0) + s["win"]
-        if by_manu:
-            leftover = max(0.0, 1.0 - sum(by_manu.values()))
-            total_p  = sum(by_manu.values()) + leftover
-            manufacturer = {m: {"prob": round(p / total_p, 4), "american": prob_to_american(p / total_p)}
-                             for m, p in by_manu.items()}
-    else:
-        manu_note = f"manufacturer data on {known}/{total} confirmed drivers — market withheld this week"
-
-    # Prop 1 — current points leader's finishing position, O/U their own
-    # recent average.
-    props = []
-    standings = compute_adjusted_standings(data)
-    sorted_s  = standings_sorted(standings)
-    if sorted_s:
-        leader_name = sorted_s[0][0]
-        hist = data.get("race_results", {}).get(leader_name, [])
-        finishes = [e.get("finish") for e in hist if e.get("finish")]
-        if finishes:
-            recent = finishes[-3:]
-            line = round((sum(recent) / len(recent)) + 0.5, 1)
-            props.append({
-                "id": "leader_ou", "driver": leader_name,
-                "label": f"{leader_name} finishing position — Over/Under {line}",
-                "line": line, "odds": PROP_ODDS,
-            })
-
-    # Prop 2 & 3 — real session data from race_meta (populated when results
-    # come in via the JSON import path). Only built once there's at least
-    # one past race with meta on file — no meta yet means no guessed prop,
-    # same "don't fabricate a line" stance as everywhere else here.
-    race_meta = data.get("race_meta", {})
-    past_cautions = [race_meta[str(rn)]["cautions"] for rn in range(1, race_num)
-                      if str(rn) in race_meta and race_meta[str(rn)].get("cautions") is not None]
-    if past_cautions:
-        avg  = sum(past_cautions) / len(past_cautions)
-        line = round(avg + 0.5, 1)
-        props.append({
-            "id": "cautions_ou",
-            "label": f"Total cautions — Over/Under {line}",
-            "line": line, "odds": PROP_ODDS,
-        })
-
-    past_lead_changes = [race_meta[str(rn)]["lead_changes"] for rn in range(1, race_num)
-                          if str(rn) in race_meta and race_meta[str(rn)].get("lead_changes") is not None]
-    if past_lead_changes:
-        avg  = sum(past_lead_changes) / len(past_lead_changes)
-        line = round(avg + 0.5, 1)
-        props.append({
-            "id": "lead_changes_ou",
-            "label": f"Total lead changes — Over/Under {line}",
-            "line": line, "odds": PROP_ODDS,
-        })
-
-    board = {
-        "race_number": race_num, "track": track,
-        "moneyline": moneyline, "top5": top5, "top10": top10,
-        "manufacturer": manufacturer, "manufacturer_note": manu_note,
-        "props": props,
-        "open": True, "posted_at": datetime.utcnow().isoformat(),
-    }
-
-    problems = validate_board(board)
-    if not problems:
-        data["odds_board"] = board
-    return board, problems
-
-def format_odds_embed(board: dict) -> discord.Embed:
-    race_num = board.get("race_number", "?")
-    track    = board.get("track", "")
-    ml       = sorted(board.get("moneyline", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)
-    embed = discord.Embed(
-        title=f"🎰 Dale's Book — Race {race_num} at {track}",
-        description="For fun only — no real money, no real stakes. Open all week, locks at lobby-up. Season bankroll leader wins free entry next series.",
-        color=0x2ECC71,
-    )
-    if ml:
-        fav_lines = [f"**{n}** {info['american']}  ({info['prob']*100:.0f}%)" for n, info in ml[:5]]
-        embed.add_field(name="🏆 Race Winner — Favorites", value="\n".join(fav_lines), inline=False)
-        if len(ml) > 5:
-            dark = ml[-1]
-            embed.add_field(name="🐴 Dark Horse", value=f"**{dark[0]}** {dark[1]['american']}", inline=False)
-    top5 = sorted(board.get("top5", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)[:3]
-    if top5:
-        embed.add_field(name="🥉 Top 5 Finish — Best Bets",
-                         value="\n".join(f"**{n}** {info['american']}" for n, info in top5), inline=True)
-    top10 = sorted(board.get("top10", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)[:3]
-    if top10:
-        embed.add_field(name="🔟 Top 10 Finish — Best Bets",
-                         value="\n".join(f"**{n}** {info['american']}" for n, info in top10), inline=True)
-    manu = sorted(board.get("manufacturer", {}).items(), key=lambda kv: kv[1]["prob"], reverse=True)
-    if manu:
-        embed.add_field(name="🏭 Manufacturer Winner (max $5 bet)",
-                         value="\n".join(f"**{m}** {info['american']}" for m, info in manu), inline=False)
-    elif board.get("manufacturer_note"):
-        embed.add_field(name="🏭 Manufacturer Winner", value=f"_Unavailable this week — {board['manufacturer_note']}_", inline=False)
-    for prop in board.get("props", []):
-        embed.add_field(name="📊 Prop", value=f"{prop['label']}  ({prop['odds']} either side)", inline=False)
-    embed.add_field(
-        name="How to play",
-        value="`/wager` to place a pick · `/balance` to check your stack · `/moneyboard` for the season leaderboard.\n"
-              "Stake caps scale with how likely the pick is — favorites cap low, longshots cap higher.\n"
-              "You can't bet on yourself or a teammate — everybody's picks have to be clean.\n"
-              f"Bet in {MIN_RACES_FOR_PRIZE}+ races to be eligible for the season prize.",
-        inline=False)
-    embed.set_footer(text="Dale Dollars have no cash value and can't be purchased.")
-    return embed
-
-def get_race_manufacturer(data: dict, name: str, race_num: int):
-    """The manufacturer on record for a specific driver's specific race
-    entry — used at settlement time so a later profile update can't
-    retroactively change how an old race grades."""
-    for e in data.get("race_results", {}).get(name, []):
-        if e.get("race") == race_num:
-            return e.get("manufacturer")
-    return None
-
-def grade_and_settle_race(data: dict, reg: dict, race_num: int):
-    """Grade every bet placed on race_num against the actual results and
-    update balances. Returns a list of (discord_id, name, delta, reason)
-    for the recap post. Safe to call multiple times — already-settled
-    bets are skipped. Manufacturer bets VOID (stake refunded, not lost)
-    if the winning car's manufacturer was never captured — grading a bet
-    against data we don't actually have would be exactly the kind of
-    silent error this whole system is built to avoid."""
-    bets = data.get("bets", {}).get(str(race_num), [])
-    if not bets:
-        return []
-
-    finishes = {}
-    for name, entries in data.get("race_results", {}).items():
-        entry = next((e for e in entries if e.get("race") == race_num), None)
-        if entry and entry.get("finish"):
-            finishes[name] = entry["finish"]
-    if not finishes:
-        return []   # results not posted yet — nothing to grade
-
-    standings = compute_adjusted_standings(data)
-    sorted_s  = standings_sorted(standings)
-    winner    = min(finishes.items(), key=lambda kv: kv[1])[0]
-    winner_manufacturer = get_race_manufacturer(data, winner, race_num)
-    meta = data.get("race_meta", {}).get(str(race_num), {})
-    actual_cautions     = meta.get("cautions")
-    actual_lead_changes = meta.get("lead_changes")
-
-    changes = []
-    for bet in bets:
-        if bet.get("settled"):
-            continue
-        did   = bet["discord_id"]
-        stake = bet["stake"]
-        won   = False
-        void  = False
-
-        if bet["type"] == "moneyline":
-            won = (bet["target"] == winner)
-        elif bet["type"] in ("top5", "top10"):
-            finish = finishes.get(bet["target"])
-            if finish is None:
-                void = True
-            else:
-                won = finish <= (5 if bet["type"] == "top5" else 10)
-        elif bet["type"] == "leader_ou":
-            leader_name   = sorted_s[0][0] if sorted_s else None
-            leader_finish = finishes.get(leader_name)
-            if leader_finish is None:
-                void = True
-            else:
-                won = (leader_finish > bet["line"]) if bet["side"] == "over" else (leader_finish < bet["line"])
-        elif bet["type"] == "cautions_ou":
-            if actual_cautions is None:
-                void = True   # this race's meta didn't come from a JSON import — can't grade, refund
-            else:
-                won = (actual_cautions > bet["line"]) if bet["side"] == "over" else (actual_cautions < bet["line"])
-        elif bet["type"] == "lead_changes_ou":
-            if actual_lead_changes is None:
-                void = True
-            else:
-                won = (actual_lead_changes > bet["line"]) if bet["side"] == "over" else (actual_lead_changes < bet["line"])
-        elif bet["type"] == "manufacturer":
-            if not winner_manufacturer:
-                void = True   # can't confirm the winning car's make — refund, don't guess
-            else:
-                won = (bet["target"] == winner_manufacturer)
-
-        ensure_balance(data, did)
-        if void:
-            data["economy"]["balances"][str(did)] = data["economy"]["balances"].get(str(did), 0) + stake
-            record_ledger(data, did, race_num, 0, f"Voided {bet['type']} bet — insufficient data, stake refunded")
-            changes.append((did, bet.get("name", "?"), 0, "void"))
-        elif won:
-            payout = american_to_payout(bet["odds"], stake)
-            delta  = payout - stake
-            data["economy"]["balances"][str(did)] = data["economy"]["balances"].get(str(did), 0) + payout
-            record_ledger(data, did, race_num, delta, f"Won {bet['type']} bet")
-            changes.append((did, bet.get("name", "?"), delta, "won"))
-        else:
-            record_ledger(data, did, race_num, -stake, f"Lost {bet['type']} bet")
-            changes.append((did, bet.get("name", "?"), -stake, "lost"))
-        bet["settled"] = True
-        bet["won"] = None if void else won
-
-    if board := data.get("odds_board"):
-        if board.get("race_number") == race_num:
-            board["open"] = False
-    return changes
+def book_dale_slip(board: dict) -> list:
+    """Dale plays too. Straight chalk and his own parlay."""
+    fav = max(board["markets"]["win"].items(), key=lambda kv: kv[1]["p"])[0]
+    second = sorted(board["markets"]["top5"].items(), key=lambda kv: -kv[1]["p"])[1][0]
+    bets = [("win", fav, 30), ("top5", second, 20)]
+    if board.get("parlay"):
+        bets.append(("parlay", "yes", 25))
+    if board.get("matchups"):
+        mm = min(board["matchups"], key=lambda x: abs(x["pa"] - 0.5))
+        bets.append((mm["id"], "a" if mm["pa"] >= 0.5 else "b", 25))
+    out = []
+    for market, sel, stake in bets:
+        pr = book_price(board, market, sel)
+        if pr:
+            out.append({"market": market, "sel": sel, "label": pr[2], "odds": pr[1], "p": pr[0], "stake": stake,
+                        "placed_at": datetime.utcnow().isoformat()})
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -2525,7 +3085,6 @@ def _throwbacks_used() -> list:
         return []
 
 async def post_throwback(channel, record: bool = True) -> str:
-    import qsr_cards as QC
     hist = load_history()
     if not hist.get("races"):
         return "Race-by-race history isn't loaded."
@@ -2537,7 +3096,7 @@ async def post_throwback(channel, record: bool = True) -> str:
     if not tb:
         return "No past races to throw back to."
     logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qsr_league_logo.png")
-    png = QC.render_throwback(tb, logo)
+    png = render_throwback(tb, logo)
     head = (f"⏪ **QSR Throwback:** {tb['track']}, {tb['series']} ({tb['ago'].lower()})" if tb["this_week_track"]
             else f"⏪ **This Week in QSR History:** {tb['track']}, {tb['series']} ({tb['ago'].lower()})")
     caption = head
@@ -2835,29 +3394,14 @@ async def race_prediction():
         f"Hop in and get your laps. See you out there. 🏁"
     )
 
-    # Part 2 — lock Dale's Book. The board itself now opens on Tuesday (see
-    # weekly_settlement below) and stays open all week, so by the time this
-    # fires — 1 hour before green flag — the job here is just to close it
-    # before anyone can bet with live-race knowledge. We still read the
-    # existing board (not rebuild it) to grab the favorite for Dale's
-    # prediction below.
-    reg   = load_reg()
-    board = data.get("odds_board") or {}
+    # Part 2 — the book's favorite (Dale's Book locks itself at 7 PM, see book_tick).
     favorite = None
-    if board.get("race_number") == race_num and board.get("moneyline"):
-        favorite = max(board["moneyline"].items(), key=lambda kv: kv[1]["prob"])[0]
-        if board.get("open"):
-            board["open"] = False
-            save_data(data)
-            sb_ch = discord.utils.get(guild.text_channels, name=SPORTSBOOK_CHANNEL)
-            if sb_ch:
-                await sb_ch.send(
-                    f"🔒 **Dale's Book is closed** for Race {race_num}. "
-                    f"Good luck out there — settlement posts Tuesday at noon ET."
-                )
-    else:
-        print(f"⚠️ No open Dale's Book board found for Race {race_num} at lock time — "
-              f"nothing to close (was it opened Tuesday?).")
+    try:
+        bw = load_book()["weeks"].get(str(race_num))
+        if bw:
+            favorite = max(bw["board"]["markets"]["win"].items(), key=lambda kv: kv[1]["p"])[0]
+    except Exception as e:
+        print(f"⚠️ couldn't read book favorite: {e}")
 
     # Part 3 — Dale's narrative prediction, grounded in the actual favorite
     # from the odds engine rather than pure vibes.
@@ -2884,85 +3428,6 @@ async def race_prediction():
             embed.set_footer(text="Hold Dale accountable after the race 👀")
             await ch.send(embed=embed)
     mark_fired("prediction", now)
-
-
-# ─────────────────────────────────────────────────────────────────
-
-@tasks.loop(minutes=1)
-async def weekly_settlement():
-    """Every Tuesday at noon ET, grade last night's bets against posted
-    results and post the recap + updated money leaderboard. If results
-    haven't been pushed from Race Control yet, this skips quietly and an
-    admin can run /forcesettle once they're in — it does NOT mark itself
-    fired in that case, so it keeps checking on later ticks that same day."""
-    now = now_et()
-    if now.weekday() != 1 or not at_time(now, 12, 0):   # 1 = Tuesday
-        return
-    if already_fired("settlement", now):
-        return
-    guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        return
-    data = load_data()
-    reg  = load_reg()
-    board = data.get("odds_board") or {}
-    race_num = board.get("race_number")
-    if not race_num:
-        mark_fired("settlement", now)
-        return
-    changes = grade_and_settle_race(data, reg, race_num)
-    if not changes:
-        return   # results not posted yet — try again next tick today
-    save_data(data)
-
-    ch = discord.utils.get(guild.text_channels, name=SPORTSBOOK_CHANNEL)
-    if ch:
-        winners = sum(1 for c in changes if c[3] == "won")
-        bal = data.get("economy", {}).get("balances", {})
-        id_to_name = {str(d.get("discord_id")): d.get("name") for d in reg.get("drivers", [])}
-        # Only drivers who've actually bet in MIN_RACES_FOR_PRIZE+ races count
-        # toward the "leading" board — otherwise someone parked on the
-        # untouched starting balance shows up as the leader.
-        eligible = [(did, amt) for did, amt in bal.items()
-                    if races_bet_on(data, did) >= MIN_RACES_FOR_PRIZE]
-        ranked = sorted(eligible, key=lambda kv: kv[1], reverse=True)[:5]
-        lead_lines = [f"**{i+1}.** {id_to_name.get(did, f'<@{did}>')} — ${amt}"
-                      for i, (did, amt) in enumerate(ranked)]
-        embed = discord.Embed(
-            title=f"🎰 Dale's Book — Race {race_num} Settled",
-            description=f"{winners}/{len(changes)} bets cashed. Here's the money board:",
-            color=0x2ECC71,
-        )
-        embed.add_field(
-            name=f"Top 5 (eligible — {MIN_RACES_FOR_PRIZE}+ races bet)",
-            value="\n".join(lead_lines) or "Nobody's eligible yet.", inline=False)
-        await ch.send(embed=embed)
-
-    # Open next week's board right after settling — Dale's Book runs
-    # Tuesday-through-lobby, so this is the start of that window. Only
-    # fires if race_number has actually moved past the race we just
-    # settled (i.e. Race Control has pushed results); if it hasn't,
-    # opening now would just re-open a board for the race that already
-    # happened, so we skip and leave it for a manual /postodds once
-    # results are in.
-    next_race = data.get("race_number", race_num)
-    if next_race > race_num:
-        new_board, problems = build_odds_board(data, reg)
-        if problems:
-            print(f"⚠️ Dale's Book validation FAILED opening Race {next_race}, not posting: {problems}")
-        else:
-            save_data(data)
-            if ch:
-                await ch.send(
-                    f"🟢 **Dale's Book is OPEN** for Race {next_race} — bet all week, "
-                    f"closes at lobby-up next race night."
-                )
-                await ch.send(embed=format_odds_embed(new_board))
-    else:
-        print(f"ℹ️ Dale's Book not reopened yet — race_number still {race_num} "
-              f"(results not pushed from Race Control). Run !postodds once they are.")
-
-    mark_fired("settlement", now)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -3026,6 +3491,7 @@ async def on_ready():
     bot.add_view(RoleSelectView())      # Re-register persistent views on restart
     bot.add_view(RegistrationView())
     bot.add_view(RSVPView())
+    bot.add_view(BookLauncher())
     print(f"✅  Ask Dale Bot online as {bot.user}")
 
     # ── Slash command sync ──────────────────────────────────────
@@ -3051,7 +3517,7 @@ async def on_ready():
     track_history_post.start()
     throwback_post.start()
     race_prediction.start()
-    weekly_settlement.start()
+    book_tick.start()
     race_announcement_scheduler.start()
     close_expired_polls.start()
     await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
@@ -5068,26 +5534,28 @@ async def setup_sportsbook(ctx):
     embed = discord.Embed(
         title="🎰 Welcome to Dale's Book",
         description=(
-            "For-fun Dale Dollars sportsbook — no real money, no real stakes. "
-            "Season's top bankroll wins free entry to the next series.\n\n"
-            "**The book opens every Tuesday** (the day after race night) and stays "
-            "open all week, locking at lobby-up on the next race night."
+            "For-fun pick'em sportsbook. No real money, nothing to buy.\n\n"
+            f"**Everybody gets a fresh ${BOOK_BUDGET} Dale Dollars every race week.** Spread it across the board "
+            f"(${BOOK_MIN_STAKE}-${BOOK_MAX_STAKE} a bet). Your weekly profit adds to the season leaderboard, "
+            "and the season leader wins free entry to the next series."
         ),
         color=0x2ECC71,
     )
     embed.add_field(
-        name="Commands",
-        value="`/odds` — this week's board\n"
-              "`/wager` — place a pick\n"
-              "`/balance` — your Dale Dollars + open bets\n"
-              "`/moneyboard` — season leaderboard",
+        name="When",
+        value="Opens **Tuesday 9 AM ET** of race week · locks **7 PM ET race night** · settles itself when results post.",
         inline=False,
     )
     embed.add_field(
-        name="Season prize eligibility",
-        value=f"You need to have placed a bet in **{MIN_RACES_FOR_PRIZE}+ races** to be "
-              f"eligible for the season-end prize — sitting on your starting ${STARTING_BALANCE} "
-              f"without playing doesn't count. Check your progress with `/balance`.",
+        name="How",
+        value="Tap **Open Dale's Book** on the board post, or `/book`.\n"
+              "`/odds` board · `/slip` your bets · `/moneyboard` season standings",
+        inline=False,
+    )
+    embed.add_field(
+        name="Rules",
+        value=f"Back yourself all you want, but you can't bet against yourself or a teammate. "
+              f"Play {BOOK_MIN_WEEKS}+ weeks to be prize-eligible. Dale plays too (he's not eligible).",
         inline=False,
     )
     embed.set_footer(text="Dale Dollars have no cash value and can't be purchased.")
@@ -5944,262 +6412,490 @@ async def archetypes_cmd(ctx):
 
 
 # ─────────────────────────────────────────────────────────────────
-#  DALE'S BOOK — no-stakes prediction game
+#  DALE'S BOOK v2 — buttons, schedule, commands
 # ─────────────────────────────────────────────────────────────────
 
-@bot.hybrid_command(name="odds", description="Dale's Book — this week's for-fun odds board")
+def book_current():
+    """(race number, week) for the week people should be betting on:
+    the open week if there is one, else the most recent week."""
+    b = load_book()
+    weeks = b.get("weeks", {})
+    open_w = [(int(k), w) for k, w in weeks.items() if w.get("status") == "open"]
+    if open_w:
+        return max(open_w)
+    if weeks:
+        k = max(weeks, key=int)
+        return int(k), weeks[k]
+    return None, None
+
+
+def book_home_embed(did: str, name: str, note: str = "") -> discord.Embed:
+    n, week = book_current()
+    if not week:
+        e = discord.Embed(title="🎰 Dale's Book", color=0x2ECC71,
+                          description="No board yet. It opens Tuesday 9 AM ET of race week.")
+        return e
+    slip = week.get("slips", {}).get(str(did), {"bets": []})
+    left = BOOK_BUDGET - book_spent(slip)
+    lock = book_lock_dt(n)
+    status = {"open": f"🟢 Open · locks {lock.strftime('%a %b %-d, %-I:%M %p')} ET",
+              "locked": "🔒 Locked · waiting on results", "settled": "🏁 Settled"}[week["status"]]
+    e = discord.Embed(title=f"🎰 Dale's Book · Race {n} · {week['board']['track']}", color=0x2ECC71,
+                      description=(f"{note}\n\n" if note else "") + f"{status}\n**${left}** of ${BOOK_BUDGET} left to play this week.")
+    if slip["bets"]:
+        lines = []
+        for bet in slip["bets"]:
+            tail = ""
+            if bet.get("result"):
+                tail = {"won": f" ✅ +${bet['paid'] - bet['stake']}", "lost": " ❌", "void": " ↩️ void"}[bet["result"]]
+            lines.append(f"• ${bet['stake']} **{bet['label']}** {bet['odds']}{tail}")
+        e.add_field(name="Your slip", value="\n".join(lines)[:1020], inline=False)
+    lb = book_leaderboard()
+    me = next((i for i, r in enumerate(lb) if r["did"] == str(did)), None)
+    if me is not None:
+        r = lb[me]
+        e.add_field(name="Season", value=f"{money(r['profit'])} · {QH._ord(me + 1)} of {len(lb)} · {r['weeks']} weeks played", inline=False)
+    e.set_footer(text=f"${BOOK_MIN_STAKE}-${BOOK_MAX_STAKE} per bet · fresh ${BOOK_BUDGET} every week · no real money")
+    return e
+
+
+class BookLauncher(discord.ui.View):
+    """Persistent 'Open Dale's Book' button on the board posts."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Open Dale's Book", emoji="🎰", style=discord.ButtonStyle.success, custom_id="book_open")
+    async def open_book(self, interaction: discord.Interaction, button: discord.ui.Button):
+        did = str(interaction.user.id)
+        name, _ = book_identity(did, interaction.user.display_name)
+        await interaction.response.send_message(embed=book_home_embed(did, name), view=BookHome(did), ephemeral=True)
+
+
+class BookHome(discord.ui.View):
+    def __init__(self, did: str):
+        super().__init__(timeout=900)
+        self.did = did
+        n, week = book_current()
+        is_open = bool(week and week.get("status") == "open")
+        board = (week or {}).get("board") or {}
+        for label, emoji, market, ok in (("Winner", "🏆", "win", True), ("Top 5", "🖐️", "top5", True),
+                                         ("Top 10", "🔟", "top10", True), ("Matchups", "⚔️", "matchups", bool(board.get("matchups"))),
+                                         ("Props", "📊", "props", bool(board.get("props"))),
+                                         ("Dale's Parlay", "🎲", "parlay", bool(board.get("parlay")))):
+            btn = discord.ui.Button(label=label, emoji=emoji, style=discord.ButtonStyle.primary, disabled=not (is_open and ok),
+                                    row=0 if market in ("win", "top5", "top10") else 1)
+            btn.callback = self._market_cb(market)
+            self.add_item(btn)
+        slip_btn = discord.ui.Button(label="My slip", emoji="🧾", style=discord.ButtonStyle.secondary, row=2)
+        slip_btn.callback = self._slip
+        self.add_item(slip_btn)
+
+    def _market_cb(self, market):
+        async def cb(interaction: discord.Interaction):
+            n, week = book_current()
+            if not week or week.get("status") != "open":
+                await interaction.response.edit_message(embed=book_home_embed(self.did, ""), view=BookHome(self.did))
+                return
+            await interaction.response.edit_message(embed=book_market_embed(week["board"], market), view=BookPick(self.did, n, market))
+        return cb
+
+    async def _slip(self, interaction: discord.Interaction):
+        name, _ = book_identity(self.did, interaction.user.display_name)
+        await interaction.response.edit_message(embed=book_home_embed(self.did, name), view=BookSlip(self.did))
+
+
+def book_market_embed(board: dict, market: str) -> discord.Embed:
+    title = {"win": "🏆 Race winner", "top5": "🖐️ Top 5 finish", "top10": "🔟 Top 10 finish", "matchups": "⚔️ Matchups",
+             "props": "📊 Props", "parlay": "🎲 Dale's Parlay"}[market]
+    e = discord.Embed(title=f"{title} · {board['track']}", color=0x2ECC71)
+    if market in ("win", "top5", "top10"):
+        rows = sorted(board["markets"][market].items(), key=lambda kv: -kv[1]["p"])[:12]
+        e.description = "\n".join(f"**{n}** {x['odds']} · {x['p'] * 100:.0f}% · _{board['notes'].get(n, '')}_" for n, x in rows)
+        e.set_footer(text="Pick from the menu below. Everyone in the field is in there.")
+    elif market == "matchups":
+        e.description = "\n".join(f"**{m['a']}** {m['odds_a']}  vs  **{m['b']}** {m['odds_b']}" + (f"\n_{m['h2h']}_" if m["h2h"] else "")
+                                  for m in board["matchups"])
+    elif market == "props":
+        e.description = "\n".join(f"**{p['label']}**\n" + " · ".join(f"{o['label']} {o['odds']}" for o in p["options"].values())
+                                  for p in board["props"])
+    else:
+        pl = board["parlay"]
+        e.description = "\n".join(f"• {l['label']}" for l in pl["legs"]) + f"\n\nAll legs hit: **{pl['odds']}**"
+    return e
+
+
+class BookPick(discord.ui.View):
+    def __init__(self, did: str, n: int, market: str):
+        super().__init__(timeout=900)
+        self.did, self.n, self.market = did, n, market
+        board = load_book()["weeks"][str(n)]["board"]
+        opts = []   # (market, sel, label, description)
+        if market in ("win", "top5", "top10"):
+            for nm_, x in sorted(board["markets"][market].items(), key=lambda kv: -kv[1]["p"]):
+                opts.append((market, nm_, f"{nm_} {x['odds']}", f"{x['p'] * 100:.1f}% · {board['notes'].get(nm_, '')}"))
+        elif market == "matchups":
+            for m in board["matchups"]:
+                opts.append((m["id"], "a", f"{m['a']} {m['odds_a']}", f"over {m['b']}"))
+                opts.append((m["id"], "b", f"{m['b']} {m['odds_b']}", f"over {m['a']}"))
+        elif market == "props":
+            for p in board["props"]:
+                for sel, o in p["options"].items():
+                    opts.append((p["id"], sel, f"{o['label']} {o['odds']}"[:100], p["label"][:100]))
+        elif market == "parlay" and board.get("parlay"):
+            opts.append(("parlay", "yes", f"Dale's Parlay {board['parlay']['odds']}", f"{len(board['parlay']['legs'])} legs, all must hit"))
+        for chunk_i in range(0, min(len(opts), 50), 25):
+            chunk = opts[chunk_i:chunk_i + 25]
+            sel = discord.ui.Select(placeholder="Pick one" if chunk_i == 0 else "More drivers",
+                                    options=[discord.SelectOption(label=o[2][:100], description=o[3][:100], value=f"{o[0]}|{o[1]}")
+                                             for o in chunk], row=chunk_i // 25)
+            sel.callback = self._picked(sel)
+            self.add_item(sel)
+        back = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, row=2)
+        back.callback = self._back
+        self.add_item(back)
+
+    def _picked(self, sel):
+        async def cb(interaction: discord.Interaction):
+            market, choice = sel.values[0].split("|", 1)
+            week = load_book()["weeks"].get(str(self.n))
+            pr = book_price(week["board"], market, choice) if week else None
+            if not pr:
+                await interaction.response.send_message("That line's gone. Try again.", ephemeral=True)
+                return
+            e = discord.Embed(title=f"{pr[2]}  {pr[1]}", color=0x2ECC71,
+                              description=f"{pr[0] * 100:.1f}% chance by Dale's numbers. How much?")
+            await interaction.response.edit_message(embed=e, view=BookStake(self.did, self.n, market, choice))
+        return cb
+
+    async def _back(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(embed=book_home_embed(self.did, ""), view=BookHome(self.did))
+
+
+class BookStake(discord.ui.View):
+    def __init__(self, did, n, market, sel):
+        super().__init__(timeout=900)
+        self.did, self.n, self.market, self.sel = did, n, market, sel
+        week = load_book()["weeks"].get(str(n)) or {}
+        left = BOOK_BUDGET - book_spent(week.get("slips", {}).get(str(did), {"bets": []}))
+        pr = book_price(week.get("board") or {}, market, sel)
+        cap = book_max_stake(pr[1]) if pr else BOOK_MAX_STAKE
+        for amt in (5, 10, 25, 50):
+            btn = discord.ui.Button(label=f"${amt}" + (f" → ${book_payout(pr[1], amt)}" if pr else ""),
+                                    style=discord.ButtonStyle.success, disabled=amt > left or amt > cap)
+            btn.callback = self._stake(amt)
+            self.add_item(btn)
+        back = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, row=1)
+        back.callback = self._back
+        self.add_item(back)
+
+    def _stake(self, amt):
+        async def cb(interaction: discord.Interaction):
+            name, mine = book_identity(self.did, interaction.user.display_name)
+            ok, msg = book_place(self.n, self.did, name, self.market, self.sel, amt, mine)
+            await interaction.response.edit_message(embed=book_home_embed(self.did, name, msg), view=BookHome(self.did))
+        return cb
+
+    async def _back(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(embed=book_home_embed(self.did, ""), view=BookHome(self.did))
+
+
+class BookSlip(discord.ui.View):
+    def __init__(self, did: str):
+        super().__init__(timeout=900)
+        self.did = did
+        n, week = book_current()
+        self.n = n
+        bets = ((week or {}).get("slips", {}).get(str(did)) or {}).get("bets", [])
+        if week and week.get("status") == "open" and bets:
+            sel = discord.ui.Select(placeholder="Remove a bet",
+                                    options=[discord.SelectOption(label=f"${b['stake']} {b['label']}"[:100], value=str(i))
+                                             for i, b in enumerate(bets)])
+            sel.callback = self._remove(sel)
+            self.add_item(sel)
+        back = discord.ui.Button(label="Back", style=discord.ButtonStyle.secondary, row=1)
+        back.callback = self._back
+        self.add_item(back)
+
+    def _remove(self, sel):
+        async def cb(interaction: discord.Interaction):
+            ok, msg = book_remove(self.n, self.did, int(sel.values[0]))
+            name, _ = book_identity(self.did, interaction.user.display_name)
+            await interaction.response.edit_message(embed=book_home_embed(self.did, name, msg), view=BookSlip(self.did))
+        return cb
+
+    async def _back(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(embed=book_home_embed(self.did, ""), view=BookHome(self.did))
+
+
+# ── posts ───────────────────────────────────────────────────────────
+def _book_channel():
+    guild = bot.get_guild(GUILD_ID)
+    return discord.utils.get(guild.text_channels, name=SPORTSBOOK_CHANNEL) if guild else None
+
+
+async def book_post_open(n: int, week: dict):
+    ch = _book_channel()
+    if not ch:
+        print("⚠️ #dales-sportsbook not found, board not posted")
+        return
+    board = week["board"]
+    lock = book_lock_dt(n)
+    fav = max(board["markets"]["win"].items(), key=lambda kv: kv[1]["p"])
+    text = (f"🟢 **DALE'S BOOK IS OPEN — RACE {n}: {board['track'].upper()}**\n"
+            f"Fresh **${BOOK_BUDGET}** for everybody. Locks **{lock.strftime('%a %b %-d, %-I:%M %p')} ET**.")
+    if ANTHROPIC_API_KEY:
+        try:
+            rw = race_week_for(n)
+            facts = " ".join((rw or {}).get("storylines", [])[:4])
+            take = await ask_claude(
+                f"You're Dale Earnhardt Sr. opening your for-fun sportsbook for QSR Race {n} at {board['track']}. "
+                f"The favorite is {fav[0]} at {fav[1]['odds']} ({fav[1]['p'] * 100:.0f}%). Track history: {facts} "
+                f"One or two sentences hyping the board. Quote numbers exactly, invent nothing.", user_context=mood_context())
+            if take:
+                text += f"\n\n{take.strip()}"
+        except Exception as e:
+            print(f"⚠️ book open take failed: {e}")
+    png = render_odds_card(board, n, lock)
+    await ch.send(text[:1900], file=discord.File(io.BytesIO(png), filename=f"dales_book_race{n}.png"), view=BookLauncher())
+
+
+async def book_post_reminder(n: int, week: dict):
+    ch = _book_channel()
+    if ch:
+        players = sum(1 for s in week.get("slips", {}).values() if s.get("bets")) - (1 if DALE_BOOK_ID in week.get("slips", {}) else 0)
+        await ch.send(f"⏰ **One hour** until Dale's Book locks for Race {n}. {players} slip{'s' if players != 1 else ''} in so far. "
+                      f"Your ${BOOK_BUDGET} doesn't roll over.", view=BookLauncher())
+
+
+async def book_post_lock(n: int, week: dict):
+    ch = _book_channel()
+    if not ch:
+        return
+    slips = {d: s for d, s in week.get("slips", {}).items() if s.get("bets") and d != DALE_BOOK_ID}
+    staked = sum(book_spent(s) for s in slips.values())
+    backed = {}
+    for s in slips.values():
+        for bet in s["bets"]:
+            backed[bet["label"]] = backed.get(bet["label"], 0) + bet["stake"]
+    top = max(backed.items(), key=lambda kv: kv[1]) if backed else None
+    if not slips:
+        await ch.send(f"🔒 Dale's Book is locked for Race {n}. Nobody played this week, so it's just Dale's slip riding. 🤖")
+        return
+    msg = f"🔒 **Dale's Book is locked** for Race {n}. {len(slips)} player{'s' if len(slips) != 1 else ''}, ${staked} in play."
+    if top:
+        msg += f" Most money on **{top[0]}** (${top[1]})."
+    await ch.send(msg + " Settles itself the minute results post.")
+
+
+async def book_post_settled(n: int, week: dict):
+    ch = _book_channel()
+    if not ch:
+        return
+    slips = {d: s for d, s in week.get("slips", {}).items() if s.get("bets")}
+    players = {d: s for d, s in slips.items() if d != DALE_BOOK_ID}
+    e = discord.Embed(title=f"🏁 Dale's Book · Race {n} settled", color=0x2ECC71,
+                      description=f"{week.get('winner', '?')} won {week['board']['track']}.")
+    if players:
+        top = sorted(players.values(), key=lambda s: -s.get("profit", 0))[:3]
+        e.add_field(name="Week's best", value="\n".join(f"**{s.get('name')}** {money(s['profit'])}" for s in top), inline=True)
+        hits = [(b["paid"] / b["stake"], s.get("name"), b) for s in players.values() for b in s["bets"] if b.get("result") == "won"]
+        if hits:
+            m, who, b = max(hits, key=lambda t: t[0])
+            e.add_field(name="Biggest hit", value=f"**{who}**: {b['label']} {b['odds']}, ${b['stake']} → ${b['paid']}", inline=True)
+    dale = slips.get(DALE_BOOK_ID)
+    if dale:
+        e.add_field(name="Dale's slip", value=f"{money(dale['profit'])} (" +
+                    ", ".join(("✅ " if b["result"] == "won" else "❌ " if b["result"] == "lost" else "↩️ ") + b["label"] for b in dale["bets"])[:900] + ")", inline=False)
+    lb = [r for r in book_leaderboard() if r["did"] != DALE_BOOK_ID][:5]
+    if lb:
+        e.add_field(name=f"Season (top 5, {BOOK_MIN_WEEKS}+ weeks to be prize-eligible)",
+                    value="\n".join(f"**{i + 1}.** {r['name']} {money(r['profit'])} · {r['weeks']}wk"
+                                    + ("" if r["weeks"] >= BOOK_MIN_WEEKS else " _(not eligible yet)_") for i, r in enumerate(lb)), inline=False)
+    await ch.send(embed=e)
+
+
+# ── the scheduler: runs the whole book with nobody touching it ──────
+_book_lock = asyncio.Lock()
+
+
+async def book_open_week(n: int, repost: bool = True) -> dict:
+    board = await asyncio.to_thread(build_book_board, n)
+    b = load_book()
+    week = b["weeks"].get(str(n)) or {"race": n, "status": "open", "slips": {}}
+    week["board"] = board
+    week["status"] = "open"
+    week["opened_at"] = week.get("opened_at") or datetime.utcnow().isoformat()
+    week["priced_on"] = now_et().date().isoformat()
+    if DALE_BOOK_ID not in week["slips"]:
+        week["slips"][DALE_BOOK_ID] = {"name": "Dale 🤖", "bets": book_dale_slip(board)}
+    b["weeks"][str(n)] = week
+    save_book(b)
+    if repost:
+        await book_post_open(n, week)
+    return week
+
+
+async def _book_tick():
+    now = now_et()
+    b = load_book()
+    if book_migrate(b):
+        save_book(b)
+    # 1) open the next race's board (catches up if the bot was down at 9 AM)
+    nxt = next((e["race"] for e in SCHEDULE if book_lock_dt(e["race"]) and book_lock_dt(e["race"]) > now), None)
+    if nxt and str(nxt) not in b["weeks"] and now >= book_open_dt(nxt):
+        await book_open_week(nxt)
+        print(f"✅ Dale's Book opened for Race {nxt}")
+        b = load_book()
+    for k, week in list(b["weeks"].items()):
+        n = int(k)
+        lock = book_lock_dt(n)
+        if week["status"] == "open":
+            if now >= lock:
+                week["status"] = "locked"
+                week["locked_at"] = datetime.utcnow().isoformat()
+                save_book(b)
+                await book_post_lock(n, week)
+                continue
+            # 2) daily 9 AM re-price for signups/withdrawals (placed bets keep their odds)
+            if now.hour >= BOOK_OPEN_HOUR and week.get("priced_on") != now.date().isoformat():
+                await book_open_week(n, repost=False)
+                b = load_book()
+                week = b["weeks"][k]
+            # 3) one-hour warning
+            if not week.get("reminded") and now >= lock - timedelta(hours=1):
+                week["reminded"] = True
+                save_book(b)
+                await book_post_reminder(n, week)
+        elif week["status"] == "locked":
+            # 4) settle the moment Race Control's results land
+            done = book_settle(n)
+            if done:
+                print(f"✅ Dale's Book settled Race {n}")
+                await book_post_settled(n, done)
+                b = load_book()
+            elif not week.get("nagged") and now >= lock + timedelta(hours=37):   # ~8 AM Wednesday
+                week["nagged"] = True
+                save_book(b)
+                try:
+                    owner = await bot.fetch_user(OWNER_ID)
+                    await owner.send(f"🎰 Dale's Book can't settle Race {n}: no results on Railway yet. "
+                                     f"Hit Post Results in Race Control and it settles itself.")
+                except Exception as e:
+                    print(f"⚠️ couldn't DM owner about book: {e}")
+
+
+@tasks.loop(minutes=1)
+async def book_tick():
+    if _book_lock.locked():
+        return
+    async with _book_lock:
+        try:
+            await _book_tick()
+        except Exception as e:
+            import traceback
+            print(f"⚠️ book_tick failed: {e}\n{traceback.format_exc()}")
+
+
+# ── commands ────────────────────────────────────────────────────────
+@bot.hybrid_command(name="book", description="Open Dale's Book: this week's odds and your slip")
+async def book_cmd(ctx):
+    did = str(ctx.author.id)
+    name, _ = book_identity(did, ctx.author.display_name)
+    if ctx.interaction:
+        await ctx.interaction.response.send_message(embed=book_home_embed(did, name), view=BookHome(did), ephemeral=True)
+    else:
+        await ctx.send("Tap below to open your slip (only you can see it):", view=BookLauncher())
+
+
+@bot.hybrid_command(name="odds", description="Dale's Book: this week's board")
 async def odds_cmd(ctx):
-    data  = load_data()
-    board = data.get("odds_board") or {}
-    if not board.get("moneyline"):
-        await ctx.send("Dale's Book opens Tuesday, the day after race night. Check back then. 🎰")
+    n, week = book_current()
+    if not week:
+        await ctx.send("Dale's Book opens Tuesday 9 AM ET of race week. 🎰")
         return
-    await ctx.send(embed=format_odds_embed(board))
+    png = render_odds_card(week["board"], n, book_lock_dt(n))
+    await ctx.send(file=discord.File(io.BytesIO(png), filename=f"dales_book_race{n}.png"),
+                   view=BookLauncher() if week["status"] == "open" else None)
 
 
-@bot.hybrid_command(name="postodds", description="Manually build and post this week's odds board (admin)")
-@is_admin()
-async def post_odds_cmd(ctx):
-    """Manual trigger for testing — race_prediction() only builds the board
-    automatically at 7PM ET on race day. This runs the exact same
-    build_odds_board() path on demand, so /wager can be tested any time
-    without waiting for that window. If the board fails its own
-    consistency check it is NOT posted — same rule as the automatic path."""
-    data = load_data()
-    reg  = load_reg()
-    board, problems = build_odds_board(data, reg)
-    if problems:
-        await ctx.send(
-            "⚠️ Board failed validation, not posted:\n" + "\n".join(f"• {p}" for p in problems),
-            ephemeral=True)
-        return
-    save_data(data)
-    await ctx.send(embed=format_odds_embed(board))
-
-
-def team_manufacturers(reg: dict, data: dict, team_name: str, exclude_discord_id: str) -> set:
-    """Known manufacturers raced by a driver's teammates (excluding
-    themselves) — used so a manufacturer bet can't indirectly favor a
-    teammate's car the same way a direct moneyline bet on them would."""
-    if not team_name:
-        return set()
-    out = set()
-    for d in reg.get("drivers", []):
-        if d.get("team") != team_name or str(d.get("discord_id")) == exclude_discord_id:
-            continue
-        m = data.get("driver_profiles", {}).get(d.get("name"), {}).get("manufacturer")
-        if m:
-            out.add(m)
-    return out
-
-
-@bot.hybrid_command(name="wager", description="Place a for-fun Dale Dollars wager on this week's board")
-@discord.app_commands.describe(
-    bet_type="What you're betting on",
-    pick="Driver name (moneyline/top5/top10), manufacturer name, or 'over'/'under' for a prop",
-    amount="Dale Dollars to risk — capped by how likely the pick is",
-    double_down="Use your one Power Play boost for this race (raises the cap, not manufacturer)",
-)
-@discord.app_commands.choices(bet_type=[
-    discord.app_commands.Choice(name="Race Winner (moneyline)", value="moneyline"),
-    discord.app_commands.Choice(name="Top 5 Finish", value="top5"),
-    discord.app_commands.Choice(name="Top 10 Finish", value="top10"),
-    discord.app_commands.Choice(name="Manufacturer Winner (max $5)", value="manufacturer"),
-    discord.app_commands.Choice(name="Leader finishing position O/U", value="leader_ou"),
-    discord.app_commands.Choice(name="Total cautions O/U", value="cautions_ou"),
-    discord.app_commands.Choice(name="Total lead changes O/U", value="lead_changes_ou"),
-])
-async def wager_cmd(ctx, bet_type: str, pick: str, amount: int, double_down: bool = False):
-    data  = load_data()
-    reg   = load_reg()
-    board = data.get("odds_board") or {}
-    if not board.get("open") or not board.get("moneyline"):
-        await ctx.send("Dale's Book isn't open right now — it runs Tuesday through lobby-up on race night. Check `/odds`.")
-        return
-    race_num = board["race_number"]
-    did      = str(ctx.author.id)
-
-    econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
-    dd_used = econ.setdefault("double_down_used", {})
-    if double_down and race_num in dd_used.get(did, []):
-        await ctx.send("You've already used this week's Power Play boost.")
-        return
-
-    bettor_team = team_of(reg, did)
-    bet_record  = {"discord_id": did, "name": ctx.author.display_name,
-                   "double_down": double_down, "settled": False, "won": None,
-                   "placed_at": datetime.utcnow().isoformat()}
-    prob = 0.5   # default for the flat-odds O/U props
-
-    if bet_type in ("moneyline", "top5", "top10"):
-        target = resolve_driver_by_name(reg, pick)
-        if not target:
-            await ctx.send(f"Couldn't find a confirmed driver matching \"{pick}\". Check `/roster`.")
-            return
-        target_id   = str(target.get("discord_id", ""))
-        target_team = target.get("team")
-        if target_id == did:
-            await ctx.send("Can't bet on yourself — pick someone else. 🚫")
-            return
-        if bettor_team and target_team and bettor_team == target_team:
-            await ctx.send("Can't bet on a teammate — that's a conflict of interest. 🚫")
-            return
-        market = board.get(bet_type, board.get("moneyline"))
-        priced = market.get(target["name"])
-        if not priced:
-            await ctx.send(f"{target['name']} isn't priced on this week's board yet.")
-            return
-        prob = priced["prob"]
-        bet_record.update(type=bet_type, target=target["name"], odds=priced["american"])
-
-    elif bet_type == "manufacturer":
-        manu_market = board.get("manufacturer") or {}
-        if not manu_market:
-            note = board.get("manufacturer_note", "not enough manufacturer data on file this week")
-            await ctx.send(f"Manufacturer betting isn't available this week — {note}.")
-            return
-        matched = next((m for m in manu_market if m.lower() == pick.strip().lower()), None)
-        if not matched:
-            await ctx.send(f"\"{pick}\" isn't one of this week's manufacturers: {', '.join(manu_market)}.")
-            return
-        own_manu  = manufacturer_of(reg, data, did)
-        team_manu = team_manufacturers(reg, data, bettor_team, did)
-        if own_manu and matched == own_manu:
-            await ctx.send("Can't bet on your own manufacturer. 🚫")
-            return
-        if matched in team_manu:
-            await ctx.send("Can't bet on a teammate's manufacturer. 🚫")
-            return
-        prob = manu_market[matched]["prob"]
-        bet_record.update(type="manufacturer", target=matched, odds=manu_market[matched]["american"])
-
-    elif bet_type in ("leader_ou", "cautions_ou", "lead_changes_ou"):
-        side = pick.strip().lower()
-        if side not in ("over", "under"):
-            await ctx.send("For O/U props, pick must be `over` or `under`.")
-            return
-        prop = next((p for p in board.get("props", []) if p["id"] == bet_type), None)
-        if not prop:
-            await ctx.send("That prop isn't on the board this week.")
-            return
-        if bet_type == "leader_ou":
-            leader_id   = str(next((d.get("discord_id", "") for d in reg.get("drivers", [])
-                                     if d.get("name") == prop.get("driver")), ""))
-            leader_team = team_of(reg, leader_id) if leader_id else None
-            if leader_id == did:
-                await ctx.send("Can't bet on your own finishing position. 🚫")
-                return
-            if bettor_team and leader_team and bettor_team == leader_team:
-                await ctx.send("Can't bet on a teammate's finishing position. 🚫")
-                return
-        bet_record.update(type=bet_type, side=side, line=prop["line"], odds=prop["odds"])
+@bot.hybrid_command(name="slip", aliases=["balance"], description="Your Dale's Book slip and season standing")
+async def slip_cmd(ctx):
+    did = str(ctx.author.id)
+    name, _ = book_identity(did, ctx.author.display_name)
+    if ctx.interaction:
+        await ctx.interaction.response.send_message(embed=book_home_embed(did, name), view=BookSlip(did), ephemeral=True)
     else:
-        await ctx.send("Unknown bet type.")
-        return
-
-    # Stake cap — the harder the pick, the more you're allowed to risk.
-    # Manufacturer always caps at $5 regardless of Power Play.
-    if bet_type == "manufacturer":
-        cap = MANUFACTURER_MAX_STAKE
-    else:
-        cap = stake_cap_for_prob(prob)
-        if double_down:
-            cap = max(cap, 20)
-
-    if amount < MIN_STAKE or amount > cap:
-        await ctx.send(f"That pick's cap is **${cap}** this week (min ${MIN_STAKE}). Try an amount in that range.")
-        return
-
-    ensure_balance(data, did)
-    if econ["balances"][did] < amount:
-        await ctx.send(f"Not enough Dale Dollars — you've got ${econ['balances'][did]}, this bet needs ${amount}.")
-        return
-
-    bet_record["stake"] = amount
-    econ["balances"][did] -= amount
-    if double_down:
-        dd_used.setdefault(did, []).append(race_num)
-    data.setdefault("bets", {}).setdefault(str(race_num), []).append(bet_record)
-    save_data(data)
-
-    label = bet_record.get("target") or f"{bet_record['side']} {bet_record.get('line','')}"
-    await ctx.send(
-        f"✅ Bet placed: **${amount}** on **{label}** at **{bet_record['odds']}**"
-        f"{' 🔥 (Power Play)' if double_down else ''}. Balance: ${econ['balances'][did]}."
-    )
+        await ctx.send(embed=book_home_embed(did, name))
 
 
-@bot.hybrid_command(name="balance", description="Check your Dale Dollars balance")
-async def balance_cmd(ctx):
-    data = load_data()
-    did  = str(ctx.author.id)
-    bal  = ensure_balance(data, did)
-    save_data(data)
-    board = data.get("odds_board") or {}
-    open_bets = [b for b in data.get("bets", {}).get(str(board.get("race_number")), [])
-                 if b.get("discord_id") == did and not b.get("settled")]
-    embed = discord.Embed(title="💵 Your Dale Dollars", color=0x2ECC71)
-    embed.add_field(name="Balance", value=f"${bal}", inline=True)
-    races = races_bet_on(data, did)
-    elig  = "✅ Eligible" if races >= MIN_RACES_FOR_PRIZE else f"{races}/{MIN_RACES_FOR_PRIZE} races"
-    embed.add_field(name="Season prize eligibility", value=elig, inline=True)
-    if open_bets:
-        lines = [f"${b['stake']} {b['type']} — {b.get('target') or (b.get('side','')+' '+str(b.get('line','')))} @ {b['odds']}"
-                 for b in open_bets]
-        embed.add_field(name="Open bets this week", value="\n".join(lines), inline=False)
-    await ctx.send(embed=embed)
-
-
-@bot.hybrid_command(name="moneyboard", description="Season-long Dale Dollars leaderboard")
+@bot.hybrid_command(name="moneyboard", description="Dale's Book season leaderboard")
 async def moneyboard_cmd(ctx):
-    data = load_data()
-    bal  = data.get("economy", {}).get("balances", {})
-    reg  = load_reg()
-    id_to_name = {str(d.get("discord_id")): d.get("name") for d in reg.get("drivers", [])}
-    if not bal:
-        await ctx.send("Nobody's placed a bet yet. Type `/odds` to see this week's board.")
+    lb = book_leaderboard()
+    if not lb:
+        await ctx.send("No settled weeks yet. First board's live, go get on it. 🎰")
         return
-
-    ranked = sorted(bal.items(), key=lambda kv: kv[1], reverse=True)
-    eligible, ineligible = [], []
-    for did, amt in ranked:
-        races = races_bet_on(data, did)
-        (eligible if races >= MIN_RACES_FOR_PRIZE else ineligible).append((did, amt, races))
-
-    lines = [f"**{i+1}.** {id_to_name.get(did, f'<@{did}>')} — ${amt}"
-             for i, (did, amt, _races) in enumerate(eligible[:15])]
-    embed = discord.Embed(
-        title="🏆 Dale's Book — Season Money Board",
-        description="\n".join(lines) or
-                     f"Nobody's eligible yet — place bets in {MIN_RACES_FOR_PRIZE}+ races to qualify.",
-        color=0xFFD700,
-    )
-    if ineligible:
-        watch = sorted(ineligible, key=lambda t: -t[1])[:5]
-        watch_lines = [f"{id_to_name.get(did, f'<@{did}>')} — ${amt} ({races}/{MIN_RACES_FOR_PRIZE} races)"
-                       for did, amt, races in watch]
-        embed.add_field(name=f"Not yet eligible (< {MIN_RACES_FOR_PRIZE} races bet)",
-                        value="\n".join(watch_lines), inline=False)
-    embed.set_footer(text=f"Top bankroll among drivers who've bet in {MIN_RACES_FOR_PRIZE}+ races "
-                          f"wins free entry to the next series.")
-    await ctx.send(embed=embed)
+    lines = []
+    rank = 0
+    for r in lb:
+        if r["did"] == DALE_BOOK_ID:
+            lines.append(f"🤖 {r['name']} {money(r['profit'])} · {r['weeks']}wk (house, not eligible)")
+            continue
+        rank += 1
+        lines.append(f"**{rank}.** {r['name']} {money(r['profit'])} · {r['weeks']}wk"
+                     + ("" if r["weeks"] >= BOOK_MIN_WEEKS else " _(needs " + str(BOOK_MIN_WEEKS - r["weeks"]) + " more wk)_"))
+    e = discord.Embed(title="💰 Dale's Book · Season leaderboard", description="\n".join(lines[:25]), color=0x2ECC71)
+    e.set_footer(text=f"Season profit from ${BOOK_BUDGET}/week. Leader with {BOOK_MIN_WEEKS}+ weeks wins free entry next series.")
+    await ctx.send(embed=e)
 
 
-@bot.hybrid_command(name="forcesettle", description="Manually settle a race's bets (admin)")
-@is_owner()
-async def forcesettle_cmd(ctx, race_number: int):
-    data = load_data()
-    reg  = load_reg()
-    changes = grade_and_settle_race(data, reg, race_number)
-    save_data(data)
-    if not changes:
-        await ctx.send(f"Nothing to settle for Race {race_number} — either no bets or no results posted yet.")
-        return
-    voided = sum(1 for c in changes if c[3] == "void")
-    msg = f"✅ Settled {len(changes)} bet(s) for Race {race_number}."
-    if voided:
-        msg += f" ({voided} voided/refunded — insufficient data to grade.)"
-    await ctx.send(msg)
+@bot.hybrid_command(name="bookadmin", description="Dale's Book controls (admin)")
+@is_admin()
+@discord.app_commands.describe(action="What to do", race="Race number (defaults to the current week)")
+@discord.app_commands.choices(action=[
+    discord.app_commands.Choice(name="Re-price and repost the board", value="repost"),
+    discord.app_commands.Choice(name="Lock now", value="lock"),
+    discord.app_commands.Choice(name="Settle now", value="settle"),
+    discord.app_commands.Choice(name="Void the week (no profit/loss for anyone)", value="void"),
+    discord.app_commands.Choice(name="Status", value="status"),
+])
+async def bookadmin_cmd(ctx, action: str, race: int = 0):
+    n = race or book_current()[0] or (upcoming_race(now_et()) or (0,))[0]
+    async with _book_lock:
+        b = load_book()
+        week = b["weeks"].get(str(n))
+        if action == "repost":
+            await book_open_week(n, repost=True)
+            await ctx.send(f"✅ Race {n} board re-priced and posted.")
+        elif not week:
+            await ctx.send(f"No book for Race {n} yet.")
+        elif action == "lock":
+            week["status"] = "locked"
+            save_book(b)
+            await book_post_lock(n, week)
+            await ctx.send(f"🔒 Race {n} locked.")
+        elif action == "settle":
+            if week["status"] == "open":
+                week["status"] = "locked"
+                save_book(b)
+            done = book_settle(n)
+            if done:
+                await book_post_settled(n, done)
+                await ctx.send(f"✅ Race {n} settled.")
+            else:
+                await ctx.send(f"Race {n} results aren't on Railway yet (or it's already settled).")
+        elif action == "void":
+            for s in week.get("slips", {}).values():
+                for bet in s["bets"]:
+                    bet["result"], bet["paid"] = "void", bet["stake"]
+                s["profit"] = 0
+            week["status"] = "settled"
+            week["voided"] = True
+            save_book(b)
+            await ctx.send(f"↩️ Race {n} voided. Nobody wins or loses anything.")
+        else:
+            slips = {d: s for d, s in week.get("slips", {}).items() if s.get("bets") and d != DALE_BOOK_ID}
+            await ctx.send(f"Race {n}: **{week['status']}** · {len(slips)} players · ${sum(book_spent(s) for s in slips.values())} staked · "
+                           f"priced {week['board'].get('priced_at', '?')[:16]} UTC · locks {book_lock_dt(n).strftime('%a %-I:%M %p')} ET")
 
 
 @bot.hybrid_command(name="help", description="List all Ask Dale commands")
@@ -6267,10 +6963,9 @@ async def help_cmd(ctx):
         inline=False)
     embed.add_field(
         name="🎰  Dale's Book (for fun — no real money)",
-        value="`/odds` — this week's board (winner, top5, top10, manufacturer, props)\n"
-              "`/wager` — place a pick, amount capped by how likely it is\n"
-              "`/balance` — your Dale Dollars\n"
-              "`/moneyboard` — season leaderboard",
+        value="`/book` — open your slip: winner, top 5/10, matchups, props, Dale's Parlay\n"
+              "`/odds` — this week's board · `/slip` — your bets and season standing\n"
+              "`/moneyboard` — season leaderboard · fresh $100 every week, opens Tuesday 9 AM ET",
         inline=False)
     embed.set_footer(text="QSR High Horsepower Series — Season 1")
     await ctx.send(embed=embed)
@@ -6815,113 +7510,21 @@ def post_registration():
 
 @sync_app.route("/sync/betting", methods=["GET"])
 def get_betting():
-    """Read-only view for the desktop app's Sportsbook tab — just the three
-    keys it needs instead of the whole data.json."""
+    """Dale's Book runs itself from book.json now. Read-only summary."""
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
-    data = load_data()
-    return jsonify({
-        "economy":     data.get("economy", {"balances": {}, "history": {}, "double_down_used": {}}),
-        "bets":        data.get("bets", {}),
-        "odds_board":  data.get("odds_board", {}),
-        "race_number": data.get("race_number", 1),
-    }), 200
+    n, week = book_current()
+    return jsonify({"moved": "Dale's Book v2 runs itself on Discord (book.json). Admin: /bookadmin.",
+                    "race": n, "status": (week or {}).get("status"),
+                    "leaderboard": book_leaderboard()[:25],
+                    "economy": {"balances": {}, "history": {}}, "bets": {}, "odds_board": {}}), 200
 
 
 @sync_app.route("/sync/betting/action", methods=["POST"])
 def post_betting_action():
-    """Admin control actions for Dale's Book, called from the desktop app's
-    Sportsbook tab. Deliberately NOT a whole-file /sync/data push: balances
-    and open bets change continuously from live /wager calls on Discord, so
-    a push built from a possibly-stale local snapshot could silently
-    clobber a bet placed seconds earlier. Every action here reads the
-    CURRENT server-side data.json fresh, applies one targeted change, and
-    saves — the same pattern the bot's own commands use.
-
-    Body: {"action": "...", ...action-specific fields}
-      adjust_balance  {discord_id, delta, reason}
-      void_bet        {race_number, index}    — refunds stake, marks voided
-      set_window      {open: true|false}
-      settle          {race_number?}          — defaults to the open board's race
-      rebuild_board   {}                      — regenerates data['odds_board']
-      reset_economy   {}                      — every balance back to STARTING_BALANCE
-    """
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
-    try:
-        payload = request.get_json(force=True) or {}
-        action  = payload.get("action")
-        data    = load_data()
-        reg     = load_reg()
-
-        if action == "adjust_balance":
-            did    = str(payload.get("discord_id", "")).strip()
-            delta  = int(payload.get("delta", 0))
-            reason = payload.get("reason") or "Admin adjustment"
-            if not did:
-                return jsonify({"error": "discord_id required"}), 400
-            ensure_balance(data, did)
-            data["economy"]["balances"][did] += delta
-            record_ledger(data, did, data.get("race_number", 1), delta, reason)
-            save_data(data)
-            return jsonify({"status": "ok", "balance": data["economy"]["balances"][did]}), 200
-
-        elif action == "void_bet":
-            race_key = str(payload.get("race_number", ""))
-            idx      = payload.get("index")
-            bets     = data.get("bets", {}).get(race_key, [])
-            if idx is None or not isinstance(idx, int) or not (0 <= idx < len(bets)):
-                return jsonify({"error": "bet not found"}), 404
-            bet = bets[idx]
-            if bet.get("settled"):
-                return jsonify({"error": "already settled, can't void"}), 400
-            did = bet["discord_id"]
-            ensure_balance(data, did)
-            data["economy"]["balances"][did] += bet["stake"]
-            record_ledger(data, did, int(race_key) if race_key.isdigit() else 0,
-                           bet["stake"], "Bet voided by admin (refund)")
-            bet["settled"] = True
-            bet["won"]     = None
-            bet["voided"]  = True
-            save_data(data)
-            return jsonify({"status": "ok"}), 200
-
-        elif action == "set_window":
-            board = data.get("odds_board")
-            if not board:
-                return jsonify({"error": "no board posted yet"}), 400
-            board["open"] = bool(payload.get("open", False))
-            save_data(data)
-            return jsonify({"status": "ok", "open": board["open"]}), 200
-
-        elif action == "settle":
-            race_num = payload.get("race_number") or (data.get("odds_board") or {}).get("race_number")
-            if not race_num:
-                return jsonify({"error": "no race to settle"}), 400
-            changes = grade_and_settle_race(data, reg, int(race_num))
-            save_data(data)
-            return jsonify({"status": "ok", "settled": len(changes)}), 200
-
-        elif action == "rebuild_board":
-            board, problems = build_odds_board(data, reg)
-            if problems:
-                return jsonify({"error": "Board failed validation", "problems": problems}), 400
-            save_data(data)
-            return jsonify({"status": "ok", "board": board}), 200
-
-        elif action == "reset_economy":
-            econ = data.setdefault("economy", {"balances": {}, "history": {}, "double_down_used": {}})
-            for did in list(econ.get("balances", {}).keys()):
-                econ["balances"][did] = STARTING_BALANCE
-            econ["double_down_used"] = {}
-            save_data(data)
-            return jsonify({"status": "ok"}), 200
-
-        else:
-            return jsonify({"error": f"unknown action '{action}'"}), 400
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "Dale's Book is fully automated now. Use /bookadmin in Discord."}), 410
 
 
 def run_sync_server():
