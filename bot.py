@@ -86,6 +86,32 @@ DATA_FILE = os.path.join(_DATA_DIR, "data.json")
 REG_FILE  = os.path.join(_DATA_DIR, "registration.json")
 
 # ─────────────────────────────────────────────────────────────────
+#  QSR ALL-TIME HISTORY — every series QSR has ever run
+#  qsr_history.json ships with the bot (past series from Sim Racer Hub);
+#  Race Control can push a newer copy (archived seasons) to the volume.
+#  The live season is added on top from data.json every time.
+# ─────────────────────────────────────────────────────────────────
+import qsr_history as QH
+HISTORY_FILE = os.path.join(_DATA_DIR, "qsr_history.json")
+HISTORY_BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qsr_history.json")
+
+def load_history() -> dict:
+    """Volume copy if Race Control pushed one, else the copy in the repo."""
+    for p in (HISTORY_FILE, HISTORY_BUNDLED):
+        if os.path.exists(p):
+            h = QH.load(p)
+            if h.get("series"):
+                return h
+    return {"version": 1, "aliases": {}, "series": []}
+
+def history_context(question: str, user_context: str = "") -> str:
+    try:
+        return QH.dale_context(load_history(), load_data(), question, "")
+    except Exception as e:
+        print(f"⚠️ history context failed: {e}")
+        return ""
+
+# ─────────────────────────────────────────────────────────────────
 #  REGISTRATION DATA HELPERS
 # ─────────────────────────────────────────────────────────────────
 
@@ -1911,6 +1937,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
         live_context += ("\n\nLEAGUE ROSTER: not available right now. Do not name "
                          "any QSR driver — say you don't have it in front of you.")
 
+    live_context += history_context(question)
     system_prompt = QSR_KNOWLEDGE + live_context + user_context + mood_context()
     messages = []
     if history:
@@ -3064,6 +3091,60 @@ async def standings(ctx):
         lines.append(f"{icon} **{driver}** — {info['points']} pts{win_str}")
     embed.description = "\n".join(lines)
     embed.set_footer(text=f"Through Race {data.get('race_number',1)-1} | Updated after each race by Race Control Bot")
+    await ctx.send(embed=embed)
+
+
+ALLTIME_STATS = {
+    "wins": ("wins", "Wins"), "starts": ("starts", "Starts"), "poles": ("poles", "Poles"),
+    "top5": ("top5", "Top 5s"), "top5s": ("top5", "Top 5s"), "top10": ("top10", "Top 10s"),
+    "top10s": ("top10", "Top 10s"), "avg": ("avg_finish", "Best Avg Finish (20+ starts)"),
+    "finish": ("avg_finish", "Best Avg Finish (20+ starts)"), "series": ("series", "Most Series Raced"),
+}
+
+@bot.hybrid_command(name="alltime", description="QSR all-time record book: wins, starts, poles, top 5s, avg finish")
+@has_arca()
+async def alltime_cmd(ctx, stat: str = "wins"):
+    key, label = ALLTIME_STATS.get(stat.lower().strip(), ALLTIME_STATS["wins"])
+    hist, data = load_history(), load_data()
+    cs = QH.careers(hist, data)
+    if not cs:
+        await ctx.send("History books are empty right now, son.")
+        return
+    rows = QH.leaders(cs, key, 15, 20 if key == "avg_finish" else 0)
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    field = QH.STATS[key][0]
+    lines = []
+    for i, c in enumerate(rows, 1):
+        t = c["totals"]
+        v = t[field]
+        extra = f" · {t['starts']} starts" if key != "starts" else f" · {t['wins']} wins"
+        lines.append(f"{medals.get(i, f'`{i:>2}.`')} **{c['name']}** — {v}{extra}")
+    sm = QH.summary(hist, data)
+    embed = discord.Embed(title=f"📚 QSR All-Time — {label}", description="\n".join(lines), color=0xE8272A)
+    embed.set_footer(text=f"{sm['total_races']} races across {len(sm['series'])} series · !alltime wins|starts|poles|top5|top10|avg|series")
+    await ctx.send(embed=embed)
+
+@bot.hybrid_command(name="legacy", description="A driver's all-time QSR career across every series QSR has run")
+@has_arca()
+async def legacy_cmd(ctx, *, driver: str = ""):
+    hist, data = load_history(), load_data()
+    cs = QH.careers(hist, data)
+    who = driver.strip() or ctx.author.display_name
+    c = QH.find(cs, who)
+    if not c:
+        await ctx.send(f"Can't find **{who}** in the QSR history books. Try their full iRacing name, like `!legacy Daniel Mulnix`.")
+        return
+    t = c["totals"]
+    embed = discord.Embed(title=f"🏁 {c['name']} — QSR Career", color=0xE8272A)
+    ties = sum(1 for o in cs.values() if o["totals"]["wins"] == t["wins"]) > 1
+    embed.add_field(name="Starts", value=str(t["starts"]))
+    embed.add_field(name="Wins", value=f"{t['wins']}" + ((f" (T-{QH.rank_of(cs, c)} all-time)" if ties else f" (#{QH.rank_of(cs, c)} all-time)") if t["wins"] else ""))
+    embed.add_field(name="Poles", value=str(t["poles"]))
+    embed.add_field(name="Top 5s", value=str(t["top5"]))
+    embed.add_field(name="Top 10s", value=f"{t['top10']}{'+' if t['top10_partial'] else ''}")
+    embed.add_field(name="Avg Finish", value=str(t["avg_finish"] if t["avg_finish"] is not None else "-"))
+    embed.add_field(name="By series", value="\n".join("• " + QH.series_line(x) for x in c["lines"])[:1020], inline=False)
+    embed.set_footer(text="QSR all-time history · Sim Racer Hub records + the current season")
     await ctx.send(embed=embed)
 
 @bot.hybrid_command(name="schedule", description="Season race schedule")
@@ -5850,6 +5931,12 @@ async def help_cmd(ctx):
               "`/numbers` — which car numbers are open",
         inline=False)
     embed.add_field(
+        name="📚  QSR History",
+        value="`/alltime [wins|starts|poles|top5|top10|avg|series]` — all-time record book, every QSR series\n"
+              "`/legacy [Name]` — a driver's whole QSR career, series by series\n"
+              "…or just `/ask` Dale about any stat from any series",
+        inline=False)
+    embed.add_field(
         name="👤  Your Profile",
         value="`/mystats` — your registration, number and team\n"
               "`/mynumber` — change your car number\n"
@@ -6275,6 +6362,33 @@ def post_data():
         return jsonify({"status": "ok", "forced": force, "data": merged}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@sync_app.route("/sync/history", methods=["GET"])
+def get_history():
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify(load_history()), 200
+
+@sync_app.route("/sync/history", methods=["POST"])
+def post_history():
+    """Race Control pushes qsr_history.json after archiving a season.
+    Refuses anything with fewer series than the copy already here."""
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    incoming = request.get_json(silent=True) or {}
+    series = incoming.get("series")
+    if not isinstance(series, list) or not series:
+        return jsonify({"error": "no series in payload"}), 400
+    current = load_history()
+    if len(series) < len(current.get("series", [])):
+        log_sync("history_blocked", {"incoming": len(series), "current": len(current.get("series", []))})
+        return jsonify({"error": f"blocked: would drop series ({len(series)} < {len(current.get('series', []))})"}), 409
+    tmp = HISTORY_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(incoming, f, indent=1)
+    os.replace(tmp, HISTORY_FILE)
+    log_sync("history_push", {"series": len(series)})
+    return jsonify({"ok": True, "series": len(series)}), 200
 
 @sync_app.route("/sync/registration", methods=["GET"])
 def get_registration():
