@@ -96,13 +96,21 @@ HISTORY_FILE = os.path.join(_DATA_DIR, "qsr_history.json")
 HISTORY_BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qsr_history.json")
 
 def load_history() -> dict:
-    """Volume copy if Race Control pushed one, else the copy in the repo."""
-    for p in (HISTORY_FILE, HISTORY_BUNDLED):
-        if os.path.exists(p):
-            h = QH.load(p)
-            if h.get("series"):
-                return h
-    return {"version": 1, "aliases": {}, "series": []}
+    """Volume copy if Race Control pushed one, else the copy in the repo.
+    An older volume copy without race-by-race data borrows it from the repo."""
+    loaded = [QH.load(p) for p in (HISTORY_FILE, HISTORY_BUNDLED) if os.path.exists(p)]
+    loaded = [h for h in loaded if h.get("series")]
+    if not loaded:
+        return {"version": 1, "aliases": {}, "series": []}
+    h = loaded[0]
+    if not h.get("races"):
+        donor = next((x for x in loaded[1:] if x.get("races")), None)
+        if donor:
+            h = dict(h)
+            for k in ("races", "race_coverage", "current_schedule"):
+                if k in donor:
+                    h[k] = donor[k]
+    return h
 
 def history_context(question: str, user_context: str = "") -> str:
     try:
@@ -3154,7 +3162,89 @@ async def legacy_cmd(ctx, *, driver: str = ""):
     embed.add_field(name="Top 10s", value=f"{t['top10']}{'+' if t['top10_partial'] else ''}")
     embed.add_field(name="Avg Finish", value=str(t["avg_finish"] if t["avg_finish"] is not None else "-"))
     embed.add_field(name="By series", value="\n".join("• " + QH.series_line(x) for x in c["lines"])[:1020], inline=False)
+    try:
+        d = QH.driver_races(hist, data, c["name"], cs) if hist.get("races") else None
+        if d and d.get("races"):
+            bits = []
+            if d["laps_led"]:
+                bits.append(f"**{d['laps_led']}** laps led in {d['races_led']} races")
+            if d["track_wins"]:
+                bits.append("Wins at: " + ", ".join(f"{k.replace(' Speedway', '').replace(' Motor', '').replace(' International', '')}"
+                                                    + (f" ×{v}" if v > 1 else "") for k, v in d["track_wins"].items()))
+            if d["best_comeback"]:
+                bits.append(f"Best comeback: {d['best_comeback']}")
+            _pl = lambda n, w: f"{n} straight {w}{'' if n == 1 else 's'}"
+            bits.append(f"Best runs: {_pl(d['best_win_streak'], 'win')} · {_pl(d['best_top5_streak'], 'top 5')} · {_pl(d['best_top10_streak'], 'top 10')}")
+            bits.append("Last 5: " + " · ".join(d["form"]))
+            embed.add_field(name="Race log", value="\n".join(bits)[:1020], inline=False)
+        ms = QH.milestones(cs, c["name"])
+        if ms:
+            embed.add_field(name="🎯 On the doorstep", value="\n".join(ms)[:1020], inline=False)
+    except Exception as e:
+        print(f"⚠️ legacy race log failed: {e}")
     embed.set_footer(text="QSR all-time history · Sim Racer Hub records + the current season")
+    await ctx.send(embed=embed)
+
+@bot.hybrid_command(name="records", description="QSR record book: track wins, streaks, comebacks, laps led, closest finishes")
+@has_arca()
+async def records_cmd(ctx):
+    hist, data = load_history(), load_data()
+    if not hist.get("races"):
+        await ctx.send("Race-by-race history isn't loaded yet.")
+        return
+    recs = QH.race_records(hist, data)
+    embed = discord.Embed(title="📖 QSR Record Book", color=0xE8272A,
+                          description="From every QSR race with full results on file")
+    for r in recs[:25]:
+        embed.add_field(name=r["record"], value=f"**{r['value']}**\n{r['detail']}"[:1020], inline=False)
+    embed.set_footer(text="!trackhistory [track] · !headtohead Driver vs Driver · !legacy [Name]")
+    await ctx.send(embed=embed)
+
+@bot.hybrid_command(name="trackhistory", description="Every QSR race at a track: past winners and who runs best there")
+@has_arca()
+async def trackhistory_cmd(ctx, *, track: str = ""):
+    hist, data = load_history(), load_data()
+    nx = QH.next_race(hist, data) if hist.get("races") else None
+    t = track.strip() or (nx or {}).get("track", "")
+    tb = QH.track_book(hist, data, t, n=8) if (t and hist.get("races")) else None
+    if not tb:
+        await ctx.send(f"No QSR results on file at **{QH.track_name(t) if t else 'that track'}** yet. First time there!")
+        return
+    title = f"🏁 {tb['track']} · {tb['races']} QSR race{'s' if tb['races'] != 1 else ''}"
+    embed = discord.Embed(title=title, color=0xE8272A)
+    if nx and nx.get("track") == tb["track"]:
+        embed.description = f"Next up: HHPS Race {nx['round']} · {nx.get('date', '')} · 8PM ET"
+    embed.add_field(name="Winners", value="\n".join(
+        f"{w['date'][:4]} {w['series']}: **{w['driver']}**" + (f" from P{w['start']}" if w.get("start") else "")
+        + (f" by {w['margin']:.3f}s" if w.get("margin") is not None else "") for w in tb["winners"])[:1020], inline=False)
+    embed.add_field(name="Best here", value="\n".join(
+        f"{x['driver']}: {x['wins']}W · {x['top5']} top 5s in {x['starts']} · avg {x['avg_finish']}" for x in tb["leaders"])[:1020], inline=False)
+    if tb["most_led"]:
+        embed.add_field(name="Most laps led", value=" · ".join(f"{x['driver']} {x['led']}" for x in tb["most_led"]), inline=False)
+    await ctx.send(embed=embed)
+
+@bot.hybrid_command(name="headtohead", description="All-time head to head: who finished ahead when two drivers raced each other")
+@has_arca()
+async def headtohead_cmd(ctx, *, matchup: str = ""):
+    import re as _re
+    parts = [p.strip() for p in _re.split(r"\s+vs\.?\s+|\s*,\s*", matchup.strip(), maxsplit=1, flags=_re.I) if p.strip()]
+    if len(parts) < 2:
+        await ctx.send("Usage: `!headtohead Alan Dobbs vs Daniel Mulnix`")
+        return
+    hist, data = load_history(), load_data()
+    h = QH.head_to_head(hist, data, parts[0], parts[1]) if hist.get("races") else None
+    if not h:
+        await ctx.send(f"Couldn't find both **{parts[0]}** and **{parts[1]}** in the history books.")
+        return
+    embed = discord.Embed(title=f"⚔️ {h['a']} vs {h['b']}", color=0xE8272A)
+    if not h["races"]:
+        embed.description = "Never been in the same race with results on file. Settle it on track."
+    else:
+        embed.add_field(name="Races together", value=str(h["races"]))
+        embed.add_field(name="Finished ahead", value=f"{h['a']} **{h['a_ahead']}** · {h['b']} **{h['b_ahead']}**", inline=False)
+        embed.add_field(name="Wins in those races", value=f"{h['a_wins']} - {h['b_wins']}")
+        embed.add_field(name="Avg finish", value=f"{h['a_avg']} vs {h['b_avg']}")
+        embed.add_field(name="Last meeting", value=h["last"], inline=False)
     await ctx.send(embed=embed)
 
 @bot.hybrid_command(name="schedule", description="Season race schedule")
@@ -5944,6 +6034,9 @@ async def help_cmd(ctx):
         name="📚  QSR History",
         value="`/alltime [wins|titles|starts|poles|top5|top10|avg|series]` — all-time record book, every QSR series\n"
               "`/legacy [Name]` — a driver's whole QSR career, series by series\n"
+              "`/records` — record book: track wins, streaks, comebacks, closest finishes\n"
+              "`/trackhistory [track]` — past winners at a track (default: next race)\n"
+              "`/headtohead Name vs Name` — all-time: who's come out ahead when they raced each other\n"
               "…or just `/ask` Dale about any stat from any series",
         inline=False)
     embed.add_field(
