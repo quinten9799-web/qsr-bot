@@ -70,13 +70,15 @@ def current_rows(data, label=None):
 
 
 def all_series(hist, data=None):
-    """Frozen series + the live season (unless it's already been archived)."""
+    """Frozen series + the live season (which replaces its own archived copy
+    while data.json still holds its races)."""
     out = [s for s in hist.get("series", [])]
     if data is not None:
         rows = current_rows(data)
         label = data.get("season_label") or "Season 1"
         cur_id = f"{CURRENT_ID}_{norm(label).replace(' ', '')}"
-        if rows and not any(s.get("id") == cur_id for s in out):
+        if rows:  # the live season always wins over an archived copy of itself
+            out = [s for s in out if s.get("id") != cur_id]
             out.append({"id": cur_id, "name": f"{CURRENT_NAME} {label}", "short": f"HHPS {label}",
                         "live": True, "rows": rows})
     return out
@@ -302,6 +304,11 @@ def talking_stats(cs, name):
 
 
 # ── archiving a finished QSR season ────────────────────────────────────
+def next_label(label):
+    m = re.match(r"^(.*?)(\d+)\s*$", str(label or "Season 1"))
+    return f"{m.group(1)}{int(m.group(2)) + 1}" if m else "Season 2"
+
+
 def archive_season(path, data, label=None, name=None):
     """Freeze the live season from data.json into qsr_history.json so it stays
     in the all-time record after standings are reset. Safe to call twice."""
