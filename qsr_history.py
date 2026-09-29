@@ -179,8 +179,35 @@ def careers(hist, data=None):
         t["win_pct"] = round(100 * t["wins"] / t["starts"]) if t["starts"] else 0
         t["top5_pct"] = round(100 * t["top5"] / t["starts"]) if t["starts"] else 0
         t["series_won_in"] = [x["series"] for x in L if x["wins"]]
+        c["titles"] = []
+        t["titles"] = 0
         c["totals"] = t
+    # championships + records from the record book
+    for ch in hist.get("champions") or []:
+        c = _match(out, ch.get("driver")) or _match(out, ch.get("listed_as"))
+        if c is None:  # a champion from a series with no Sim Racer Hub stats: still gets a career entry
+            k = norm(ch.get("driver"))
+            c = out.setdefault(k, {"key": k, "name": pretty_base(ch.get("driver")), "names": [ch.get("driver")], "lines": [],
+                                   "titles": [], "totals": {"series": 0, "starts": 0, "wins": 0, "top5": 0, "top10": 0,
+                                                            "top10_partial": False, "poles": 0, "avg_finish": None, "avg_start": None,
+                                                            "rating": None, "win_pct": 0, "top5_pct": 0, "series_won_in": [], "titles": 0}})
+        c["titles"].append(f"{ch.get('year')} {ch.get('series')}")
+        c["totals"]["titles"] = len(c["titles"])
+    for rec in hist.get("records") or []:
+        c = _match(out, rec.get("driver"))
+        if c is not None:
+            c.setdefault("records", []).append(f"{rec.get('record')}: {rec.get('value')} ({rec.get('year')})")
     return out
+
+
+def _match(cs, name):
+    if not name:
+        return None
+    q = norm(name)
+    for c in cs.values():
+        if q == c["key"] or q in {norm(n) for n in c["names"]} or base(q) == base(c["key"]):
+            return c
+    return None
 
 
 def find(cs, text):
@@ -218,7 +245,7 @@ def mentioned(cs, text, limit=4):
 
 STATS = {"wins": ("wins", True), "starts": ("starts", True), "poles": ("poles", True), "top5": ("top5", True),
          "top10": ("top10", True), "avg_finish": ("avg_finish", False), "rating": ("rating", True),
-         "win_pct": ("win_pct", True), "series": ("series", True)}
+         "win_pct": ("win_pct", True), "series": ("series", True), "titles": ("titles", True)}
 
 
 def leaders(cs, stat="wins", n=10, min_starts=0):
@@ -230,12 +257,15 @@ def leaders(cs, stat="wins", n=10, min_starts=0):
 
 def career_line(c):
     t = c["totals"]
-    parts = [f"{t['starts']} starts in {t['series']} series", f"{t['wins']} wins", f"{t['poles']} poles",
+    parts = ([f"{t['titles']} championship{'s' if t['titles'] != 1 else ''} ({', '.join(c.get('titles', []))})"] if t.get("titles") else []) + [
+             f"{t['starts']} starts in {t['series']} series", f"{t['wins']} wins", f"{t['poles']} poles",
              f"{t['top5']} top 5s", f"{t['top10']}{'+' if t['top10_partial'] else ''} top 10s"]
     if t["avg_finish"] is not None:
         parts.append(f"avg finish {t['avg_finish']}")
     if t["rating"] is not None:
         parts.append(f"avg SRH rating {t['rating']}")
+    for r in c.get("records") or []:
+        parts.append(f"record: {r}")
     return f"{c['name']}: " + ", ".join(parts)
 
 
@@ -271,6 +301,14 @@ def dale_context(hist, data, question="", asker=""):
         rows = leaders(cs, stat, n, min_starts)
         fmt = fmt or (lambda c: c["totals"][STATS[stat][0]])
         out.append(f"{title}: " + ", ".join(f"{i + 1}. {c['name']} {fmt(c)}" for i, c in enumerate(rows)))
+    champs = hist.get("champions") or []
+    if champs:
+        out.append("CHAMPIONS (QSR record book): " + "; ".join(f"{x.get('year')} {x.get('series')}: {pretty_base(x.get('driver'))}"
+                                                                    + (f" (known on Discord as {x['listed_as']})" if x.get("listed_as") else "") for x in champs))
+    board("MOST CHAMPIONSHIPS", "titles", 5)
+    recs = hist.get("records") or []
+    if recs:
+        out.append("RECORDS: " + "; ".join(f"{r.get('record')}: {r.get('value')} by {pretty_base(r.get('driver'))} ({r.get('year')})" for r in recs))
     board("ALL-TIME WINS", "wins", 10)
     board("ALL-TIME STARTS", "starts", 8)
     board("ALL-TIME POLES", "poles", 8)
@@ -300,6 +338,7 @@ def talking_stats(cs, name):
     t = c["totals"]
     wins_rank = rank_of(cs, c)
     return {"name": c["name"], "starts": t["starts"], "wins": t["wins"], "poles": t["poles"], "top5": t["top5"],
+            "titles": t.get("titles", 0), "title_list": c.get("titles", []),
             "series": t["series"], "avg_finish": t["avg_finish"], "wins_rank": wins_rank if t["wins"] else None}
 
 
@@ -309,7 +348,7 @@ def next_label(label):
     return f"{m.group(1)}{int(m.group(2)) + 1}" if m else "Season 2"
 
 
-def archive_season(path, data, label=None, name=None):
+def archive_season(path, data, label=None, name=None, crown=False):
     """Freeze the live season from data.json into qsr_history.json so it stays
     in the all-time record after standings are reset. Safe to call twice."""
     hist = load(path)
@@ -319,6 +358,14 @@ def archive_season(path, data, label=None, name=None):
     if not rows:
         return False, "No races in data.json to archive."
     hist["series"] = [s for s in hist.get("series", []) if s.get("id") != sid]
+    if crown:
+        st = data.get("standings") or {}
+        if st:
+            champ = max(st.items(), key=lambda kv: (kv[1].get("points", 0), kv[1].get("wins", 0)))[0]
+            title = f"{CURRENT_SHORT} {label}"
+            hist["champions"] = [c for c in hist.get("champions", []) if c.get("series") != title]
+            import datetime as _dt
+            hist["champions"].append({"year": _dt.date.today().year, "series": title, "driver": champ})
     hist["series"].append({"id": sid, "name": name or f"{CURRENT_NAME} {label}", "short": f"HHPS {label}",
                            "source": "Race Control archive", "rows": rows,
                            "drivers": len(rows), "total_starts": sum(r["starts"] for r in rows),

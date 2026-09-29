@@ -3877,5 +3877,71 @@
    "total_wins": 8,
    "source": "Sim Racer Hub series stats export, 2026-09-29"
   }
- ]
+ ],
+ "champions": [
+  {
+   "year": 2022,
+   "series": "iRacing Challenge",
+   "driver": "Carter Lins"
+  },
+  {
+   "year": 2023,
+   "series": "Miata Monday",
+   "driver": "Curtis Grant",
+   "listed_as": "C Grant"
+  },
+  {
+   "year": 2023,
+   "series": "GR86 Challenge",
+   "driver": "Jaylen L Hankamp",
+   "listed_as": "Jaylen H"
+  },
+  {
+   "year": 2023,
+   "series": "Next Gen",
+   "driver": "Carter Lins"
+  },
+  {
+   "year": 2023,
+   "series": "Route 66: American Road Tour",
+   "driver": "Jeremy O. Burns",
+   "listed_as": "Burnzy08"
+  },
+  {
+   "year": 2023,
+   "series": "Late Model Expedition Series",
+   "driver": "Jeremy O. Burns",
+   "listed_as": "Burnzy08"
+  },
+  {
+   "year": 2023,
+   "series": "Xfinity Challenge",
+   "driver": "Carter Lins"
+  },
+  {
+   "year": 2024,
+   "series": "Xfinity Series",
+   "driver": "Caleb Nelson"
+  },
+  {
+   "year": 2024,
+   "series": "Truck Series",
+   "driver": "Jesse Gordon2",
+   "listed_as": "Jesse Gordon"
+  },
+  {
+   "year": 2025,
+   "series": "Next Gen Series",
+   "driver": "Alan Dobbs"
+  }
+ ],
+ "records": [
+  {
+   "record": "Closest finish",
+   "value": "0.003s",
+   "driver": "Morgan Cook2",
+   "year": 2024
+  }
+ ],
+ "champions_source": "#qsr-record-book on Discord (QSR Championship Record Book)"
 }

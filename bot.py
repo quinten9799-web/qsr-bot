@@ -3099,6 +3099,7 @@ ALLTIME_STATS = {
     "top5": ("top5", "Top 5s"), "top5s": ("top5", "Top 5s"), "top10": ("top10", "Top 10s"),
     "top10s": ("top10", "Top 10s"), "avg": ("avg_finish", "Best Avg Finish (20+ starts)"),
     "finish": ("avg_finish", "Best Avg Finish (20+ starts)"), "series": ("series", "Most Series Raced"),
+    "titles": ("titles", "Championships"), "champions": ("titles", "Championships"), "championships": ("titles", "Championships"),
 }
 
 @bot.hybrid_command(name="alltime", description="QSR all-time record book: wins, starts, poles, top 5s, avg finish")
@@ -3111,6 +3112,8 @@ async def alltime_cmd(ctx, stat: str = "wins"):
         await ctx.send("History books are empty right now, son.")
         return
     rows = QH.leaders(cs, key, 15, 20 if key == "avg_finish" else 0)
+    if key == "titles":
+        rows = [c for c in rows if c["totals"].get("titles")]
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     field = QH.STATS[key][0]
     lines = []
@@ -3121,7 +3124,10 @@ async def alltime_cmd(ctx, stat: str = "wins"):
         lines.append(f"{medals.get(i, f'`{i:>2}.`')} **{c['name']}** — {v}{extra}")
     sm = QH.summary(hist, data)
     embed = discord.Embed(title=f"📚 QSR All-Time — {label}", description="\n".join(lines), color=0xE8272A)
-    embed.set_footer(text=f"{sm['total_races']} races across {len(sm['series'])} series · !alltime wins|starts|poles|top5|top10|avg|series")
+    if key == "titles":
+        champs = hist.get("champions") or []
+        embed.add_field(name="Every champion", value="\n".join(f"**{x.get('year')}** {x.get('series')} — {QH.pretty_base(x.get('driver'))}" for x in champs)[:1020] or "—", inline=False)
+    embed.set_footer(text=f"{sm['total_races']} races across {len(sm['series'])} series · !alltime wins|titles|starts|poles|top5|top10|avg|series")
     await ctx.send(embed=embed)
 
 @bot.hybrid_command(name="legacy", description="A driver's all-time QSR career across every series QSR has run")
@@ -3136,6 +3142,10 @@ async def legacy_cmd(ctx, *, driver: str = ""):
         return
     t = c["totals"]
     embed = discord.Embed(title=f"🏁 {c['name']} — QSR Career", color=0xE8272A)
+    if c.get("titles"):
+        embed.description = "🏆 " + " · ".join(c["titles"])
+    if c.get("records"):
+        embed.description = (embed.description + "\n" if embed.description else "") + "📌 " + " · ".join(c["records"])
     ties = sum(1 for o in cs.values() if o["totals"]["wins"] == t["wins"]) > 1
     embed.add_field(name="Starts", value=str(t["starts"]))
     embed.add_field(name="Wins", value=f"{t['wins']}" + ((f" (T-{QH.rank_of(cs, c)} all-time)" if ties else f" (#{QH.rank_of(cs, c)} all-time)") if t["wins"] else ""))
@@ -5932,7 +5942,7 @@ async def help_cmd(ctx):
         inline=False)
     embed.add_field(
         name="📚  QSR History",
-        value="`/alltime [wins|starts|poles|top5|top10|avg|series]` — all-time record book, every QSR series\n"
+        value="`/alltime [wins|titles|starts|poles|top5|top10|avg|series]` — all-time record book, every QSR series\n"
               "`/legacy [Name]` — a driver's whole QSR career, series by series\n"
               "…or just `/ask` Dale about any stat from any series",
         inline=False)
