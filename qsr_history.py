@@ -28,6 +28,11 @@ Championship math (drops applied exactly like the official standings):
   counted_total(scores, races_done)        -> (counted, raw, dropped)
   title_table(data, live=None)             -> who can still win, ceilings, magic number, needs per race
   title_lines(tt, n)                       -> short storyline lines for posts / ticker / Dale
+
+QSR Rating (multiplayer Elo over every QSR race ever):
+  ratings(hist, data)          -> {key: {name, rating, peak, starts, prov, form, hist}}
+  rating_board(rt, names, n)   -> leaderboard (names = limit to a field)
+  rating_find(rt, cs, text)    -> one driver
 """
 import functools
 import json
@@ -1513,4 +1518,115 @@ def title_context(data):
                      f"next result counts above {r['bar']})")
     lines.append(f"  Magic number for {rows[0]['name']}: {tt['magic']} (vs {tt['rival']}). {tt['alive']} drivers still alive.")
     lines += ["  " + x for x in title_lines(tt, 4)]
+    return "\n".join(lines)
+
+
+# ── QSR Rating ────────────────────────────────────────────────────
+# One number per driver across every QSR series ever run. Multiplayer Elo:
+# each race is scored as head-to-heads against everyone else in the field
+# (beat them = 1, lost to them = 0), weighted by how strong they were.
+# Beating a 1700 driver is worth more than beating a 1300 one.
+RATING_START = 1500
+RATING_K = 32            # per-race swing once established
+RATING_K_PROV = 56       # faster settling for a driver's first races
+RATING_PROV_STARTS = 8   # provisional ("?") until this many rated starts
+RATING_MIN_FIELD = 4     # tiny early lobbies don't move ratings
+
+
+def _rating_run(races, nm):
+    R, out = {}, {}
+    for r in races:
+        res = [x for x in r.get("results") or [] if isinstance(x.get("fin"), (int, float))]
+        if len(res) < RATING_MIN_FIELD:
+            continue
+        keys, seen = [], set()
+        for x in sorted(res, key=lambda x: x["fin"]):
+            k = nm.key(x["name"])
+            if k in seen:
+                continue
+            seen.add(k)
+            keys.append((k, x["fin"]))
+        n = len(keys)
+        if n < RATING_MIN_FIELD:
+            continue
+        before = {k: R.get(k, RATING_START) for k, _ in keys}
+        for i, (k, fi) in enumerate(keys):
+            ri, s = before[k], 0.0
+            for j, (o, fo) in enumerate(keys):
+                if o == k:
+                    continue
+                e = 1.0 / (1.0 + 10 ** ((before[o] - ri) / 400.0))
+                act = 1.0 if fi < fo else (0.5 if fi == fo else 0.0)
+                s += act - e
+            d = out.setdefault(k, {"key": k, "starts": 0, "hist": [], "peak": RATING_START, "peak_at": ""})
+            kf = RATING_K_PROV if d["starts"] < RATING_PROV_STARTS else RATING_K
+            delta = kf * s / (n - 1) * min(1.0, 0.5 + n / 40.0)   # bigger fields swing a bit more
+            R[k] = ri + delta
+            d["starts"] += 1
+            d["hist"].append({"date": r.get("date") or "", "series": r.get("series"), "round": r.get("round"),
+                              "track": r.get("track") or "", "fin": fi, "field": n,
+                              "rating": round(R[k]), "delta": round(delta, 1)})
+            if R[k] > d["peak"] and d["starts"] >= RATING_PROV_STARTS:
+                d["peak"], d["peak_at"] = R[k], f"{r.get('date') or ''} {track_short(r.get('track') or '')}".strip()
+    for k, d in out.items():
+        d["rating"] = round(R[k])
+        d["peak"] = round(d["peak"])
+        d["prov"] = d["starts"] < RATING_PROV_STARTS
+        d["last"] = d["hist"][-1] if d["hist"] else None
+        d["form"] = round(sum(h["delta"] for h in d["hist"][-5:]), 1)
+        d["name"] = nm.name(k)
+    return out
+
+
+def ratings(hist, data=None, cs=None):
+    """{career key: {name, rating, peak, peak_at, starts, prov, last, form, hist}}"""
+    cs, nm, races, _ = _ctx(hist, data, cs)
+    return _rating_run(races, nm)
+
+
+def rating_board(rt, names=None, n=15, include_prov=False):
+    """Sorted rows. names: only these drivers (e.g. this season's field)."""
+    keep = None
+    if names is not None:
+        keep = {norm(x) for x in names} | {base(norm(x)) for x in names}
+    rows = []
+    for d in rt.values():
+        if not include_prov and d["prov"]:
+            continue
+        if keep is not None and d["key"] not in keep and base(d["key"]) not in keep and norm(d["name"]) not in keep:
+            continue
+        rows.append(dict(d))
+    rows.sort(key=lambda d: -d["rating"])
+    for i, d in enumerate(rows):
+        d["rank"] = i + 1
+    return rows[:n] if n else rows
+
+
+def rating_find(rt, cs, text):
+    c = find(cs, text)
+    if c and c["key"] in rt:
+        return rt[c["key"]]
+    q = norm(text)
+    for d in rt.values():
+        if q in (d["key"], norm(d["name"]), base(d["key"])):
+            return d
+    return None
+
+
+def rating_context(hist, data, question=""):
+    """Compact block for Dale when someone asks about ratings / who's best."""
+    rt = ratings(hist, data)
+    cur = list((data or {}).get("standings", {}).keys())
+    field = rating_board(rt, cur, 10)
+    allt = rating_board(rt, None, 10)
+    lines = ["QSR RATING (Elo across every QSR series ever run; 1500 = average newcomer; '?' = provisional, under "
+             f"{RATING_PROV_STARTS} rated starts):",
+             "  Current field: " + "; ".join(f"{d['rank']}. {d['name']} {d['rating']}" for d in field),
+             "  Everyone ever (current rating): " + "; ".join(f"{d['rank']}. {d['name']} {d['rating']} (peak {d['peak']})" for d in allt)]
+    cs = careers(hist, data)
+    for c in mentioned(cs, question, 3):
+        d = rt.get(c["key"])
+        if d:
+            lines.append(f"  {d['name']}: {d['rating']}{'?' if d['prov'] else ''}, peak {d['peak']} ({d['peak_at']}), "
+                         f"{d['starts']} rated starts, last 5 races {d['form']:+}")
     return "\n".join(lines)

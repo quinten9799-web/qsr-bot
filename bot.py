@@ -123,12 +123,21 @@ def load_history() -> dict:
 TITLE_WORDS = ("champ", "title", "points", "standings", "clinch", "magic", "elimin", "scenario", "need",
                "chance", "math", "lead", "catch", "win it", "drop", "behind", "gap")
 
+RATING_WORDS = ("rating", "rated", "elo", "best driver", "goat", "better than", "ranked", "fastest driver", "who's best", "whos best")
+
 def history_context(question: str, user_context: str = "") -> str:
     try:
         out = QH.dale_context(load_history(), load_data(), question, "")
     except Exception as e:
         print(f"⚠️ history context failed: {e}")
         out = ""
+    if any(w in (question or "").lower() for w in RATING_WORDS):
+        try:
+            rc = QH.rating_context(load_history(), load_data(), question)
+            if rc:
+                out = (out + "\n\n" if out else "") + rc
+        except Exception as e:
+            print(f"⚠️ rating context failed: {e}")
     if any(w in (question or "").lower() for w in TITLE_WORDS):
         try:
             tc = QH.title_context(load_data())
@@ -7187,6 +7196,57 @@ async def championship_cmd(ctx, *, driver: str = ""):
     await ctx.send(embed=e)
 
 
+def rating_embed(driver: str = "") -> discord.Embed:
+    hist, data = load_history(), load_data()
+    rt = QH.ratings(hist, data)
+    field = list((data.get("standings") or {}).keys())
+    if driver:
+        cs = QH.careers(hist, data)
+        d = QH.rating_find(rt, cs, driver)
+        if not d:
+            return discord.Embed(description=f"No QSR Rating for **{driver}** yet. Needs a race with {QH.RATING_MIN_FIELD}+ cars.", color=0xE8272A)
+        everyone = QH.rating_board(rt, None, 0)
+        in_field = QH.rating_board(rt, field, 0)
+        r_all = next((x["rank"] for x in everyone if x["key"] == d["key"]), None)
+        r_fld = next((x["rank"] for x in in_field if x["key"] == d["key"]), None)
+        e = discord.Embed(title=f"📈 {d['name']} · QSR Rating {d['rating']}{'?' if d['prov'] else ''}", color=0xE8272A)
+        rank_bits = []
+        if r_fld:
+            rank_bits.append(f"**#{r_fld}** in the current field")
+        if r_all:
+            rank_bits.append(f"#{r_all} of {len(everyone)} all-time")
+        e.add_field(name="Rank", value=" · ".join(rank_bits) or "Provisional, not ranked yet", inline=False)
+        e.add_field(name="Peak", value=f"{d['peak']}" + (f" ({d['peak_at']})" if d['peak_at'] else ""), inline=True)
+        e.add_field(name="Rated starts", value=str(d["starts"]), inline=True)
+        e.add_field(name="Last 5 races", value=f"{d['form']:+}", inline=True)
+        recent = d["hist"][-5:]
+        if recent:
+            e.add_field(name="Recent", value="\n".join(
+                f"P{h['fin']}/{h['field']} {QH.track_short(h['track']) or h['series']} → {h['rating']} ({h['delta']:+})" for h in reversed(recent)), inline=False)
+        e.set_footer(text=f"Elo across every QSR series · 1500 = average newcomer · '?' = under {QH.RATING_PROV_STARTS} rated starts")
+        return e
+    rows = QH.rating_board(rt, field, 15)
+    lines = [f"`{d['rank']:>2}.` **{d['name']}** {d['rating']}  ({d['form']:+} last 5)" for d in rows]
+    e = discord.Embed(title="📈 QSR Rating · current field", description="\n".join(lines) or "—", color=0xE8272A)
+    top = QH.rating_board(rt, None, 5)
+    e.add_field(name="All-time top 5 (current rating)", value="\n".join(f"{d['rank']}. {d['name']} {d['rating']} · peak {d['peak']}" for d in top) or "—", inline=False)
+    e.set_footer(text=f"Elo across every QSR series ever run · {QH.RATING_PROV_STARTS}+ rated starts to rank · /rating <driver> for anyone")
+    return e
+
+
+@bot.hybrid_command(name="rating", aliases=["ratings", "elo"],
+                    description="QSR Rating: one number for every driver across every QSR series")
+@discord.app_commands.describe(driver="Driver name (blank = leaderboard)")
+async def rating_cmd(ctx, *, driver: str = ""):
+    try:
+        e = rating_embed(driver.strip())
+    except Exception as ex:
+        print(f"⚠️ /rating failed: {ex}")
+        await ctx.send("Ratings hit a snag. Try again in a minute.")
+        return
+    await ctx.send(embed=e)
+
+
 def cam_tag() -> str:
     """The broadcast's cockpit-cam tag. Race Control sends it with every data
     push; QSR_CAM_TAG on Railway is the backstop."""
@@ -7360,6 +7420,7 @@ async def help_cmd(ctx):
               "`/mynumber` — change your car number\n"
               "`/camlink` — your cockpit cam link for the broadcast (DM'd to you)\n"
               "`/championship [driver]` — title math: who's alive, magic number, what you need\n"
+              "`/rating [driver]` — QSR Rating: one number across every QSR series ever\n"
               "`/career <Name>` — race-by-race history for any driver\n"
               "`/statscard [Name]` — driver stats graphic",
         inline=False)
