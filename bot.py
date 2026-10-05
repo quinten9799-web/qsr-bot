@@ -2890,12 +2890,15 @@ RACE_SETUP_FALLBACK = {
 # One-time "New Tonight" lines in a race's noon announcement.
 NEW_FEATURES = {
     9: [
-        "📹 **Cockpit cams are live.** Type `/camlink` for your personal cam link, open it in Chrome on your "
-        "racing PC (or a phone on a mount), allow the webcam and leave the tab open. When you're on TV, your face "
-        "cam drops into the corner. Video only, no mic. Get it open before 8PM so the booth can run a cam check.",
-        "🧮 **Championship math.** `/championship` shows who's still alive, max points left, the leader's magic "
-        "number and what you need per race, drops included. `/championship <driver>` for anyone's breakdown, "
-        "or just ask Dale. It's on the broadcast too: live title picture as they run.",
+        "📹 **Cockpit cams.** `/camlink` gets your personal cam link. Open it in Chrome on your racing PC (or a "
+        "phone on a mount), allow the webcam, leave the tab open. On TV, your face cam drops into the corner. "
+        "Video only. Open it before 8PM for the cam check.",
+        "🧮 **Championship math.** `/championship` shows who's still alive, points left, the magic number and "
+        "what you need per race, drops included. Add a name for anyone's breakdown.",
+        "📈 **QSR Rating.** `/rating` ranks every driver across every QSR series ever run, one number. "
+        "Add a name for anyone's rating, peak and recent swings.",
+        "📺 **On the broadcast:** live title picture as they run, plus a ticker that calls wrecks, lead changes "
+        "and what a win would mean, as it happens.",
     ],
 }
 
@@ -3046,9 +3049,17 @@ async def race_announcement_scheduler():
         if ms:
             msg += "🎯 **On the Doorstep**\n" + "\n".join(f"• {m}" for m in ms) + "\n"
     feats = NEW_FEATURES.get(race_num)
-    if feats:
-        msg += "\n🆕 **New Tonight**\n" + "\n".join(f"• {x}" for x in feats) + "\n"
-    msg += f"\n{hype}"
+    feat_block = ("\n🆕 **New Tonight**\n" + "\n".join(f"• {x}" for x in feats) + "\n") if feats else ""
+    tail = f"\n{hype}"
+    # Discord caps a message at 2000 characters: shed the lowest-value lines first
+    if len(msg) + len(feat_block) + len(tail) > 2000 and "🎯 **On the Doorstep**" in msg:
+        msg = msg[:msg.index("🎯 **On the Doorstep**")]
+    if len(msg) + len(feat_block) + len(tail) > 2000 and "📜 **" in msg:
+        msg = msg[:msg.index("📜 **")]
+    msg += feat_block
+    if len(msg) + len(tail) > 2000:
+        msg = msg[:2000 - len(tail) - 1].rsplit("\n", 1)[0] + "\n"
+    msg += tail
 
     view = RSVPView()
     await channel.send(msg, view=view)
