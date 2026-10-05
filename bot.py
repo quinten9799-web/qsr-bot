@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import json
 import os
+import re
 import csv
 import io
 import shutil
@@ -2860,6 +2861,12 @@ def should_fire_weekday(task_name: str, weekday: int, hour: int, minute: int, no
         return False
     return True
 
+# Laps / stage lap when Race Control's Race Setup hasn't been pushed yet, so
+# the noon post never goes out without them (Race 8 did). Race Setup wins.
+RACE_SETUP_FALLBACK = {
+    9: {"laps": 125, "stage_lap": 40},   # Rockingham
+}
+
 # RACE_ANNOUNCEMENTS replaced — announcements now built dynamically
 # from race_config in data.json, set via the Race Setup table in qsr_app.py
 
@@ -2932,10 +2939,14 @@ async def race_announcement_scheduler():
         mark_fired("announcement", now)
         return
 
-    cfg = race_cfg.get(str(race_num), {})
+    cfg = dict(race_cfg.get(str(race_num), {}) or {})
+    fb = RACE_SETUP_FALLBACK.get(race_num, {})
+    if not cfg.get("laps") and fb.get("laps"):
+        cfg["laps"] = fb["laps"]
+    if not cfg.get("stage_lap") and fb.get("stage_lap"):
+        cfg["stage_lap"] = fb["stage_lap"]
     if not cfg:
         print(f"⚠️ No race_config for Race {race_num} — using SCHEDULE defaults")
-        cfg = {}
 
     channel = bot.get_channel(ANNOUNCEMENT_CHANNEL_ID)
     if not channel:
@@ -7087,6 +7098,56 @@ async def odds_cmd(ctx):
                    view=BookLauncher() if week["status"] == "open" else None)
 
 
+def cam_tag() -> str:
+    """The broadcast's cockpit-cam tag. Race Control sends it with every data
+    push; QSR_CAM_TAG on Railway is the backstop."""
+    tag = str(load_data().get("cam_tag") or os.getenv("QSR_CAM_TAG", "") or "").strip().lower()
+    return tag if re.fullmatch(r"[a-z0-9]{6}", tag) else ""
+
+
+def cam_push_link(tag: str, number) -> str:
+    """Must match cam_push_url() in Race Control's qsr_live.py exactly."""
+    slug = re.sub(r"[^A-Za-z0-9]", "", str(number or ""))
+    return (f"https://vdo.ninja/?push=qsr{tag}{slug}&webcam&audiodevice=0&quality=1"
+            f"&maxframerate=30&label=QSR{slug}")
+
+
+@bot.hybrid_command(name="camlink", aliases=["cam", "cockpitcam"],
+                    description="Your cockpit cam link for the QSR broadcast")
+async def camlink_cmd(ctx):
+    driver = get_driver_reg(str(ctx.author.id))
+    if not driver or not driver.get("number"):
+        await ctx.send("You need a registered car number first. Hit `#registration`, then try again. 🏁",
+                       ephemeral=True)
+        return
+    tag = cam_tag()
+    if not tag:
+        await ctx.send("Cams aren't set up on Race Control yet. Ping an admin. 📹", ephemeral=True)
+        return
+    num = driver["number"]
+    link = cam_push_link(tag, num)
+    e = discord.Embed(
+        title=f"📹 Cockpit cam · #{num} {driver.get('name', '')}".strip(),
+        description=(
+            f"**Your link:** {link}\n\n"
+            "**How it works**\n"
+            "• Open it in Chrome on your racing PC (or your phone on a mount), allow the webcam\n"
+            "• Leave that tab open the whole race. No mic, video only\n"
+            "• When you're on camera, the broadcast drops your face cam in the corner\n"
+            "• Open it before 8PM so the booth can run a cam check\n\n"
+            "This link is yours. Don't share it, anyone with it shows up as you."),
+        color=0xE8272A)
+    e.set_footer(text="QSR High Horsepower Series · bad connection = your problem, not the broadcast's 😉")
+    if ctx.interaction:
+        await ctx.interaction.response.send_message(embed=e, ephemeral=True)
+        return
+    try:
+        await ctx.author.send(embed=e)
+        await ctx.send("📬 Sent your cam link in DMs.", delete_after=15)
+    except discord.Forbidden:
+        await ctx.send("Couldn't DM you. Use `/camlink` instead so only you can see it.", delete_after=20)
+
+
 @bot.hybrid_command(name="slip", aliases=["balance"], description="Your Dale's Book slip and season standing")
 async def slip_cmd(ctx):
     did = str(ctx.author.id)
@@ -7208,6 +7269,7 @@ async def help_cmd(ctx):
         name="👤  Your Profile",
         value="`/mystats` — your registration, number and team\n"
               "`/mynumber` — change your car number\n"
+              "`/camlink` — your cockpit cam link for the broadcast (DM'd to you)\n"
               "`/career <Name>` — race-by-race history for any driver\n"
               "`/statscard [Name]` — driver stats graphic",
         inline=False)
@@ -7631,7 +7693,7 @@ def post_data():
         return jsonify({"error": str(e)}), 500
 
 @sync_app.route("/sync/history", methods=["GET"])
-def get_history():
+def sync_get_history():
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
     return jsonify(load_history()), 200
