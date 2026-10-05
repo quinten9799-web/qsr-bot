@@ -120,12 +120,23 @@ def load_history() -> dict:
             h["champions"] = donor.get("champions") or []
     return h
 
+TITLE_WORDS = ("champ", "title", "points", "standings", "clinch", "magic", "elimin", "scenario", "need",
+               "chance", "math", "lead", "catch", "win it", "drop", "behind", "gap")
+
 def history_context(question: str, user_context: str = "") -> str:
     try:
-        return QH.dale_context(load_history(), load_data(), question, "")
+        out = QH.dale_context(load_history(), load_data(), question, "")
     except Exception as e:
         print(f"⚠️ history context failed: {e}")
-        return ""
+        out = ""
+    if any(w in (question or "").lower() for w in TITLE_WORDS):
+        try:
+            tc = QH.title_context(load_data())
+            if tc:
+                out = (out + "\n\n" if out else "") + tc
+        except Exception as e:
+            print(f"⚠️ title context failed: {e}")
+    return out
 
 def race_week_for(race_num: int):
     """qsr_history.race_week() for a scheduled race and this week's field
@@ -2867,6 +2878,18 @@ RACE_SETUP_FALLBACK = {
     9: {"laps": 125, "stage_lap": 40},   # Rockingham
 }
 
+# One-time "New Tonight" lines in a race's noon announcement.
+NEW_FEATURES = {
+    9: [
+        "📹 **Cockpit cams are live.** Type `/camlink` for your personal cam link, open it in Chrome on your "
+        "racing PC (or a phone on a mount), allow the webcam and leave the tab open. When you're on TV, your face "
+        "cam drops into the corner. Video only, no mic. Get it open before 8PM so the booth can run a cam check.",
+        "🧮 **Championship math.** `/championship` shows who's still alive, max points left, the leader's magic "
+        "number and what you need per race, drops included. `/championship <driver>` for anyone's breakdown, "
+        "or just ask Dale. It's on the broadcast too: live title picture as they run.",
+    ],
+}
+
 # RACE_ANNOUNCEMENTS replaced — announcements now built dynamically
 # from race_config in data.json, set via the Race Setup table in qsr_app.py
 
@@ -2999,6 +3022,13 @@ async def race_announcement_scheduler():
     msg += f"{field_line}\n"
     if leader_line: msg += leader_line
     if penalty_line: msg += penalty_line
+    try:
+        tl = QH.title_lines(QH.title_table(data), 3)
+    except Exception as e:
+        print(f"⚠️ title math failed: {e}")
+        tl = []
+    if tl:
+        msg += "\n🧮 **Title Picture**\n" + "\n".join(f"• {x}" for x in tl) + "\n"
     rw = race_week_for(race_num)
     if rw and rw.get("storylines"):
         picks = [x for x in QH.pick_storylines(rw, 4) if "never raced QSR here" not in x][:3]
@@ -3006,6 +3036,9 @@ async def race_announcement_scheduler():
         ms = [m for m in rw.get("milestones", []) if m not in picks][:2]
         if ms:
             msg += "🎯 **On the Doorstep**\n" + "\n".join(f"• {m}" for m in ms) + "\n"
+    feats = NEW_FEATURES.get(race_num)
+    if feats:
+        msg += "\n🆕 **New Tonight**\n" + "\n".join(f"• {x}" for x in feats) + "\n"
     msg += f"\n{hype}"
 
     view = RSVPView()
@@ -7098,6 +7131,62 @@ async def odds_cmd(ctx):
                    view=BookLauncher() if week["status"] == "open" else None)
 
 
+def championship_embed(driver: str = "") -> discord.Embed:
+    data = load_data()
+    tt = QH.title_table(data)
+    rows = tt.get("rows") or []
+    if not rows:
+        return discord.Embed(description="No races scored yet. Title math starts after Race 1. 🏁", color=0xE8272A)
+    status = lambda r: "🏆 CLINCHED" if r["clinched"] else ("✅" if r["alive"] else "❌ OUT")
+    if driver:
+        key = resolve_result_key(driver, {r["name"]: r for r in rows})
+        r = next((x for x in rows if x["name"] == key), None)
+        if not r:
+            return discord.Embed(description=f"Can't find **{driver}** in the standings.", color=0xE8272A)
+        L = rows[0]
+        e = discord.Embed(title=f"🧮 {r['name']} · Title math", color=0xE8272A)
+        e.add_field(name="Now", value=f"**P{r['pos']}** · {r['pts']} pts" + (f" ({r['gap']} to {L['name']})" if r['pos'] > 1 else " · points leader"), inline=False)
+        e.add_field(name="Best case", value=f"{r['ceiling']} if they win out with stage + fastest lap ({tt['left']} left × {QH.MAX_PER_RACE})", inline=True)
+        e.add_field(name="Floor", value=f"{r['floor']} final total with zero more points (best {QH.SEASON_RACES - QH.SEASON_DROPS} count, so nothing more gets dropped)", inline=True)
+        if r["pos"] == 1:
+            st = "Clinched. 🏆" if r["clinched"] else f"Magic number **{tt['magic']}** vs {tt['rival']}: every point {r['name'].split()[-1]} banks or {tt['rival'].split()[-1]} misses knocks it down."
+        elif not r["alive"]:
+            st = "Mathematically eliminated. Play spoiler. 😈"
+        elif r.get("needs") is None:
+            st = f"Alive, but can't match {L['name']}'s pace ({tt['lead_pace']} a race) on their own. Needs the leader to stumble."
+        else:
+            st = f"If {L['name']} keeps averaging {tt['lead_pace']}, needs **{r['needs']} a race** to catch him: {r['needs_txt']}."
+        e.add_field(name="Outlook", value=st, inline=False)
+        if r["bar"]:
+            e.add_field(name="Drops", value=f"Next result only raises the total if it beats **{r['bar']}** (about P{QH.pts_to_pos(r['bar'])}). Anything less gets dropped.", inline=False)
+        elif tt["done"] >= QH.SEASON_DROPS:
+            e.add_field(name="Drops", value="Every point counts next time out (missed races already used the drops).", inline=False)
+        e.set_footer(text=f"{tt['done']} of {QH.SEASON_RACES} run · best {QH.SEASON_RACES - QH.SEASON_DROPS} count · QSR High Horsepower Series")
+        return e
+    lines = []
+    for r in rows[:12]:
+        gap = "LEADER" if r["pos"] == 1 else str(r["gap"])
+        lines.append(f"`P{r['pos']:<2}` **{r['name']}** {r['pts']} · {gap} · max {r['ceiling']} {status(r)}")
+    e = discord.Embed(title=f"🧮 Championship Math · after Race {tt['done']}",
+                      description="\n".join(lines), color=0xE8272A)
+    e.add_field(name="The picture", value="\n".join(f"• {x}" for x in QH.title_lines(tt, 4)) or "—", inline=False)
+    e.set_footer(text=f"{tt['left']} races left · {tt['max_left']} pts on the table · drops applied · /championship <driver> for anyone")
+    return e
+
+
+@bot.hybrid_command(name="championship", aliases=["scenarios", "title", "magic"],
+                    description="Title math: who's alive, magic number, what you need per race")
+@discord.app_commands.describe(driver="Driver name (blank = the whole picture)")
+async def championship_cmd(ctx, *, driver: str = ""):
+    try:
+        e = championship_embed(driver.strip())
+    except Exception as ex:
+        print(f"⚠️ /championship failed: {ex}")
+        await ctx.send("Title math hit a snag. Try again in a minute.")
+        return
+    await ctx.send(embed=e)
+
+
 def cam_tag() -> str:
     """The broadcast's cockpit-cam tag. Race Control sends it with every data
     push; QSR_CAM_TAG on Railway is the backstop."""
@@ -7270,6 +7359,7 @@ async def help_cmd(ctx):
         value="`/mystats` — your registration, number and team\n"
               "`/mynumber` — change your car number\n"
               "`/camlink` — your cockpit cam link for the broadcast (DM'd to you)\n"
+              "`/championship [driver]` — title math: who's alive, magic number, what you need\n"
               "`/career <Name>` — race-by-race history for any driver\n"
               "`/statscard [Name]` — driver stats graphic",
         inline=False)

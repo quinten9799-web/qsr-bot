@@ -23,6 +23,11 @@ Race by race (hist["races"] from Sim Racer Hub + iRacing league results + every 
   driver_races(hist, data, name) -> laps led, track wins, streaks, form for one driver
   milestones(cs, name)           -> "one win from 15", "one win from tying X for 2nd"
   next_race(hist, data)          -> the next HHPS round and its track
+
+Championship math (drops applied exactly like the official standings):
+  counted_total(scores, races_done)        -> (counted, raw, dropped)
+  title_table(data, live=None)             -> who can still win, ceilings, magic number, needs per race
+  title_lines(tt, n)                       -> short storyline lines for posts / ticker / Dale
 """
 import functools
 import json
@@ -1318,3 +1323,194 @@ def archive_season(path, data, label=None, name=None, crown=False):
         json.dump(hist, f, indent=1)
     os.replace(tmp, path)
     return True, f"Archived {label}: {len(rows)} drivers, {sum(r['wins'] for r in rows)} races."
+
+
+# ── Championship math ─────────────────────────────────────────────
+# Same rules as the official standings in bot.py / qsr_app.py:
+# everyone counts their best (races run - 2) results, penalties come off
+# after drops, ties go wins > top 5s > top 10s > average finish.
+SEASON_RACES = 14
+SEASON_DROPS = 2
+RACE_POINTS = [55, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
+               16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 1, 1, 1]
+MAX_PER_RACE = RACE_POINTS[0] + 10 + 1      # win + stage win + fastest lap = 66
+
+
+def counted_total(scores, races_done, drops=SEASON_DROPS):
+    """(counted, raw, dropped). Mirrors adjusted_driver_total() in bot.py."""
+    scores = [int(x or 0) for x in scores]
+    raw = sum(scores)
+    if races_done <= drops:
+        return raw, raw, []
+    counting = races_done - drops
+    n_drop = max(0, len(scores) - counting)
+    n_drop = min(n_drop, max(0, len(scores) - 1))
+    dropped = sorted(scores)[:n_drop] if n_drop else []
+    return raw - sum(dropped), raw, dropped
+
+
+def pts_to_pos(p):
+    """Rough finishing spot worth p race points (ignores stage / fastest lap)."""
+    for k, v in enumerate(RACE_POINTS):
+        if v <= p:
+            return k + 1 if v == p or k == 0 else k
+    return len(RACE_POINTS)
+
+
+def needs_text(p):
+    """Plain English for 'p points a race'."""
+    if p is None:
+        return "can't match the leader's pace even winning out, needs help"
+    if p <= 0:
+        return "just has to show up"
+    if p > RACE_POINTS[0]:
+        return "a win with stage points every week"
+    if p == RACE_POINTS[0]:
+        return "a win every week"
+    if p > RACE_POINTS[1]:
+        return "a top 2 with stage points every week"
+    return f"about P{pts_to_pos(p)} or better every week"
+
+
+def _penalties(data):
+    out = {}
+    for pen in data.get("penalties", []) or []:
+        who = norm(pen.get("driver", ""))
+        try:
+            amt = int(pen.get("points", 0) or 0)
+        except (TypeError, ValueError):
+            amt = 0
+        if who and amt:
+            out[who] = out.get(who, 0) + amt
+    return out
+
+
+def title_table(data, live=None, total_races=SEASON_RACES, drops=SEASON_DROPS):
+    """The championship picture.
+
+    live: {driver name: {"pts": points tonight, "finish": spot}} treats tonight
+    as a finished race ("if it ended now"). Without it: the standings as posted.
+
+    Per driver: pts (official, drops + penalties), gap, ceiling (best possible
+    final total winning everything left), floor (final total if they never
+    score again), alive / clinched, needs (points per race to reach the
+    leader's pace), bar (a result has to beat this to raise their total next
+    time out)."""
+    rr = data.get("race_results", {}) or {}
+    st = data.get("standings", {}) or {}
+    done = max(0, int(data.get("race_number", 1) or 1) - 1)
+    live = live or {}
+    lmap = {norm(k): v for k, v in live.items()}
+    if live:
+        done += 1
+    left = max(0, total_races - done)
+    pens = _penalties(data)
+    keep = total_races - drops
+    names = list(dict.fromkeys(list(st.keys()) + list(rr.keys()) + list(live.keys())))
+    rows = []
+    for name in names:
+        ents = [e for e in rr.get(name, []) or [] if isinstance(e, dict)]
+        scores = [int(e.get("points", 0) or 0) for e in ents]
+        fins = [e.get("finish") for e in ents if isinstance(e.get("finish"), (int, float))]
+        wins = sum(1 for f in fins if f == 1)
+        tl = lmap.get(norm(name))
+        if tl:
+            scores.append(int(tl.get("pts", 0) or 0))
+            if tl.get("finish"):
+                fins.append(int(tl["finish"]))
+                wins += 1 if int(tl["finish"]) == 1 else 0
+        if not scores:
+            continue
+        pen = pens.get(norm(name), 0)
+        pts = max(0, counted_total(scores, done, drops)[0] - pen)
+        best = sorted(scores, reverse=True)
+        floor = max(0, sum(best[:keep]) - pen)
+        ceil = max(0, sum(sorted(scores + [MAX_PER_RACE] * left, reverse=True)[:keep]) - pen)
+        # next result only raises the total if it beats the worst score still counting
+        nxt = done + 1 - drops
+        bar = best[nxt - 1] if done + 1 > drops and len(best) >= nxt else 0
+        rows.append({"name": name, "pts": pts, "raw": sum(scores), "starts": len(scores), "wins": wins,
+                     "top5": sum(1 for f in fins if f <= 5), "top10": sum(1 for f in fins if f <= 10),
+                     "avg": round(sum(fins) / len(fins), 2) if fins else 99.0,
+                     "floor": floor, "ceiling": ceil, "bar": bar, "scores": scores, "pen": pen,
+                     "team": (st.get(name) or {}).get("team", "")})
+    rows.sort(key=lambda r: (-r["pts"], -r["wins"], -r["top5"], -r["top10"], r["avg"]))
+    if not rows:
+        return {"rows": [], "done": done, "left": left, "max_left": left * MAX_PER_RACE, "live": bool(live)}
+    lead = rows[0]
+    best_rival = max((r["ceiling"] for r in rows[1:]), default=0)
+    clinched = left == 0 or lead["floor"] > best_rival
+    # leader's pace: his average score per start so far, carried through the races left
+    pace = lead["raw"] / max(1, lead["starts"])
+    lead_proj = sum(sorted(lead["scores"] + [round(pace)] * left, reverse=True)[:keep]) - lead["pen"]
+    for k, r in enumerate(rows):
+        r["pos"] = k + 1
+        r["gap"] = r["pts"] - lead["pts"]
+        r["alive"] = k == 0 or r["ceiling"] >= lead["floor"]
+        r["clinched"] = k == 0 and clinched
+        need = None
+        if k and left and r["alive"]:
+            for s in range(0, MAX_PER_RACE + 1):
+                if sum(sorted(r["scores"] + [s] * left, reverse=True)[:keep]) - r["pen"] >= lead_proj:
+                    need = s
+                    break
+        r["needs"] = need                       # None = can't match the leader's pace even winning out
+        r["needs_pos"] = pts_to_pos(need) if need is not None and need <= RACE_POINTS[1] else None
+        r["needs_txt"] = needs_text(need)
+    magic = max(0, best_rival - lead["floor"] + 1) if not clinched else 0
+    rival = max(rows[1:], key=lambda r: r["ceiling"]) if len(rows) > 1 else None
+    return {"rows": rows, "done": done, "left": left, "max_left": left * MAX_PER_RACE, "live": bool(live),
+            "leader": lead["name"], "clinched": clinched, "magic": magic, "rival": rival["name"] if rival else "",
+            "alive": sum(1 for r in rows if r["alive"]), "lead_pace": round(pace, 1), "lead_proj": lead_proj}
+
+
+def _last(n):
+    p = str(n or "").split()
+    return p[-1] if p else ""
+
+
+def title_lines(tt, n=4):
+    """Storylines from title_table(): who leads, how big, who's alive, what tonight means."""
+    rows = tt.get("rows") or []
+    if not rows:
+        return []
+    L, out = rows[0], []
+    if tt.get("clinched") and tt.get("left"):
+        out.append(f"{L['name']} has CLINCHED the championship with {tt['left']} race{'s' if tt['left'] != 1 else ''} to spare.")
+    elif tt.get("clinched"):
+        out.append(f"{L['name']} is the champion.")
+    elif len(rows) > 1:
+        P2 = rows[1]
+        gap = L["pts"] - P2["pts"]
+        how = "on the tiebreaker" if gap == 0 else f"by {gap}"
+        out.append(f"{L['name']} leads {P2['name']} {how} with {tt['left']} race{'s' if tt['left'] != 1 else ''} left "
+                   f"({tt['max_left']} points still on the table).")
+    if not tt.get("clinched") and tt.get("left"):
+        out.append(f"{tt['alive']} drivers are still mathematically alive. Magic number for {_last(L['name'])}: {tt['magic']}.")
+    chase = [r for r in rows[1:6] if r.get("needs") is not None]
+    if chase:
+        r = chase[0]
+        out.append(f"If {_last(L['name'])} keeps averaging {tt['lead_pace']}, {r['name']} needs {r['needs']} a race to catch him: {r['needs_txt']}.")
+    if L.get("bar"):
+        out.append(f"Drops in play: {_last(L['name'])}'s next result only counts if it beats {L['bar']} points "
+                   f"(about P{pts_to_pos(L['bar'])}).")
+    out = [x for x in out if x]
+    return out[:n]
+
+
+def title_context(data):
+    """Compact block for Dale's prompt."""
+    tt = title_table(data)
+    rows = tt.get("rows") or []
+    if not rows:
+        return ""
+    lines = [f"CHAMPIONSHIP MATH (drops applied, {tt['done']} races run, {tt['left']} left, "
+             f"{MAX_PER_RACE} max per race, {tt['max_left']} still available):"]
+    for r in rows[:12]:
+        st = "CLINCHED" if r["clinched"] else ("alive" if r["alive"] else "ELIMINATED")
+        nd = f", needs {r['needs']}/race to match leader pace ({r['needs_txt']})" if r.get("needs") is not None else ""
+        lines.append(f"  P{r['pos']} {r['name']} {r['pts']} (gap {r['gap']}, max possible {r['ceiling']}, {st}{nd}; "
+                     f"next result counts above {r['bar']})")
+    lines.append(f"  Magic number for {rows[0]['name']}: {tt['magic']} (vs {tt['rival']}). {tt['alive']} drivers still alive.")
+    lines += ["  " + x for x in title_lines(tt, 4)]
+    return "\n".join(lines)
