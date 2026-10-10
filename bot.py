@@ -3978,7 +3978,7 @@ OPS_CRITICAL = [            # if any of these vanish from a deploy, it's a stale
 ]
 OPS_LOOPS = ["dales_weekly_take", "pre_race_trash_talk", "track_history_post", "throwback_post",
              "power_rankings_post", "race_prediction", "book_tick", "race_announcement_scheduler",
-             "close_expired_polls", "bible_tick"]
+             "close_expired_polls", "bible_tick", "news_tick"]
 # weekday posts: (fired-task key, weekday Mon=0, hour, minute, label, fix command)
 OPS_WEEKLY_POSTS = [
     ("throwback", 2, 12, 0, "Wednesday Throwback", "!throwback"),
@@ -4330,7 +4330,7 @@ def ops_runtime_checks() -> list:
     guild = bot.get_guild(GUILD_ID)
     if not guild:
         return [_fail("Discord", "Bot can't see the QSR guild")]
-    want = ["staff-chat", "series-announcements", "pitlane", "dales-post-race", "dales-sportsbook"]
+    want = ["staff-chat", "series-announcements", "pitlane", "dales-post-race", "dales-sportsbook", NEWS_CH]
     gone = [c for c in want if not discord.utils.get(guild.text_channels, name=c)]
     lat = bot.latency
     lat = round(lat * 1000) if isinstance(lat, (int, float)) and lat == lat else 0
@@ -5241,6 +5241,343 @@ async def writersroom_cmd(ctx, action: str = "status", *, arg: str = ""):
                    + "\n".join(lines)[:1800])
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  THE QSR WIRE — a beat writer covering the league.
+#  Mack Hollis writes real articles from the season bible, the results
+#  and all-time QSR history: a race report after every race, a preview
+#  the day before, features on demand. #qsr-news.
+# ═══════════════════════════════════════════════════════════════════
+NEWS_FILE = os.path.join(_DATA_DIR, "news.json")
+NEWS_CH = "qsr-news"
+NEWS_BYLINE = "Mack Hollis"
+NEWS_MASTHEAD = "THE QSR WIRE"
+NEWS_LOGO = "https://ik.imagekit.io/171v0jg4e/qsr_wordmark_transparent.png"
+NEWS_PREVIEW_AT = (6, 12)        # Sunday 12 PM ET, the day before a race
+NEWS_REPORT_WINDOW_DAYS = 4      # only write a race report for a race this fresh
+_news_lock = asyncio.Lock()
+
+NEWS_SYSTEM = (
+    f"You are {NEWS_BYLINE}, the beat writer who covers QSR Simulations for {NEWS_MASTHEAD}. QSR is an iRacing "
+    "league that has run since 2022 across many series; the current one is the QSR High Horsepower Series "
+    "(ARCA cars at 110%, Mondays 8PM ET, 14 races, full-season points with 2 drops, no playoffs). You write like a "
+    "seasoned motorsports reporter at The Athletic or AP: a sharp news lede, the inverted pyramid, real numbers, "
+    "context from the league's history in every story, and a kicker that points to what's next.\n\n"
+    "Hard rules:\n"
+    "- Only use facts you are given. Every number, finish, record and historical note must come from the facts. "
+    "If you don't have it, don't write it.\n"
+    "- No quotes from drivers, staff or anyone, ever. You did not interview anyone. Paraphrase nothing as if said.\n"
+    "- Never describe on-track moments you weren't given (passes, wrecks, contact, pit calls). Write from results, "
+    "standings, ratings and history.\n"
+    "- Driver names exactly as written in the facts. Full name on first reference, last name after.\n"
+    "- History is the context for every story: careers, past series and champions, head-to-head records, track "
+    "history, milestones. Weave it in, don't list it.\n"
+    "- No em dashes. No hype words like 'epic' or 'insane'. No headers or bullet lists in the body. "
+    "Short paragraphs, 1-3 sentences each.\n"
+    "Return ONLY JSON: {\"headline\": \"max 90 chars, newspaper style\", \"dek\": \"one-sentence subhead\", "
+    "\"body\": \"the article, paragraphs separated by blank lines\"}"
+)
+
+
+def load_news() -> dict:
+    try:
+        with open(NEWS_FILE) as f:
+            n = json.load(f)
+        return n if isinstance(n, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_news(n: dict):
+    try:
+        n["articles"] = (n.get("articles") or [])[-120:]
+        tmp = NEWS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(n, f, indent=1)
+        os.replace(tmp, NEWS_FILE)
+    except Exception as e:
+        print(f"⚠️ couldn't save news: {e}")
+
+
+def _news_has(kind: str, race: int) -> bool:
+    return any(a.get("kind") == kind and a.get("race") == race for a in load_news().get("articles") or [])
+
+
+def _bible_full_text(b: dict) -> str:
+    out = [f"Season arc: {b.get('season_arc', '')}"]
+    for s in sorted([s for s in b.get("storylines") or [] if s.get("status") == "active"], key=lambda s: -s.get("heat", 0)):
+        beats = "; ".join(f"R{x['race']}: {x['note']}" for x in s.get("beats") or [])
+        out.append(f"- {s['title']} [{s['kind']}, heat {s['heat']}] drivers: {', '.join(s['drivers'])}. "
+                   f"{s['logline']} History: {s.get('history', '')} Beats: {beats}. Watch: {s.get('watch', '')}")
+    for s in (b.get("archive") or [])[-4:]:
+        out.append(f"- (resolved) {s['title']}: {s['logline']}")
+    if b.get("next_race_angles"):
+        out.append("Next race angles: " + " | ".join(b["next_race_angles"]))
+    return "\n".join(out)
+
+
+async def write_article(kind: str, race: int = None) -> dict | None:
+    """kind: report (race just run), preview (next race), feature (season so far)."""
+    data = load_data()
+    hist = load_history()
+    posted = _posted_races(data)
+    b = load_bible()
+    if kind == "report":
+        race = race or (posted[-1] if posted else None)
+        if not race or race not in posted:
+            return None
+        facts = bible_facts(data, [race])
+        brief = (f"Write the race report for Race {race} at {book_track(race)} ({SCHEDULE[race - 1]['date']}). "
+                 f"Lead with the winner and what it means. Then the title picture after this race, the biggest movers, "
+                 f"and the storylines this race pushed forward. 450-650 words. End on what's next: Race {race + 1}"
+                 + (f" at {book_track(race + 1)}." if race < len(SCHEDULE) else ". This was the finale."))
+    elif kind == "preview":
+        race = race or (upcoming_race() or (None,))[0]
+        if not race:
+            return None
+        facts = bible_facts(data, posted[-1:]) if posted else ""
+        brief = (f"Write the preview for Race {race} at {book_track(race)} on {SCHEDULE[race - 1]['date']}, green flag 8PM ET. "
+                 f"Lead with the biggest storyline heading into this race. Cover the title math, who's hot, what QSR "
+                 f"history says about this track and this field, and the 2-3 things to watch. 400-600 words.")
+    else:
+        race = posted[-1] if posted else 0
+        facts = bible_facts(data, posted) if posted else ""
+        brief = (f"Write a feature on the state of the season after Race {race} of 14: the title fight, the arcs that "
+                 f"define the year, and where it sits in QSR's history. 550-750 words. A Sunday-paper piece.")
+    try:
+        hfacts = bible_history_facts(data, hist, b)
+    except Exception as e:
+        hfacts = ""
+        print(f"⚠️ news: history facts failed: {e}")
+    prompt = (f"{brief}\n\nTHE SEASON'S STORYLINES (from the league's Writers' Room; reliable):\n{_bible_full_text(b) if b else '(none yet)'}"
+              f"\n\nTHIS SEASON (facts):\n{facts}\n\nQSR HISTORY (facts, all-time):\n{hfacts}")
+    art = None
+    for attempt in range(2):
+        txt = await claude_api(NEWS_SYSTEM, [{"role": "user", "content": prompt}], tier="smart",
+                               max_tokens=4000, feature=f"news_{kind}", timeout=300)
+        j = _bible_parse_any(txt)
+        if j and j.get("headline") and len(str(j.get("body", ""))) > 400:
+            art = j
+            break
+        print(f"⚠️ QSR Wire: {kind} draft unusable (attempt {attempt + 1}, stop={AI_RUN.get('last_stop')})")
+    if not art:
+        return None
+    body = re.sub(r"\s*—\s*", ", ", str(art["body"]).strip())
+    a = {"id": f"{kind}-{race}-{datetime.utcnow().strftime('%m%d%H%M')}", "kind": kind, "race": race,
+         "headline": str(art["headline"]).strip()[:240], "dek": str(art.get("dek") or "").strip()[:300],
+         "body": body, "at": datetime.utcnow().isoformat(timespec="seconds"), "published": False}
+    n = load_news()
+    n.setdefault("articles", []).append(a)
+    save_news(n)
+    return a
+
+
+def _bible_parse_any(txt: str):
+    if not txt:
+        return None
+    s, e = txt.find("{"), txt.rfind("}")
+    if s < 0 or e <= s:
+        return None
+    try:
+        j = json.loads(txt[s:e + 1])
+        return j if isinstance(j, dict) else None
+    except Exception:
+        return None
+
+
+def article_embeds(a: dict) -> list:
+    """An article as 1-2 embeds (Discord caps a description at 4096)."""
+    label = {"report": f"Race {a.get('race')} report", "preview": f"Race {a.get('race')} preview",
+             "feature": "Feature"}.get(a.get("kind"), "Story")
+    text = (f"*{a['dek']}*\n\n" if a.get("dek") else "") + a["body"]
+    paras, chunks, cur = text.split("\n\n"), [], ""
+    for p in paras:
+        if cur and len(cur) + len(p) + 2 > 3900:
+            chunks.append(cur)
+            cur = p
+        else:
+            cur = f"{cur}\n\n{p}" if cur else p
+    if cur:
+        chunks.append(cur)
+    out = []
+    for i, c in enumerate(chunks[:3]):
+        e = discord.Embed(description=c, color=0xFF6A00)
+        if i == 0:
+            e.title = a["headline"]
+            e.set_author(name=f"{NEWS_MASTHEAD} · By {NEWS_BYLINE}", icon_url=NEWS_LOGO)
+        if i == len(chunks[:3]) - 1:
+            e.set_footer(text=f"{NEWS_MASTHEAD} · {label} · /news for more · /storylines")
+            e.timestamp = datetime.fromisoformat(a["at"])
+        out.append(e)
+    return out
+
+
+async def _news_channel(guild):
+    ch = discord.utils.get(guild.text_channels, name=NEWS_CH)
+    if ch:
+        return ch
+    try:
+        anchor = discord.utils.get(guild.text_channels, name="pitlane")
+        ch = await guild.create_text_channel(NEWS_CH, category=anchor.category if anchor else None,
+                                             topic=f"{NEWS_MASTHEAD}: league news by {NEWS_BYLINE}. Race reports, previews, features.")
+        print(f"📰 created #{NEWS_CH}")
+        return ch
+    except Exception as e:
+        print(f"⚠️ QSR Wire: couldn't create #{NEWS_CH} ({e}), using #pitlane")
+        return discord.utils.get(guild.text_channels, name="pitlane")
+
+
+async def publish_article(a: dict, public: bool = None) -> str:
+    """Live mode → #qsr-news. Hold mode (or public=False) → #staff-chat for a read first."""
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return "no guild"
+    n = load_news()
+    live = (n.get("mode", "live") == "live") if public is None else public
+    if live:
+        ch = await _news_channel(guild)
+        if not ch:
+            return "no channel"
+        for e in article_embeds(a):
+            await ch.send(embed=e)
+        where = f"#{ch.name}"
+    else:
+        ch = discord.utils.get(guild.text_channels, name=STAFF_CH)
+        if not ch:
+            return "no staff channel"
+        await ch.send(f"📰 **{NEWS_MASTHEAD} draft** (held, not public). `/newsdesk publish` runs it in #{NEWS_CH}, "
+                      f"`/newsdesk spike` kills it.")
+        for e in article_embeds(a):
+            await ch.send(embed=e)
+        where = "staff-chat (held)"
+    n = load_news()
+    for x in n.get("articles") or []:
+        if x["id"] == a["id"]:
+            x["published"] = x.get("published") or live
+            x["posted_to"] = where
+    save_news(n)
+    return where
+
+
+@tasks.loop(minutes=10)
+async def news_tick():
+    """Race report as soon as the bible catches up on a fresh race; preview Sunday noon before a race."""
+    if not ANTHROPIC_API_KEY or _news_lock.locked():
+        return
+    async with _news_lock:
+        try:
+            now = now_et()
+            st = load_ops()
+            # first run ever: a season-so-far feature to staff-chat so the voice gets a read before going public
+            if not load_news().get("articles") and load_bible().get("storylines") and not st.get("news_intro_tried"):
+                st["news_intro_tried"] = datetime.utcnow().isoformat(timespec="seconds")
+                save_ops(st)
+                a = await write_article("feature")
+                if a:
+                    await publish_article(a, public=False)
+                return
+            # race report
+            b = load_bible()
+            n_race = b.get("through_race") or 0
+            d = race_date(n_race) if n_race else None
+            if (n_race and d and (now.date() - d).days <= NEWS_REPORT_WINDOW_DAYS
+                    and not _news_has("report", n_race)):
+                key = f"news_try_report_{n_race}"
+                if not st.get(key) or datetime.utcnow() - datetime.fromisoformat(st[key]) > timedelta(minutes=55):
+                    st[key] = datetime.utcnow().isoformat(timespec="seconds")
+                    save_ops(st)
+                    a = await write_article("report", n_race)
+                    if a:
+                        where = await publish_article(a)
+                        print(f"📰 QSR Wire: Race {n_race} report → {where}")
+                return
+            # preview, the day before a race
+            tomorrow = (now + timedelta(days=1)).date()
+            nxt = race_on(tomorrow)
+            if (nxt and now.weekday() == NEWS_PREVIEW_AT[0] and now.hour >= NEWS_PREVIEW_AT[1]
+                    and not _news_has("preview", nxt)):
+                key = f"news_try_preview_{nxt}"
+                if not st.get(key) or datetime.utcnow() - datetime.fromisoformat(st[key]) > timedelta(minutes=55):
+                    st[key] = datetime.utcnow().isoformat(timespec="seconds")
+                    save_ops(st)
+                    a = await write_article("preview", nxt)
+                    if a:
+                        where = await publish_article(a)
+                        print(f"📰 QSR Wire: Race {nxt} preview → {where}")
+        except Exception as e:
+            print(f"⚠️ news_tick failed: {e}\n{_traceback.format_exc()}")
+
+
+@bot.hybrid_command(name="news", aliases=["wire", "qsrwire"], description="The QSR Wire: latest league story (or list)")
+async def news_cmd(ctx, which: str = ""):
+    arts = [a for a in load_news().get("articles") or [] if a.get("published")]
+    if not arts:
+        await ctx.send(f"📰 {NEWS_MASTHEAD} hasn't filed yet. First race report drops after the next race.")
+        return
+    if which.lower() in ("list", "all"):
+        e = discord.Embed(title=f"📰 {NEWS_MASTHEAD} · recent stories", color=0xFF6A00)
+        e.description = "\n".join(f"`{i + 1}` **{a['headline']}** · {a['at'][:10]}"
+                                  for i, a in enumerate(reversed(arts[-10:])))
+        e.set_footer(text="/news 2 for the second newest, and so on")
+        await ctx.send(embed=e)
+        return
+    idx = int(which) if which.isdigit() and 1 <= int(which) <= len(arts) else 1
+    for e in article_embeds(arts[-idx]):
+        await ctx.send(embed=e)
+
+
+@bot.hybrid_command(name="newsdesk", description="QSR Wire admin: status | live | hold | publish | spike | write report|preview|feature")
+@is_admin()
+async def newsdesk_cmd(ctx, action: str = "status", kind: str = "", race: int = 0):
+    n = load_news()
+    action = (action or "status").lower()
+    if action in ("live", "hold"):
+        n["mode"] = action
+        save_news(n)
+        await ctx.send(f"📰 Mode: **{action}**. " + ("Stories post straight to #qsr-news." if action == "live"
+                                                     else "Stories land in #staff-chat for a read first; `/newsdesk publish` runs them."))
+        return
+    pend = [a for a in n.get("articles") or [] if not a.get("published") and not a.get("spiked")]
+    if action == "publish":
+        if not pend:
+            await ctx.send("Nothing waiting. `/newsdesk write report|preview|feature` to file one.")
+            return
+        where = await publish_article(pend[-1], public=True)
+        await ctx.send(f"📰 Published **{pend[-1]['headline']}** → {where}")
+        return
+    if action == "spike":
+        if not pend:
+            await ctx.send("Nothing waiting to spike.")
+            return
+        for x in n["articles"]:
+            if x["id"] == pend[-1]["id"]:
+                x["spiked"] = True
+        save_news(n)
+        await ctx.send(f"🗑️ Spiked **{pend[-1]['headline']}**.")
+        return
+    if action == "write":
+        kind = (kind or "report").lower()
+        if kind not in ("report", "preview", "feature"):
+            await ctx.send("Write what? `report`, `preview` or `feature`.")
+            return
+        if ctx.interaction:
+            await ctx.defer()
+        if _news_lock.locked():
+            await ctx.send("⏳ Mack's already writing.")
+            return
+        async with _news_lock:
+            a = await write_article(kind, race or None)
+        if not a:
+            await ctx.send("Couldn't file that one (no results for that race, or the model call failed). Check `/opscheck`.")
+            return
+        where = await publish_article(a, public=False)
+        await ctx.send(f"📰 Filed **{a['headline']}** → {where}. `/newsdesk publish` to run it.")
+        return
+    arts = n.get("articles") or []
+    await ctx.send(f"📰 **{NEWS_MASTHEAD}** · mode **{n.get('mode', 'live')}** · {sum(1 for a in arts if a.get('published'))} published, "
+                   f"{len(pend)} waiting.\nAuto: race report when results land (within {NEWS_REPORT_WINDOW_DAYS} days), "
+                   f"preview Sunday noon before a race.")
+
+
 @bot.event
 async def on_ready():
     bot.add_view(RoleSelectView())      # Re-register persistent views on restart
@@ -5271,7 +5608,7 @@ async def on_ready():
     # on_ready fires again on every reconnect; starting a running loop raises.
     for _loop in (dales_weekly_take, pre_race_trash_talk, track_history_post, throwback_post,
                   power_rankings_post, race_prediction, book_tick, race_announcement_scheduler,
-                  close_expired_polls, ops_tick, bible_tick):
+                  close_expired_polls, ops_tick, bible_tick, news_tick):
         if not _loop.is_running():
             _loop.start()
     if synced is not None:
