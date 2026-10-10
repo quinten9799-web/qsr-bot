@@ -5274,7 +5274,9 @@ NEWS_SYSTEM = (
     "- No em dashes. No hype words like 'epic' or 'insane'. No headers or bullet lists in the body. "
     "Short paragraphs, 1-3 sentences each.\n"
     "Return ONLY JSON: {\"headline\": \"max 90 chars, newspaper style\", \"dek\": \"one-sentence subhead\", "
-    "\"body\": \"the article, paragraphs separated by blank lines\"}"
+    "\"body\": \"the article, paragraphs separated by blank lines\", "
+    "\"sidebar\": [{\"stat\": \"a short number or figure, max 8 chars\", \"label\": \"max 12 words explaining it\"}] "
+    "(exactly 3 'by the numbers' items, straight from the facts, at least one from QSR history)}"
 )
 
 
@@ -5361,10 +5363,16 @@ async def write_article(kind: str, race: int = None) -> dict | None:
         print(f"⚠️ QSR Wire: {kind} draft unusable (attempt {attempt + 1}, stop={AI_RUN.get('last_stop')})")
     if not art:
         return None
-    body = re.sub(r"\s*—\s*", ", ", str(art["body"]).strip())
+    _nd = lambda t: re.sub(r"\s*—\s*", ", ", str(t or "")).strip()
+    body = _nd(art["body"])
+    side = [{"stat": _nd(x.get("stat"))[:12], "label": _nd(x.get("label"))[:120]}
+            for x in (art.get("sidebar") or []) if isinstance(x, dict) and x.get("stat")][:3]
     a = {"id": f"{kind}-{race}-{datetime.utcnow().strftime('%m%d%H%M')}", "kind": kind, "race": race,
-         "headline": str(art["headline"]).strip()[:240], "dek": str(art.get("dek") or "").strip()[:300],
-         "body": body, "at": datetime.utcnow().isoformat(timespec="seconds"), "published": False}
+         "headline": _nd(art["headline"])[:240], "dek": _nd(art.get("dek"))[:300],
+         "body": body, "sidebar": side, "at": datetime.utcnow().isoformat(timespec="seconds"), "published": False}
+    tbl, nl = _article_extras(a)
+    a["table"], a["next_line"] = tbl, nl
+    a["edition"] = sum(1 for x in load_news().get("articles") or [] if x.get("published")) + 1
     n = load_news()
     n.setdefault("articles", []).append(a)
     save_news(n)
@@ -5437,17 +5445,14 @@ async def publish_article(a: dict, public: bool = None) -> str:
         ch = await _news_channel(guild)
         if not ch:
             return "no channel"
-        for e in article_embeds(a):
-            await ch.send(embed=e)
+        await send_article(ch, a)
         where = f"#{ch.name}"
     else:
         ch = discord.utils.get(guild.text_channels, name=STAFF_CH)
         if not ch:
             return "no staff channel"
-        await ch.send(f"📰 **{NEWS_MASTHEAD} draft** (held, not public). `/newsdesk publish` runs it in #{NEWS_CH}, "
-                      f"`/newsdesk spike` kills it.")
-        for e in article_embeds(a):
-            await ch.send(embed=e)
+        await send_article(ch, a, note=f"🗞️ **{NEWS_MASTHEAD} draft** (held, not public). `/newsdesk publish` runs it in "
+                                       f"#{NEWS_CH}, `/newsdesk spike` kills it.")
         where = "staff-chat (held)"
     n = load_news()
     for x in n.get("articles") or []:
@@ -5456,6 +5461,341 @@ async def publish_article(a: dict, public: bool = None) -> str:
             x["posted_to"] = where
     save_news(n)
     return where
+
+
+# ── The QSR Wire: newspaper page renderer ───────────────────────────
+NP_FONTS = {"mast": "UnifrakturMaguntia-Book.ttf", "hx": "PlayfairDisplay-ExtraBold.ttf",
+            "hs": "PlayfairDisplay-SemiBold.ttf", "body": "SourceSerif4-Regular.ttf",
+            "bodyb": "SourceSerif4-Semibold.ttf", "it": "SourceSerif4-Italic.ttf",
+            "cx": "BarlowCondensed-ExtraBold.ttf", "cb": "BarlowCondensed-Bold.ttf",
+            "cs": "BarlowCondensed-SemiBold.ttf"}
+NP_CACHE = {}
+NP_PAPER = (243, 238, 226)
+NP_INK = (24, 22, 20)
+NP_GREY = (96, 90, 82)
+NP_RULE = (60, 56, 50)
+NP_ACCENT = (214, 64, 16)      # QSR orange, printed
+NP_W = 1400
+NP_M = 64                      # page margin
+NP_BODY = 25                   # body size
+NP_LH = 37                     # body line height
+NP_MAX_LINES = 46              # per column per page
+
+
+def _np_font(size, key):
+    k = (size, key)
+    if k not in NP_CACHE:
+        from PIL import ImageFont
+        try:
+            NP_CACHE[k] = ImageFont.truetype(os.path.join(CARD_HERE, "fonts", NP_FONTS[key]), size)
+        except Exception:
+            NP_CACHE[k] = _card_font(size, "m")
+    return NP_CACHE[k]
+
+
+def _np_w(d, t, f):
+    return d.textlength(t, font=f)
+
+
+def _np_wrap(d, text, f, width, first_indent=0):
+    """Greedy wrap. Returns [(words, is_last_line_of_para, indent)]."""
+    words, lines, cur, ind = text.split(), [], [], first_indent
+    for w in words:
+        trial = " ".join(cur + [w])
+        if cur and _np_w(d, trial, f) + ind > width:
+            lines.append((cur, False, ind))
+            cur, ind = [w], 0
+        else:
+            cur.append(w)
+    if cur:
+        lines.append((cur, True, ind))
+    return lines
+
+
+def _np_draw_line(d, x, y, words, f, width, justify, fill):
+    if not justify or len(words) == 1:
+        d.text((x, y), " ".join(words), font=f, fill=fill)
+        return
+    widths = [_np_w(d, w, f) for w in words]
+    gap = (width - sum(widths)) / (len(words) - 1)
+    if gap > _np_w(d, " ", f) * 4.2:          # don't stretch a short line into rivers
+        d.text((x, y), " ".join(words), font=f, fill=fill)
+        return
+    cx = x
+    for w, ww in zip(words, widths):
+        d.text((cx, y), w, font=f, fill=fill)
+        cx += ww + gap
+
+
+def _np_grain(img):
+    import random as _r
+    from PIL import Image
+    rnd = _r.Random(7)
+    n = Image.new("L", (img.width // 4, img.height // 4))
+    n.putdata([128 + rnd.randint(-10, 10) for _ in range(n.width * n.height)])
+    n = n.resize(img.size)
+    tint = Image.new("RGB", img.size, (120, 110, 95))
+    return Image.composite(img, tint, n.point(lambda v: 255 - max(0, (128 - v)) * 2))
+
+
+def _np_body_lines(d, body, width):
+    """Body → list of render ops for one column width. Drop cap on the first paragraph."""
+    f = _np_font(NP_BODY, "body")
+    paras = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+    ops = []
+    for i, p in enumerate(paras):
+        p = re.sub(r"\s+", " ", p)
+        if i == 0 and len(p) > 60:
+            cap = p[0]
+            capf = _np_font(NP_LH * 3 + 10, "hx")
+            capw = int(_np_w(d, cap, capf)) + 14
+            rest = p[1:]
+            first = _np_wrap(d, rest, f, width - capw)
+            # first 3 lines narrow (beside the cap), then rewrap the remainder full width
+            head = first[:3]
+            used = sum(len(ws) for ws, _, _ in head)
+            tail_words = rest.split()[used:]
+            ops.append(("cap", cap, capw))
+            for j, (ws, last, ind) in enumerate(head):
+                ops.append(("line", ws, last and not tail_words, capw))
+            if tail_words:
+                for ws, last, ind in _np_wrap(d, " ".join(tail_words), f, width):
+                    ops.append(("line", ws, last, 0))
+        else:
+            for ws, last, ind in _np_wrap(d, p, f, width, first_indent=30):
+                ops.append(("line", ws, last, ind))
+    return [o for o in ops if o[0] == "line"], next((o for o in ops if o[0] == "cap"), None)
+
+
+def render_article_pages(a: dict, sidebar_rows=None, table=None, next_line="", edition=1) -> list:
+    """The article as newspaper page PNGs (1-2 pages). sidebar_rows: [{"stat","label"}],
+    table: [(pos, name, pts, gap)] computed standings, next_line: 'NEXT: ...'."""
+    from PIL import Image, ImageDraw
+    scratch = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    side_w = 330
+    gut = 40
+    body_w = NP_W - 2 * NP_M - side_w - gut
+    col_w = (body_w - gut) // 2
+    lines, cap = _np_body_lines(scratch, a["body"], col_w)
+    per_page = NP_MAX_LINES * 2
+    chunks = [lines[:per_page]]
+    rest = lines[per_page:]
+    if 0 < len(rest) < 8:                                 # don't strand a few lines on page 2
+        chunks = [lines]
+        rest = []
+    wide_w = (NP_W - 2 * NP_M - 2 * gut) // 3
+    if rest:
+        # rebuild the leftover paragraphs and rewrap them for 3 full-width columns
+        paras, cur, mid = [], [], rest[0][3] == 0 and not chunks[0][-1][2]
+        for (_, ws, last, ind) in rest:
+            cur += ws
+            if last:
+                paras.append(" ".join(cur))
+                cur = []
+        if cur:
+            paras.append(" ".join(cur))
+        f = _np_font(NP_BODY, "body")
+        more = []
+        for i, ptxt in enumerate(paras):
+            for ws, last, ind in _np_wrap(scratch, ptxt, f, wide_w, first_indent=0 if (i == 0 and mid) else 30):
+                more.append(("line", ws, last, ind))
+        per3 = NP_MAX_LINES * 3
+        chunks += [more[i:i + per3] for i in range(0, len(more), per3)]
+    pages = []
+    kind = a.get("kind")
+    kicker = {"report": f"RACE {a.get('race')} REPORT", "preview": f"RACE {a.get('race')} PREVIEW",
+              "feature": "FEATURE"}.get(kind, "NEWS")
+    track = book_track(a.get("race")) if a.get("race") and kind in ("report", "preview") else ""
+    try:
+        when = datetime.fromisoformat(a["at"]).replace(tzinfo=ZoneInfo("UTC")).astimezone(ET)
+    except Exception:
+        when = now_et()
+    for pi, chunk in enumerate(chunks):
+        first = pi == 0
+        # ── measure header ──
+        hf = _np_font(76, "hx")
+        head_lines = _np_wrap(scratch, a["headline"], hf, NP_W - 2 * NP_M) if first else []
+        if len(head_lines) > 3:
+            hf = _np_font(62, "hx")
+            head_lines = _np_wrap(scratch, a["headline"], hf, NP_W - 2 * NP_M)
+        df = _np_font(32, "it")
+        dek_lines = _np_wrap(scratch, a.get("dek") or "", df, NP_W - 2 * NP_M) if first and a.get("dek") else []
+        header_h = (430 + len(head_lines) * int(hf.size * 1.12) + len(dek_lines) * 44 + 70) if first else 190
+        ncol = 2 if first else 3
+        cw = col_w if first else wide_w
+        per = -(-len(chunk) // ncol) if chunk else 0
+        cols = [chunk[i * per:(i + 1) * per] for i in range(ncol)]
+        body_h = max(len(c) for c in cols) * NP_LH + (NP_LH if first and cap else 0)
+        side_h = 0
+        if first:
+            side_h = 70 + len(sidebar_rows or []) * 150 + (70 + 44 * len(table or []) if table else 0) + (110 if next_line else 0)
+        H = header_h + max(body_h, side_h) + 150
+        img = Image.new("RGB", (NP_W, H), NP_PAPER)
+        d = ImageDraw.Draw(img)
+        y = 46
+        # ── folio line ──
+        small = _np_font(20, "cs")
+        left = "QSR SIMULATIONS  ·  HIGH HORSEPOWER SERIES  ·  SEASON 1"
+        right = when.strftime("%A, %B %-d, %Y").upper()
+        d.text((NP_M, y), left, font=small, fill=NP_GREY)
+        d.text((NP_W - NP_M - _np_w(d, right, small), y), right, font=small, fill=NP_GREY)
+        y += 34
+        d.line((NP_M, y, NP_W - NP_M, y), fill=NP_RULE, width=2)
+        if first:
+            mf = _np_font(124, "mast")
+            mt = "The QSR Wire"
+            d.text(((NP_W - _np_w(d, mt, mf)) / 2, y + 8), mt, font=mf, fill=NP_INK)
+            y += 168
+        else:
+            mf = _np_font(58, "mast")
+            d.text((NP_M, y + 12), "The QSR Wire", font=mf, fill=NP_INK)
+            cont = f"{a['headline'][:60]}{'…' if len(a['headline']) > 60 else ''}  ·  CONTINUED"
+            cf = _np_font(22, "cb")
+            d.text((NP_W - NP_M - _np_w(d, cont, cf), y + 40), cont, font=cf, fill=NP_GREY)
+            y += 92
+        d.line((NP_M, y, NP_W - NP_M, y), fill=NP_RULE, width=4)
+        d.line((NP_M, y + 8, NP_W - NP_M, y + 8), fill=NP_RULE, width=1)
+        y += 22
+        if first:
+            # kicker strip
+            kf = _np_font(26, "cx")
+            kt = kicker + (f"  ·  {track.upper()}" if track else "")
+            kw = _np_w(d, kicker, kf)
+            d.rectangle((NP_M, y, NP_M + kw + 28, y + 40), fill=NP_ACCENT)
+            d.text((NP_M + 14, y + 4), kicker, font=kf, fill=(255, 255, 255))
+            if track:
+                d.text((NP_M + kw + 44, y + 4), track.upper(), font=kf, fill=NP_INK)
+            vol = f"VOL. 1  ·  NO. {edition}"
+            d.text((NP_W - NP_M - _np_w(d, vol, small), y + 10), vol, font=small, fill=NP_GREY)
+            y += 66
+            for ws, _, _ in head_lines:
+                d.text((NP_M, y), " ".join(ws), font=hf, fill=NP_INK)
+                y += int(hf.size * 1.12)
+            y += 10
+            for ws, _, _ in dek_lines:
+                d.text((NP_M, y), " ".join(ws), font=df, fill=NP_GREY)
+                y += 44
+            y += 18
+            bf = _np_font(22, "cb")
+            by = f"BY {NEWS_BYLINE.upper()}"
+            d.line((NP_M, y, NP_W - NP_M, y), fill=(190, 182, 168), width=1)
+            d.text((NP_M, y + 12), by, font=bf, fill=NP_INK)
+            d.text((NP_M + _np_w(d, by, bf) + 14, y + 12), "QSR WIRE STAFF WRITER", font=_np_font(22, "cs"), fill=NP_GREY)
+            d.line((NP_M, y + 48, NP_W - NP_M, y + 48), fill=(190, 182, 168), width=1)
+            y += 74
+        # ── body columns ──
+        bf_ = _np_font(NP_BODY, "body")
+        top = y
+        for ci, col in enumerate(cols):
+            x = NP_M + ci * (cw + gut)
+            cy = top
+            if first and ci == 0 and cap:
+                capf = _np_font(NP_LH * 3 + 10, "hx")
+                d.text((x - 2, cy - 14), cap[1], font=capf, fill=NP_ACCENT)
+            for (_, ws, last, ind) in col:
+                _np_draw_line(d, x + ind, cy, ws, bf_, cw - ind, not last, NP_INK)
+                cy += NP_LH
+        for ci in range(1, ncol):
+            gx = NP_M + ci * (cw + gut) - gut // 2
+            d.line((gx, top, gx, top + body_h), fill=(200, 192, 178), width=1)
+        # ── sidebar ──
+        sx = NP_W - NP_M - side_w
+        if first:
+            d.line((sx - gut // 2, top, sx - gut // 2, H - 120), fill=(200, 192, 178), width=1)
+        sy = top
+        if first:
+            if sidebar_rows:
+                d.rectangle((sx, sy, sx + side_w, sy + 44), fill=NP_INK)
+                d.text((sx + 14, sy + 6), "BY THE NUMBERS", font=_np_font(28, "cx"), fill=NP_PAPER)
+                sy += 62
+                for r in sidebar_rows[:4]:
+                    stf = _np_font(64, "cx")
+                    st = str(r.get("stat", ""))[:12]
+                    while _np_w(d, st, stf) > side_w and stf.size > 30:
+                        stf = _np_font(stf.size - 4, "cx")
+                    d.text((sx, sy), st, font=stf, fill=NP_ACCENT)
+                    sy += 66
+                    lf = _np_font(21, "body")
+                    for ws, _, _ in _np_wrap(d, str(r.get("label", ""))[:120], lf, side_w)[:3]:
+                        d.text((sx, sy), " ".join(ws), font=lf, fill=NP_INK)
+                        sy += 27
+                    sy += 18
+                    d.line((sx, sy - 8, sx + side_w, sy - 8), fill=(205, 197, 183), width=1)
+            if table:
+                sy += 10
+                d.rectangle((sx, sy, sx + side_w, sy + 44), fill=NP_INK)
+                d.text((sx + 14, sy + 6), "TITLE PICTURE", font=_np_font(28, "cx"), fill=NP_PAPER)
+                sy += 56
+                tf, tfb = _np_font(24, "cs"), _np_font(24, "cx")
+                for pos, name, pts, gap in table:
+                    d.text((sx, sy), f"{pos}", font=tfb, fill=NP_ACCENT)
+                    nm = name if _np_w(d, name, tf) < side_w - 150 else name.split()[-1]
+                    d.text((sx + 34, sy), nm, font=tf, fill=NP_INK)
+                    right = f"{pts}" + (f"  {gap}" if gap else "")
+                    d.text((sx + side_w - _np_w(d, right, tfb), sy), right, font=tfb, fill=NP_INK)
+                    sy += 44
+            if next_line:
+                sy += 16
+                nf = _np_font(24, "cb")
+                d.rectangle((sx, sy, sx + side_w, sy + 84), outline=NP_ACCENT, width=3)
+                for k, ln in enumerate(_np_wrap(d, next_line, nf, side_w - 24)[:2]):
+                    d.text((sx + 12, sy + 10 + 32 * k), " ".join(ln[0]), font=nf, fill=NP_INK)
+        # ── footer ──
+        fy = H - 92
+        d.line((NP_M, fy, NP_W - NP_M, fy), fill=NP_RULE, width=2)
+        more = len(chunks) > 1 and pi < len(chunks) - 1
+        foot_l = "CONTINUED ON PAGE 2  ›" if more else "/news  ·  /storylines  ·  /championship"
+        d.text((NP_M, fy + 18), foot_l, font=_np_font(24, "cb"), fill=NP_ACCENT if more else NP_GREY)
+        pg = f"PAGE {pi + 1}"
+        d.text((NP_W - NP_M - _np_w(d, pg, _np_font(22, "cs")), fy + 20), pg, font=_np_font(22, "cs"), fill=NP_GREY)
+        img = _np_grain(img)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=90, optimize=True, subsampling=0)
+        pages.append(buf.getvalue())
+    return pages
+
+
+def _article_extras(a: dict):
+    """Title table + next-race line for the page, computed at write time so a re-render matches."""
+    table = []
+    try:
+        rows = (QH.title_table(load_data()).get("rows") or [])[:5]
+        lead = rows[0]["pts"] if rows else 0
+        table = [(r["pos"], r["name"], r["pts"], "" if i == 0 else f"-{lead - r['pts']}") for i, r in enumerate(rows)]
+    except Exception as e:
+        print(f"⚠️ QSR Wire: title table failed: {e}")
+    nl = ""
+    up = upcoming_race()
+    if up and a.get("kind") != "preview":
+        n = up[0]
+        nl = f"NEXT: RACE {n} · {book_track(n).upper()} · {race_date(n).strftime('%a %b %-d').upper()} · 8PM ET"
+    elif a.get("kind") == "preview" and a.get("race"):
+        n = a["race"]
+        nl = f"GREEN FLAG: {race_date(n).strftime('%a %b %-d').upper()} · 8PM ET · {book_track(n).upper()}"
+    return table, nl
+
+
+def article_pages(a: dict) -> list:
+    if "table" not in a:                      # drafts filed before the page layout existed
+        a = dict(a)
+        a["table"], a["next_line"] = _article_extras(a)
+    n_pub = sum(1 for x in load_news().get("articles") or [] if x.get("published"))
+    return render_article_pages(a, a.get("sidebar") or [], [tuple(r) for r in a.get("table") or []],
+                                a.get("next_line") or "", a.get("edition") or n_pub + 1)
+
+
+async def send_article(ch, a: dict, note: str = ""):
+    """Post the story as newspaper pages; plain embeds if rendering ever fails."""
+    try:
+        pages = await asyncio.to_thread(article_pages, a)
+        files = [discord.File(io.BytesIO(p), filename=f"qsr_wire_{a['id']}_p{i + 1}.jpg") for i, p in enumerate(pages)]
+        await ch.send(content=(note + "\n" if note else "") + f"📰 **{a['headline']}**", files=files)
+    except Exception as e:
+        print(f"⚠️ QSR Wire: page render failed, sending text: {e}")
+        if note:
+            await ch.send(note)
+        for e2 in article_embeds(a):
+            await ch.send(embed=e2)
 
 
 @tasks.loop(minutes=10)
@@ -5521,11 +5861,12 @@ async def news_cmd(ctx, which: str = ""):
         await ctx.send(embed=e)
         return
     idx = int(which) if which.isdigit() and 1 <= int(which) <= len(arts) else 1
-    for e in article_embeds(arts[-idx]):
-        await ctx.send(embed=e)
+    if ctx.interaction:
+        await ctx.defer()
+    await send_article(ctx, arts[-idx])
 
 
-@bot.hybrid_command(name="newsdesk", description="QSR Wire admin: status | live | hold | publish | spike | write report|preview|feature")
+@bot.hybrid_command(name="newsdesk", description="QSR Wire admin: status | live | hold | preview | publish | spike | write report|preview|feature")
 @is_admin()
 async def newsdesk_cmd(ctx, action: str = "status", kind: str = "", race: int = 0):
     n = load_news()
@@ -5543,6 +5884,14 @@ async def newsdesk_cmd(ctx, action: str = "status", kind: str = "", race: int = 
             return
         where = await publish_article(pend[-1], public=True)
         await ctx.send(f"📰 Published **{pend[-1]['headline']}** → {where}")
+        return
+    if action in ("preview", "read", "show"):
+        if not pend:
+            await ctx.send("Nothing waiting. `/newsdesk write report|preview|feature` to file one.")
+            return
+        if ctx.interaction:
+            await ctx.defer()
+        await send_article(ctx, pend[-1], note="🗞️ Draft (not public). `/newsdesk publish` runs it, `/newsdesk spike` kills it.")
         return
     if action == "spike":
         if not pend:
