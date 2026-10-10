@@ -3974,7 +3974,7 @@ OPS_CRITICAL = [            # if any of these vanish from a deploy, it's a stale
     "book_place", "book_settle", "book_tick", "power_rankings_post", "throwback_post",
     "track_history_post", "dales_weekly_take", "pre_race_trash_talk", "race_prediction",
     "close_expired_polls", "post_data", "sync_get_history", "championship_embed", "rating_embed",
-    "camlink_cmd", "bible_tick", "ops_tick",
+    "camlink_cmd", "bible_tick", "ops_tick", "worklog_post",
 ]
 OPS_LOOPS = ["dales_weekly_take", "pre_race_trash_talk", "track_history_post", "throwback_post",
              "power_rankings_post", "race_prediction", "book_tick", "race_announcement_scheduler",
@@ -4502,6 +4502,145 @@ async def aibudget_cmd(ctx):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  WORK LOG — every update lands in #staff-chat so the league can see
+#  what got built. Dale deploys log themselves (commit messages from
+#  GitHub); Race Control / PC work logs via POST /sync/worklog or /worklog.
+# ═══════════════════════════════════════════════════════════════════
+WORKLOG_FILE = os.path.join(_DATA_DIR, "worklog.json")
+WORKLOG_REPO = "quinten9799-web/qsr-bot"
+WORKLOG_SEED_SHA = "59bd9d9b36d0fc1995da3bef6a08bfc7c1eead0b"   # last deploy before the log existed
+
+
+def load_worklog() -> dict:
+    try:
+        with open(WORKLOG_FILE) as f:
+            w = json.load(f)
+        return w if isinstance(w, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_worklog(w: dict):
+    try:
+        w["entries"] = (w.get("entries") or [])[-200:]
+        tmp = WORKLOG_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(w, f, indent=1)
+        os.replace(tmp, WORKLOG_FILE)
+    except Exception as e:
+        print(f"⚠️ couldn't save worklog: {e}")
+
+
+def _commit_parts(msg: str):
+    """(title, bullet lines) from a commit message, minus attribution trailers."""
+    lines = [l.rstrip() for l in (msg or "").splitlines()]
+    title = lines[0].strip() if lines else "Update"
+    body, cur = [], ""
+    for l in lines[1:]:
+        if re.match(r"^(Co-Authored-By|Claude-Session|Signed-off-by):", l.strip(), re.I):
+            continue
+        t = l.strip()
+        if t.startswith(("- ", "* ", "• ")):
+            if cur:
+                body.append(cur)
+            cur = t[2:].strip()
+        elif t and cur:
+            cur += " " + t
+        elif t:
+            body.append(t)
+    if cur:
+        body.append(cur)
+    return title, body
+
+
+async def worklog_post(source: str, title: str, lines: list, ref: str = "", when: str = ""):
+    w = load_worklog()
+    w.setdefault("entries", []).append({"t": when or datetime.utcnow().isoformat(timespec="seconds"),
+                                        "source": source, "title": title, "lines": lines[:12], "ref": ref})
+    save_worklog(w)
+    guild = bot.get_guild(GUILD_ID)
+    ch = discord.utils.get(guild.text_channels, name=STAFF_CH) if guild else None
+    if not ch:
+        return
+    icon = {"Dale": "🤖", "Race Control": "🖥️", "Broadcast": "📺"}.get(source, "🛠️")
+    e = discord.Embed(title=f"🛠️ Work log · {icon} {source}", color=0x3498DB,
+                      description=f"**{title}**" + (f"  `{ref}`" if ref else ""))
+    chunks, cur = [], ""
+    for l in lines:
+        b = f"• {l}"[:1000]
+        if cur and len(cur) + len(b) + 1 > 1020:
+            chunks.append(cur)
+            cur = b
+        else:
+            cur = f"{cur}\n{b}" if cur else b
+    if cur:
+        chunks.append(cur)
+    for i, ch_txt in enumerate(chunks[:4]):
+        e.add_field(name="What changed" if i == 0 else "\u200b", value=ch_txt, inline=False)
+    e.set_footer(text="/worklog for the recent list")
+    e.timestamp = datetime.utcnow()
+    await ch.send(embed=e)
+
+
+async def worklog_on_deploy():
+    """Post every commit that shipped since the last deploy we announced."""
+    sha = os.environ.get("RAILWAY_GIT_COMMIT_SHA") or ""
+    if not sha:
+        return
+    w = load_worklog()
+    last = w.get("last_sha") or WORKLOG_SEED_SHA
+    if sha == last or sha.startswith(last) or last.startswith(sha):
+        return
+    commits = []
+    try:
+        url = f"https://api.github.com/repos/{WORKLOG_REPO}/compare/{last}...{sha}"
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as sess:
+            async with sess.get(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "qsr-dale"}) as r:
+                if r.status == 200:
+                    j = await r.json()
+                    for c in (j.get("commits") or [])[-15:]:
+                        commits.append((c.get("sha", "")[:7], (c.get("commit") or {}).get("message", ""),
+                                        ((c.get("commit") or {}).get("author") or {}).get("date", "")))
+                else:
+                    print(f"⚠️ worklog: GitHub compare returned {r.status}")
+    except Exception as e:
+        print(f"⚠️ worklog: GitHub compare failed: {e}")
+    if not commits:
+        commits = [(sha[:7], os.environ.get("RAILWAY_GIT_COMMIT_MESSAGE") or "Dale redeployed", "")]
+    for short, msg, when in commits:
+        title, body = _commit_parts(msg)
+        await worklog_post("Dale", title, body, ref=short, when=when.replace("Z", "") if when else "")
+    w = load_worklog()
+    w["last_sha"] = sha
+    save_worklog(w)
+
+
+@bot.hybrid_command(name="worklog", aliases=["changelog", "shipped"],
+                    description="Recent work log, or log something: /worklog Race Control: what changed (admin)")
+@is_admin()
+async def worklog_cmd(ctx, *, entry: str = ""):
+    if entry.strip():
+        src, _, rest = entry.partition(":")
+        if rest.strip() and src.strip().lower() in ("race control", "broadcast", "dale", "rulebook", "discord", "league"):
+            source, text = src.strip().title(), rest.strip()
+        else:
+            source, text = "League", entry.strip()
+        parts = [p.strip() for p in re.split(r"\s*;\s*|\n", text) if p.strip()]
+        await worklog_post(source, parts[0], parts[1:])
+        await ctx.send("📝 Logged in #staff-chat.")
+        return
+    ents = (load_worklog().get("entries") or [])[-12:]
+    if not ents:
+        await ctx.send("Nothing logged yet. Updates land here automatically on the next deploy.")
+        return
+    e = discord.Embed(title="🛠️ Work log · recent", color=0x3498DB)
+    e.description = "\n".join(f"`{x['t'][:10]}` **{x['source']}** · {x['title']}" + (f" `{x['ref']}`" if x.get("ref") else "")
+                              for x in reversed(ents))[:4000]
+    await ctx.send(embed=e)
+
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  WRITERS' ROOM — the season bible.
 #  After every posted race the top model rewrites a running set of
 #  storylines (title fight, rivalries, breakouts, slumps, comebacks...)
@@ -4512,7 +4651,7 @@ BIBLE_FILE = os.path.join(_DATA_DIR, "season_bible.json")
 BIBLE_KINDS = ["title_fight", "rivalry", "breakout", "slump", "comeback", "redemption", "streak",
                "veteran", "rookie", "chaos", "milestone", "team", "underdog"]
 BIBLE_MAX_ACTIVE = 8
-BIBLE_VERSION = 2          # bump to make bible_tick retry right away after a fix
+BIBLE_VERSION = 3          # bump to make bible_tick retry right away after a fix
 _bible_lock = asyncio.Lock()
 
 
@@ -4661,6 +4800,102 @@ def bible_facts(data: dict, races: list) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+def bible_history_facts(data: dict, hist: dict, old: dict) -> str:
+    """QSR's all-time record (every series since 2022) for the people in this season's story."""
+    parts = []
+    try:
+        cs = QH.careers(hist, data)
+    except Exception as e:
+        print(f"⚠️ bible history: careers failed: {e}")
+        return ""
+    try:
+        sm = QH.summary(hist, data)
+        parts.append(f"QSR ALL-TIME: {sm['total_races']} races across {len(sm['series'])} series since 2022 "
+                     f"({', '.join(sm['series'])}). HHPS Season 1 is the current series.")
+    except Exception:
+        pass
+    champs = hist.get("champions") or []
+    if champs:
+        parts.append("PAST CHAMPIONS: " + "; ".join(f"{c.get('year')} {c.get('series')}: {c.get('driver')}" for c in champs))
+    try:
+        parts.append("ALL-TIME WINS LEADERS: " + ", ".join(
+            f"{i + 1}. {c['name']} {c['totals']['wins']}" for i, c in enumerate(QH.leaders(cs, "wins", 10))))
+        parts.append("ALL-TIME STARTS LEADERS: " + ", ".join(
+            f"{c['name']} {c['totals']['starts']}" for c in QH.leaders(cs, "starts", 6)))
+    except Exception:
+        pass
+    # careers of everyone in this season's field
+    field = list((data.get("standings") or {}).keys()) or list((data.get("race_results") or {}).keys())
+    try:
+        rt = QH.ratings(hist, data)
+    except Exception:
+        rt = {}
+    lines, found = [], {}
+    for name in field:
+        c = QH.find(cs, name)
+        if not c:
+            continue
+        found[name] = c
+        prior = [x for x in c.get("lines") or [] if not x.get("live")]
+        ln = "  " + QH.career_line(c)
+        if prior:
+            ln += " | before HHPS: " + "; ".join(
+                f"{x['series']} {x['starts']}st {x['wins']}W" for x in prior[:6])
+        else:
+            ln += " | HHPS is their first QSR series"
+        r = rt.get(c["key"])
+        if r:
+            ln += f" | rating {r['rating']} (peak {r['peak']}{' ' + r['peak_at'] if r.get('peak_at') else ''})"
+        ms = QH.milestones(cs, name, within=2)
+        if ms:
+            ln += " | close to: " + "; ".join(ms)
+        lines.append(ln)
+    if lines:
+        parts.append("CAREERS OF THIS SEASON'S FIELD (all QSR series):\n" + "\n".join(lines))
+    # head to head, all-time: neighbours at the top of the table + pairs already in the story
+    pairs = []
+    try:
+        rows = (QH.title_table(data).get("rows") or [])[:8]
+        for a, b in zip(rows, rows[1:]):
+            pairs.append((a["name"], b["name"]))
+    except Exception:
+        pass
+    for st in (old.get("storylines") or old.get("hint") or []):
+        ds = st.get("drivers") or []
+        for i in range(len(ds)):
+            for j in range(i + 1, len(ds)):
+                pairs.append((ds[i], ds[j]))
+    seen, h2h = set(), []
+    for a, b in pairs:
+        k = tuple(sorted((QH.norm(a), QH.norm(b))))
+        if k in seen:
+            continue
+        seen.add(k)
+        try:
+            h = QH.head_to_head(hist, data, a, b, cs)
+            if h and h.get("races"):
+                h2h.append("  " + QH.h2h_line(h))
+        except Exception:
+            pass
+        if len(h2h) >= 12:
+            break
+    if h2h:
+        parts.append("ALL-TIME HEAD TO HEAD (every QSR series):\n" + "\n".join(h2h))
+    # what history says about the tracks still to come
+    last = max(_posted_races(data) or [0])
+    tl = []
+    for e in SCHEDULE:
+        if e["race"] > last:
+            try:
+                tb = QH.track_book(hist, data, book_track(e["race"]), cs)
+                tl.append(f"  Race {e['race']} " + (QH.track_line(tb)[:420] if tb else f"{book_track(e['race'])}: QSR has never raced here."))
+            except Exception:
+                pass
+    if tl:
+        parts.append("QSR HISTORY AT THE TRACKS LEFT:\n" + "\n".join(tl))
+    return "\n\n".join(parts)
+
+
 BIBLE_SYSTEM = (
     "You are the head writer of the QSR Simulations Writers' Room. QSR is an iRacing league (QSR High Horsepower "
     "Series, ARCA cars at 110%, Mondays 8PM ET, 14 races, full-season points with 2 drops, no playoffs). The league's "
@@ -4670,6 +4905,11 @@ BIBLE_SYSTEM = (
     "- Every storyline must be grounded in the facts given. Never invent wrecks, quotes, feuds, team drama or "
     "anything that isn't in the numbers. You can interpret (a slump, a breakout) but the numbers must support it.\n"
     "- Use driver names exactly as written in the facts.\n"
+    "- QSR history is the context for every word. The league has run since 2022 across many series, and you get "
+    "the all-time record: careers, past champions, all-time head-to-heads, track history, ratings and milestones. "
+    "Every storyline must say what it means in that history: a veteran's first real title shot, a rematch of an "
+    "old series fight, a past champion slumping, a newcomer beating guys with 100 starts, a track someone owns. "
+    "Use the history numbers exactly as given; never invent past seasons or results.\n"
     "- Storylines are arcs that run across races, not single-race recaps. A good bible has the title fight, 1-3 "
     "rivalries or head-to-head battles, someone surging, someone slumping, a comeback or redemption arc, and the "
     "chaos (who's wrecking). Only include what the data supports.\n"
@@ -4690,6 +4930,7 @@ BIBLE_SCHEMA = """{
      "status": "active or resolved",
      "heat": 1-10,
      "logline": "1-2 sentences: where this story stands now",
+     "history": "1 sentence: what this means in QSR's all-time history (careers, past series, titles, head-to-head, tracks)",
      "beats": [{"race": 3, "note": "max 15 words, what happened in this story that race (max 6 beats, the ones that matter)"}],
      "watch": "1 sentence: what to watch for in the next race",
      "started_race": 1}
@@ -4747,6 +4988,7 @@ def _bible_clean(new: dict, old: dict, through: int, data: dict) -> dict:
         sl.append({"id": sid, "title": str(s["title"])[:80], "kind": kind, "drivers": drivers[:6],
                    "status": "resolved" if s.get("status") == "resolved" else "active", "heat": heat,
                    "logline": str(s.get("logline") or "")[:400], "beats": beats[-8:],
+                   "history": str(s.get("history") or "")[:300],
                    "watch": str(s.get("watch") or "")[:240],
                    "started_race": int(s.get("started_race") or (beats[0]["race"] if beats else through))})
     act = sorted([s for s in sl if s["status"] == "active"], key=lambda s: -s["heat"])
@@ -4759,6 +5001,7 @@ def _bible_clean(new: dict, old: dict, through: int, data: dict) -> dict:
     archive = [s for s in (old.get("archive") or []) if s["id"] not in new_ids] + res
     return {
         "season": data.get("season_label") or "Season 1",
+        "version": BIBLE_VERSION,
         "through_race": through,
         "updated_at": datetime.utcnow().isoformat(timespec="seconds"),
         "season_arc": str(new.get("season_arc") or "")[:700],
@@ -4779,7 +5022,9 @@ async def bible_update(through: int = None, rebuild: bool = False) -> dict | Non
     if not posted:
         return None
     through = through or posted[-1]
-    old = {} if rebuild else load_bible()
+    prev = load_bible()
+    # a rebuild starts the story over but keeps staff kills and the old pairs for head-to-head lookups
+    old = {"blocked": prev.get("blocked") or [], "hint": prev.get("storylines") or []} if rebuild else prev
     done = old.get("through_race", 0)
     races = [n for n in posted if n <= through] if (rebuild or not old.get("storylines")) else \
         [n for n in posted if done < n <= through]
@@ -4798,7 +5043,9 @@ async def bible_update(through: int = None, rebuild: bool = False) -> dict | Non
                 f"ones the results support. Keep ids for continuing stories.")
         if old.get("blocked"):
             task += f" Staff killed these storylines, never bring them back: {', '.join(old['blocked'])}."
-    prompt = f"{task}\n\nFACTS:\n{facts}\n\nReturn JSON in exactly this shape:\n{BIBLE_SCHEMA}"
+    hfacts = bible_history_facts(data, load_history(), old)
+    prompt = (f"{task}\n\nTHIS SEASON (facts):\n{facts}\n\nQSR HISTORY (facts, all-time):\n{hfacts}"
+              f"\n\nReturn JSON in exactly this shape:\n{BIBLE_SCHEMA}")
     out = None
     for attempt in range(2):
         txt = await claude_api(BIBLE_SYSTEM, [{"role": "user", "content": prompt}], tier="smart",
@@ -4850,6 +5097,8 @@ def bible_context(text: str = "", n: int = 5) -> str:
         lines.append(f"  The season: {b['season_arc']}")
     for s in pick:
         line = f"  • {s['title']} ({', '.join(s['drivers'])}; heat {s['heat']}/10): {s['logline']}"
+        if s.get("history"):
+            line += f" History: {s['history']}"
         if s in named and s.get("beats"):
             line += " Beats: " + "; ".join(f"R{bt['race']} {bt['note']}" for bt in s["beats"][-4:]) + "."
         if s.get("watch"):
@@ -4857,7 +5106,7 @@ def bible_context(text: str = "", n: int = 5) -> str:
         lines.append(line)
     if b.get("next_race_angles"):
         lines.append("  Next race angles: " + " | ".join(b["next_race_angles"]))
-    return "\n".join(lines)[:2600]
+    return "\n".join(lines)[:3200]
 
 
 def _heat_bar(h: int) -> str:
@@ -4876,7 +5125,7 @@ def storylines_embed(driver: str = "") -> discord.Embed:
         e = discord.Embed(title=f"📖 {driver.title()}'s storylines", color=0xFF6A00,
                           description=None if hits else "Not in any storyline right now. Go make one Monday.")
         for s in hits[:5]:
-            val = s["logline"]
+            val = s["logline"] + (f"\n📜 {s['history']}" if s.get("history") else "")
             if s.get("beats"):
                 val += "\n" + "\n".join(f"`R{bt['race']}` {bt['note']}" for bt in s["beats"][-5:])
             if s.get("watch") and s["status"] == "active":
@@ -4888,7 +5137,8 @@ def storylines_embed(driver: str = "") -> discord.Embed:
                           description=b.get("season_arc") or None)
         for s in act[:7]:
             e.add_field(name=f"{_heat_bar(s['heat'])} {s['title']}",
-                        value=(s["logline"] + (f"\n👀 {s['watch']}" if s.get("watch") else ""))[:1020], inline=False)
+                        value=(s["logline"] + (f"\n📜 {s['history']}" if s.get("history") else "")
+                               + (f"\n👀 {s['watch']}" if s.get("watch") else ""))[:1020], inline=False)
     e.set_footer(text="QSR Writers' Room · /storylines <driver> for one driver's arcs")
     return e
 
@@ -4924,7 +5174,8 @@ async def bible_tick():
             data = load_data()
             posted = _posted_races(data)
             old = load_bible()
-            if not posted or old.get("through_race", 0) >= posted[-1]:
+            stale = bool(old.get("storylines")) and old.get("version", 1) < BIBLE_VERSION
+            if not posted or (old.get("through_race", 0) >= posted[-1] and not stale):
                 return
             # don't hammer the API if it keeps failing: one try per race per hour
             st = load_ops()
@@ -4934,9 +5185,9 @@ async def bible_tick():
                 return
             st[key] = datetime.utcnow().isoformat(timespec="seconds")
             save_ops(st)
-            b = await bible_update()
+            b = await bible_update(rebuild=stale)
             if b:
-                print(f"📖 Writers' Room updated through Race {b['through_race']}")
+                print(f"📖 Writers' Room {'rebuilt' if stale else 'updated'} through Race {b['through_race']}")
                 await bible_notify_staff(b, old)
         except Exception as e:
             print(f"⚠️ bible_tick failed: {e}\n{_traceback.format_exc()}")
@@ -5025,6 +5276,7 @@ async def on_ready():
             _loop.start()
     if synced is not None:
         asyncio.create_task(ops_on_deploy(len(synced)))
+    asyncio.create_task(worklog_on_deploy())
     await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
@@ -9192,6 +9444,25 @@ def post_betting_action():
     if not check_token(request):
         return jsonify({"error": "Unauthorized"}), 401
     return jsonify({"error": "Dale's Book is fully automated now. Use /bookadmin in Discord."}), 410
+
+
+@sync_app.route("/sync/worklog", methods=["POST"])
+def post_worklog():
+    """Race Control / PC pushes log their work here: {"source", "title", "lines": [...]}."""
+    if not check_token(request):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        p = request.get_json(force=True) or {}
+        title = str(p.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "title required"}), 400
+        lines = [str(x)[:300] for x in (p.get("lines") or []) if str(x).strip()]
+        asyncio.run_coroutine_threadsafe(
+            worklog_post(str(p.get("source") or "Race Control")[:30], title[:200], lines, ref=str(p.get("ref") or "")[:20]),
+            bot.loop)
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 def run_sync_server():
