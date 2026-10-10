@@ -2568,7 +2568,8 @@ def get_driver_archetypes(race_results: dict, standings: dict) -> dict:
     return archetypes
 
 
-async def ask_claude(question: str, channel_id: int = 0, history: list = None, user_context: str = "") -> str:
+async def ask_claude(question: str, channel_id: int = 0, history: list = None, user_context: str = "",
+                     feature: str = "") -> str:
     if not ANTHROPIC_API_KEY:
         return None
     data = load_data()
@@ -2659,37 +2660,19 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
                          "any QSR driver — say you don't have it in front of you.")
 
     live_context += history_context(question)
-    system_prompt = QSR_KNOWLEDGE + live_context + user_context + mood_context()
+    live_context += bible_context(question)
+    # QSR_KNOWLEDGE is ~4.5K tokens and identical on every call: cache it.
+    # Everything that changes per question rides in the second block.
+    system_blocks = [
+        {"type": "text", "text": QSR_KNOWLEDGE, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": (live_context + user_context + mood_context()).strip() or "(no live context)"},
+    ]
     messages = []
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": question})
-    payload = {
-        "model": "claude-sonnet-4-5",
-        "max_tokens": 500,
-        "system": system_prompt,
-        "messages": messages
-    }
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.anthropic.com/v1/messages",
-                json=payload,
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                }
-            ) as resp:
-                if resp.status == 200:
-                    data_resp = await resp.json()
-                    return data_resp["content"][0]["text"]
-                else:
-                    print(f"Claude API error: {resp.status}")
-                    return None
-    except Exception as e:
-        print(f"Claude API error: {e}")
-        return None
+    return await claude_api(system_blocks, messages, tier="chat", max_tokens=500,
+                            feature=feature or _caller_name(2))
 
 
 def get_history(channel_id: int) -> list:
@@ -2885,6 +2868,11 @@ def should_fire_weekday(task_name: str, weekday: int, hour: int, minute: int, no
 # the noon post never goes out without them (Race 8 did). Race Setup wins.
 RACE_SETUP_FALLBACK = {
     9: {"laps": 125, "stage_lap": 40},   # Rockingham
+    10: {"laps": 60, "stage_lap": 20},   # Lime Rock      (league sheet)
+    11: {"laps": 125, "stage_lap": 40},  # New Hampshire
+    12: {"laps": 100, "stage_lap": 30},  # New Atlanta
+    13: {"laps": 100, "stage_lap": 30},  # Kansas
+    14: {"laps": 100, "stage_lap": 30},  # Homestead-Miami
 }
 
 # One-time "New Tonight" lines in a race's noon announcement.
@@ -3107,6 +3095,7 @@ async def dales_weekly_take():
         f"a life lesson from racing, or just something on your mind. "
         f"Keep it to 2-4 sentences. Sound natural, like you just walked into the garage "
         f"and said something. No greeting needed — just the take. "
+        f"If one of the season storylines fits, build the take around it (don't recite the list). "
         f"Current mood: {mood}. Race {race_num - 1} completed so far this season."
         f"{race_week_facts(race_num_next)}"
     )
@@ -3150,7 +3139,8 @@ async def pre_race_trash_talk():
         f"It's 30 minutes before the QSR High Horsepower Series race tonight. "
         f"You're Dale Earnhardt Sr. Look at these top standings: {top5_names}. "
         f"{rivalry_ctx} "
-        f"Pick two drivers who are close in points or have a heated rivalry and call it out. "
+        f"Pick two drivers who are close in points or have a heated rivalry and call it out "
+        f"(lean on the season storylines if one fits tonight). "
         f"Make a bold prediction or stir the pot a little. "
         f"2-3 sentences max. Sound like pre-race Dale — confident, a little ornery. "
         f"Start with something like 'I tell you what...' or 'Y'all better watch...' or similar."
@@ -3744,7 +3734,7 @@ async def race_prediction():
             f"Current top 5 in standings: {top5_names}. "
             f"Dale's Book has {favorite or 'nobody'} as the betting favorite tonight. "
             f"Make a bold race prediction as Dale Earnhardt Sr. — you can agree with the book's "
-            f"favorite or call for an upset. Maybe flag a surprise storyline to watch. "
+            f"favorite or call for an upset. Maybe flag one of the season storylines to watch tonight. "
             f"2-3 sentences. Confident. Dale doesn't hedge his bets."
         )
         response = await ask_claude(prompt, user_context=mood_context())
@@ -3818,6 +3808,1181 @@ async def close_expired_polls():
         save_data(data)
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  AI CORE — one door to the Anthropic API for everything Dale does.
+#  Tiers, prompt caching, a spend meter and a monthly budget guard.
+# ═══════════════════════════════════════════════════════════════════
+import sys as _sys
+import builtins as _builtins
+import traceback as _traceback
+from collections import deque as _deque
+
+AI_USAGE_FILE = os.path.join(_DATA_DIR, "ai_usage.json")
+AI_MONTHLY_BUDGET = float(os.environ.get("AI_MONTHLY_BUDGET", "100") or 100)
+AI_SAFE_MODEL = "claude-sonnet-4-5"          # known-good fallback if a model string is rejected
+AI_TIERS = {
+    "fast":  os.environ.get("DALE_MODEL_FAST", "claude-haiku-5-5"),    # ops triage, small jobs
+    "chat":  os.environ.get("DALE_MODEL_CHAT", "claude-sonnet-4-5"),   # Dale's voice (unchanged)
+    "smart": os.environ.get("DALE_MODEL_SMART", "claude-opus-5-5"),    # Writers' Room
+}
+# $ per million tokens: (input, output, cache-read multiplier). Cache writes are 1.25x input.
+AI_PRICES = {
+    "claude-haiku-5-5":  (0.10, 0.50, 0.10),
+    "claude-sonnet-4-5": (3.00, 15.00, 0.10),
+    "claude-sonnet-5-5": (2.00, 10.00, 0.05),
+    "claude-opus-5-5":   (4.00, 20.00, 0.05),
+    "claude-fable-5-1":  (10.00, 50.00, 0.025),
+}
+_ai_lock = threading.Lock()
+AI_RUN = {"ok": 0, "fail": 0, "fails": _deque(maxlen=20)}   # since boot; ops reads + resets per check
+
+
+def _ai_month(now=None) -> str:
+    return (now or now_et()).strftime("%Y-%m")
+
+
+def load_ai_usage() -> dict:
+    try:
+        with open(AI_USAGE_FILE) as f:
+            u = json.load(f)
+        return u if isinstance(u, dict) else {}
+    except Exception:
+        return {}
+
+
+def ai_cost(model: str, usage: dict) -> float:
+    pin, pout, cr = AI_PRICES.get(model, AI_PRICES[AI_SAFE_MODEL])
+    inp = usage.get("input_tokens", 0) or 0
+    cw = usage.get("cache_creation_input_tokens", 0) or 0
+    crd = usage.get("cache_read_input_tokens", 0) or 0
+    out = usage.get("output_tokens", 0) or 0
+    return (inp * pin + cw * pin * 1.25 + crd * pin * cr + out * pout) / 1_000_000
+
+
+def ai_month_spend(u=None, month=None) -> float:
+    u = u if u is not None else load_ai_usage()
+    return float(((u.get(month or _ai_month()) or {}).get("total") or {}).get("cost", 0.0))
+
+
+def _ai_record(feature: str, model: str, usage: dict):
+    cost = ai_cost(model, usage)
+    with _ai_lock:
+        u = load_ai_usage()
+        m = u.setdefault(_ai_month(), {})
+        for bucket, key in (("features", feature), ("models", model)):
+            row = m.setdefault(bucket, {}).setdefault(key, {"calls": 0, "cost": 0.0, "in": 0, "out": 0, "cache_read": 0})
+            row["calls"] += 1
+            row["cost"] = round(row["cost"] + cost, 6)
+            row["in"] += (usage.get("input_tokens", 0) or 0) + (usage.get("cache_creation_input_tokens", 0) or 0)
+            row["out"] += usage.get("output_tokens", 0) or 0
+            row["cache_read"] += usage.get("cache_read_input_tokens", 0) or 0
+        t = m.setdefault("total", {"calls": 0, "cost": 0.0})
+        t["calls"] += 1
+        t["cost"] = round(t["cost"] + cost, 6)
+        # keep 6 months
+        for k in sorted(u)[:-6]:
+            u.pop(k, None)
+        try:
+            tmp = AI_USAGE_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(u, f)
+            os.replace(tmp, AI_USAGE_FILE)
+        except Exception as e:
+            _orig_print(f"🤖 couldn't save ai usage: {e}")
+    AI_RUN["ok"] += 1
+    return cost
+
+
+def _ai_fail(feature: str, model: str, why: str):
+    AI_RUN["fail"] += 1
+    AI_RUN["fails"].append({"t": datetime.utcnow().isoformat(timespec="seconds"),
+                            "feature": feature, "model": model, "why": why[:240]})
+    _orig_print(f"🤖 AI call failed [{feature} · {model}]: {why[:240]}")
+
+
+def ai_model_for(tier: str) -> str:
+    """Budget guard: past 85% of the month's budget the expensive tier steps
+    down to chat; past 100% everything runs on fast. Dale never goes dark."""
+    spent = ai_month_spend()
+    if spent >= AI_MONTHLY_BUDGET:
+        return AI_TIERS["fast"]
+    if tier == "smart" and spent >= 0.85 * AI_MONTHLY_BUDGET:
+        return AI_TIERS["chat"]
+    return AI_TIERS.get(tier, AI_TIERS["chat"])
+
+
+async def claude_api(system, messages, tier: str = "chat", max_tokens: int = 500,
+                     feature: str = "misc", timeout: int = 120):
+    """The only place bot.py talks to the Anthropic API. system: str or list of
+    content blocks (put cache_control on the big static one). Returns text or None."""
+    if not ANTHROPIC_API_KEY:
+        return None
+    model = ai_model_for(tier)
+    tried = [model] + ([AI_SAFE_MODEL] if model != AI_SAFE_MODEL else [])
+    for mdl in tried:
+        payload = {"model": mdl, "max_tokens": max_tokens, "system": system, "messages": messages}
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+                async with session.post(
+                    "https://api.anthropic.com/v1/messages",
+                    json=payload,
+                    headers={"x-api-key": ANTHROPIC_API_KEY,
+                             "anthropic-version": "2023-06-01",
+                             "content-type": "application/json"},
+                ) as resp:
+                    body = await resp.text()
+                    if resp.status == 200:
+                        j = json.loads(body)
+                        _ai_record(feature, mdl, j.get("usage") or {})
+                        text = "".join(b.get("text", "") for b in (j.get("content") or []) if b.get("type") == "text")
+                        return text or None
+                    _ai_fail(feature, mdl, f"HTTP {resp.status}: {body[:200]}")
+                    # A model string the API doesn't know → retry on the known-good one.
+                    if resp.status in (400, 404) and "model" in body.lower() and mdl != AI_SAFE_MODEL:
+                        continue
+                    return None
+        except Exception as e:
+            _ai_fail(feature, mdl, f"{type(e).__name__}: {e}")
+            return None
+    return None
+
+
+def _caller_name(depth: int = 2) -> str:
+    try:
+        return _sys._getframe(depth).f_code.co_name
+    except Exception:
+        return "chat"
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  QSR OPS — the league's QA department.
+#  Watches for silent failures (stale deploys, dead schedulers, missed
+#  posts, missing race setup, unposted results, AI errors) and reports to
+#  #staff-chat: nightly 4 AM ET, race-day pre-flight 5 PM ET, on deploy,
+#  and on demand with /opscheck.
+# ═══════════════════════════════════════════════════════════════════
+OPS_FILE = os.path.join(_DATA_DIR, "ops_state.json")
+OPS_NIGHTLY = (4, 0)        # ET, every day
+OPS_PREFLIGHT = (17, 0)     # ET, race days only
+OPS_CRITICAL = [            # if any of these vanish from a deploy, it's a stale bot.py
+    "ask_claude", "claude_api", "post_race_reaction", "race_announcement_scheduler",
+    "compute_adjusted_standings", "rescore_race", "RegistrationView", "DriverRegModal",
+    "BookLauncher", "BookHome", "BookPick", "BookStake", "BookSlip", "build_book_board",
+    "book_place", "book_settle", "book_tick", "power_rankings_post", "throwback_post",
+    "track_history_post", "dales_weekly_take", "pre_race_trash_talk", "race_prediction",
+    "close_expired_polls", "post_data", "sync_get_history", "championship_embed", "rating_embed",
+    "camlink_cmd", "bible_tick", "ops_tick",
+]
+OPS_LOOPS = ["dales_weekly_take", "pre_race_trash_talk", "track_history_post", "throwback_post",
+             "power_rankings_post", "race_prediction", "book_tick", "race_announcement_scheduler",
+             "close_expired_polls", "bible_tick"]
+# weekday posts: (fired-task key, weekday Mon=0, hour, minute, label, fix command)
+OPS_WEEKLY_POSTS = [
+    ("throwback", 2, 12, 0, "Wednesday Throwback", "!throwback"),
+    ("power_rankings", 3, 12, 0, "Thursday Power Rankings", "/postpowerrankings"),
+    ("weekly_take", 4, 17, 0, "Friday Dale's Take", None),
+    ("track_history_card", 5, 12, 0, "Saturday Track History card", "/trackcard"),
+]
+OPS_RACEDAY_POSTS = [
+    ("announcement", 12, 0, "Race-day noon announcement"),
+    ("prediction", 19, 0, "7 PM lobby-up + prediction"),
+    ("trash_talk", 19, 30, "7:30 PM pre-race call"),
+]
+_OPS_PAT = re.compile(r"⚠️|🛑|❌|Traceback|\bError\b|error:|exception|failed", re.I)
+_ops_lock = threading.Lock()
+OPS = {"errors": _deque(maxlen=300), "dirty": False, "booted": datetime.utcnow().isoformat(timespec="seconds")}
+
+_orig_print = _builtins.print
+
+
+def ops_note(msg: str, kind: str = "log"):
+    """Record a failure line. Anything bot.py already prints with ⚠️/❌/failed
+    lands here automatically via the print hook below."""
+    msg = str(msg).strip()
+    if not msg:
+        return
+    with _ops_lock:
+        OPS["errors"].append({"t": datetime.utcnow().isoformat(timespec="seconds"), "kind": kind, "msg": msg[:600]})
+        OPS["dirty"] = True
+
+
+def _ops_print(*args, **kwargs):
+    _orig_print(*args, **kwargs)
+    try:
+        if kwargs.get("file") not in (None, _sys.stdout, _sys.stderr):
+            return
+        line = " ".join(str(a) for a in args)
+        if line.startswith("🤖") or line.startswith("🩺"):
+            return   # AI failures are counted separately; ops' own chatter isn't an error
+        if _OPS_PAT.search(line) and "✅" not in line:
+            ops_note(line)
+    except Exception:
+        pass
+
+
+_builtins.print = _ops_print
+
+
+def load_ops() -> dict:
+    try:
+        with open(OPS_FILE) as f:
+            s = json.load(f)
+        return s if isinstance(s, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_ops(s: dict):
+    try:
+        tmp = OPS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(s, f, indent=1)
+        os.replace(tmp, OPS_FILE)
+    except Exception as e:
+        _orig_print(f"🩺 couldn't save ops state: {e}")
+
+
+def _ops_flush():
+    """Persist the error ring so a crash-restart doesn't erase the evidence."""
+    with _ops_lock:
+        if not OPS["dirty"]:
+            return
+        errs = list(OPS["errors"])
+        OPS["dirty"] = False
+    s = load_ops()
+    s["errors"] = errs[-300:]
+    save_ops(s)
+
+
+def _ops_load_errors():
+    if OPS.get("loaded"):
+        return
+    OPS["loaded"] = True
+    s = load_ops()
+    with _ops_lock:
+        for e in (s.get("errors") or [])[-300:]:
+            OPS["errors"].append(e)
+
+
+def _err_key(msg: str) -> str:
+    m = re.sub(r"\d+", "#", msg.split("\n")[0])
+    return m[:140]
+
+
+def _ok(name, detail=""):
+    return ("ok", name, detail)
+
+
+def _warn(name, detail):
+    return ("warn", name, detail)
+
+
+def _fail(name, detail):
+    return ("fail", name, detail)
+
+
+def ops_code_checks(slash_count=None) -> list:
+    out = []
+    g = globals()
+    missing = [n for n in OPS_CRITICAL if n not in g]
+    if missing:
+        out.append(_fail("Code", f"Missing from the running bot.py: {', '.join(missing)}. Stale deploy?"))
+    names = sorted({c.name for c in bot.commands})
+    st = load_ops()
+    base = st.get("baseline") or {}
+    gone = sorted(set(base.get("commands") or []) - set(names))
+    if gone:
+        out.append(_fail("Commands", f"{len(gone)} command(s) disappeared since the last good deploy: "
+                                     f"{', '.join(gone[:12])}. Looks like an old bot.py got pushed. "
+                                     f"If you removed them on purpose: `/opscheck accept`."))
+    if slash_count is not None and base.get("slash") and slash_count < base["slash"]:
+        out.append(_fail("Slash sync", f"{slash_count} slash commands synced, was {base['slash']}."))
+    if not missing and not gone:
+        sha = (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "")[:7]
+        out.append(_ok("Code", f"{len(names)} commands, all critical code present" + (f" · commit `{sha}`" if sha else "")))
+    return out
+
+
+def ops_baseline(slash_count=None, force=False):
+    """Raise the high-water mark of commands. Never lowers it unless forced."""
+    st = load_ops()
+    base = st.get("baseline") or {}
+    names = sorted({c.name for c in bot.commands})
+    if force or set(names) >= set(base.get("commands") or []):
+        base["commands"] = names
+        if slash_count is not None:
+            base["slash"] = max(slash_count, 0 if force else (base.get("slash") or 0))
+        base["at"] = datetime.utcnow().isoformat(timespec="seconds")
+        base["sha"] = (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or "")[:7]
+        st["baseline"] = base
+        save_ops(st)
+
+
+def ops_loop_checks(heal=True) -> list:
+    dead, healed = [], []
+    g = globals()
+    for name in OPS_LOOPS:
+        lp = g.get(name)
+        if lp is None or not hasattr(lp, "is_running"):
+            continue
+        if not lp.is_running():
+            dead.append(name)
+            if heal:
+                try:
+                    lp.start()
+                    healed.append(name)
+                except Exception as e:
+                    ops_note(f"ops couldn't restart {name}: {e}", "ops")
+    if not dead:
+        return [_ok("Schedulers", f"{len(OPS_LOOPS)} loops running")]
+    if healed and len(healed) == len(dead):
+        return [_warn("Schedulers", f"Found dead and restarted: {', '.join(healed)}. Check errors below for why it died.")]
+    return [_fail("Schedulers", f"Dead: {', '.join(d for d in dead if d not in healed)}"
+                  + (f" (restarted: {', '.join(healed)})" if healed else ""))]
+
+
+def ops_post_checks(now=None) -> list:
+    """Scheduled posts that should have gone out but didn't (bot down in the trigger minute)."""
+    now = now or now_et()
+    fired = load_fired()
+    missed = []
+    # race-day posts: most recent race day up to today
+    for back in range(0, 7):
+        d = (now - timedelta(days=back)).date()
+        if race_on(d):
+            for key, h, m, label in OPS_RACEDAY_POSTS:
+                due = datetime(d.year, d.month, d.day, h, m, tzinfo=ET) + timedelta(minutes=10)
+                if now >= due and (fired.get(key) or "") < d.isoformat():
+                    missed.append(f"{label} ({d.strftime('%a %b %-d')})")
+            break
+    # weekly race-week posts
+    for key, wd, h, m, label, fix in OPS_WEEKLY_POSTS:
+        back = (now.weekday() - wd) % 7
+        d = (now - timedelta(days=back)).date()
+        due = datetime(d.year, d.month, d.day, h, m, tzinfo=ET) + timedelta(minutes=10)
+        if now < due:
+            d = d - timedelta(days=7)
+        monday = d + timedelta(days=(7 - wd) % 7 or 7)
+        if not race_on(monday):
+            continue      # off week, those posts skip themselves
+        if (fired.get(key) or "") < d.isoformat():
+            missed.append(f"{label} ({d.strftime('%a %b %-d')})" + (f" → run `{fix}`" if fix else ""))
+    if missed:
+        return [_warn("Scheduled posts", "Never went out: " + "; ".join(missed))]
+    return [_ok("Scheduled posts", "Everything due went out")]
+
+
+def ops_data_checks(now=None) -> list:
+    now = now or now_et()
+    out = []
+    try:
+        data = load_data()
+    except Exception as e:
+        return [_fail("data.json", f"won't load: {e}")]
+    rh = data.get("race_history") or {}
+    posted = sorted(int(str(k).split("_")[-1]) for k in rh if str(k).split("_")[-1].isdigit())
+    # 1) results that should be on Railway by now (race night + 30h)
+    late = []
+    for e in SCHEDULE:
+        d = race_date(e["race"])
+        if d and now >= datetime(d.year, d.month, d.day, RACE_START_HOUR, tzinfo=ET) + timedelta(hours=30):
+            if e["race"] not in posted:
+                late.append(e["race"])
+    if late:
+        out.append(_fail("Results", f"Race {', '.join(map(str, late))} ran but results aren't on Railway. "
+                                    f"Hit Post Results in Race Control (book can't settle, Dale is blind)."))
+    else:
+        out.append(_ok("Results", f"{len(posted)} races posted" + (f", latest Race {posted[-1]}" if posted else "")))
+    # 2) results sanity
+    bad = []
+    for n in posted:
+        res = [x for x in (rh.get(f"race_{n}") or {}).get("results") or [] if x.get("name")]
+        pos = sorted(int(x["pos"]) for x in res if isinstance(x.get("pos"), (int, float)))
+        names = [QH.norm(x["name"]) for x in res]
+        if len(res) < 6:
+            bad.append(f"R{n} only {len(res)} cars")
+        elif pos != list(range(1, len(pos) + 1)):
+            bad.append(f"R{n} finishing positions have gaps/duplicates")
+        if len(set(names)) != len(names):
+            bad.append(f"R{n} has a driver listed twice")
+    if bad:
+        out.append(_warn("Results sanity", "; ".join(bad)))
+    # 3) race counter drift (the 7 PM lobby post reads data.json race_number)
+    if posted and data.get("race_number") not in (posted[-1] + 1, None):
+        out.append(_warn("Race counter", f"data.json race_number is {data.get('race_number')}, last posted is "
+                                          f"Race {posted[-1]} (should be {posted[-1] + 1}). The 7 PM lobby post uses it."))
+    # 4) next race setup (Race 8 went out with no laps)
+    up = upcoming_race(now)
+    if up:
+        n = up[0]
+        cfg = (data.get("race_config") or {}).get(str(n)) or {}
+        fb = RACE_SETUP_FALLBACK.get(n, {})
+        laps, stage = cfg.get("laps") or fb.get("laps"), cfg.get("stage_lap") or fb.get("stage_lap")
+        days = (race_date(n) - now.date()).days if race_date(n) else 99
+        if not (laps and stage):
+            out.append((_fail if days <= 2 else _warn)("Race setup", f"Race {n} ({book_track(n)}) has no "
+                                                         f"{'laps' if not laps else 'stage lap'}. Race Control → Race Setup → Save."))
+        else:
+            src = "Race Setup" if cfg.get("laps") else "fallback"
+            out.append(_ok("Race setup", f"Race {n}: {laps} laps, stage lap {stage} ({src})"))
+    # 5) Dale's standings vs the broadcast's title math (they must agree)
+    try:
+        mine = compute_adjusted_standings(data)
+        tt = QH.title_table(data)
+        theirs = {QH.norm(r["name"]): r["pts"] for r in tt.get("rows") or []}
+        diff = [f"{n} {mine[n]['points']}≠{theirs[QH.norm(n)]}" for n in mine
+                if QH.norm(n) in theirs and int(mine[n].get("points", 0)) != int(theirs[QH.norm(n)])]
+        if diff:
+            out.append(_warn("Standings", f"Dale and the broadcast disagree on {len(diff)}: {', '.join(diff[:5])}"))
+        else:
+            out.append(_ok("Standings", "Dale and broadcast title math match"))
+    except Exception as e:
+        out.append(_warn("Standings", f"couldn't compare: {e}"))
+    # 6) registration
+    try:
+        reg = load_reg()
+        conf = [d for d in reg.get("drivers", []) if d.get("status") == "Confirmed"]
+        nums = [norm_num(d.get("number")) for d in conf if d.get("number") not in (None, "")]
+        dup = sorted({x for x in nums if nums.count(x) > 1})
+        if dup:
+            out.append(_warn("Registration", f"Duplicate car numbers among confirmed drivers: {', '.join(dup)}"))
+        else:
+            out.append(_ok("Registration", f"{len(conf)} confirmed"))
+    except Exception as e:
+        out.append(_fail("Registration", f"won't load: {e}"))
+    # 7) Dale's Book
+    try:
+        b = load_book()
+        nxt = next((e["race"] for e in SCHEDULE if book_lock_dt(e["race"]) and book_lock_dt(e["race"]) > now), None)
+        issues = []
+        if nxt and now >= book_open_dt(nxt) + timedelta(minutes=15) and str(nxt) not in b.get("weeks", {}):
+            issues.append(f"Race {nxt} board should be open and isn't")
+        for k, w in (b.get("weeks") or {}).items():
+            if w.get("status") == "locked" and int(k) in posted:
+                issues.append(f"Race {k} has results but never settled")
+        out.append(_warn("Dale's Book", "; ".join(issues)) if issues else _ok("Dale's Book", "On schedule"))
+    except Exception as e:
+        out.append(_warn("Dale's Book", f"couldn't check: {e}"))
+    # 8) Writers' Room freshness
+    bib = load_bible()
+    if posted and bib.get("through_race", 0) < posted[-1] and ANTHROPIC_API_KEY:
+        out.append(_warn("Writers' Room", f"Season bible is through Race {bib.get('through_race', 0)}, "
+                                          f"results go to Race {posted[-1]} (it retries every 10 min)."))
+    elif bib.get("storylines"):
+        act = sum(1 for s in bib["storylines"] if s.get("status") == "active")
+        out.append(_ok("Writers' Room", f"Through Race {bib.get('through_race')}, {act} active storylines"))
+    return out
+
+
+def ops_ai_checks(reset=False) -> list:
+    out = []
+    if not ANTHROPIC_API_KEY:
+        return [_warn("AI", "No ANTHROPIC_API_KEY, Dale is in FAQ mode")]
+    ok, fail = AI_RUN["ok"], AI_RUN["fail"]
+    if fail and not ok:
+        last = AI_RUN["fails"][-1]["why"] if AI_RUN["fails"] else ""
+        out.append(_fail("AI calls", f"{fail} failed, 0 worked since last check. Last: {last[:160]}"))
+    elif fail:
+        out.append(_warn("AI calls", f"{ok} ok, {fail} failed. Last: {AI_RUN['fails'][-1]['why'][:140]}"))
+    else:
+        out.append(_ok("AI calls", f"{ok} ok since last check"))
+    now = now_et()
+    spent = ai_month_spend()
+    day = now.day
+    import calendar as _cal
+    dim = _cal.monthrange(now.year, now.month)[1]
+    proj = spent / max(day - 1 + now.hour / 24, 0.5) * dim
+    line = f"${spent:.2f} of ${AI_MONTHLY_BUDGET:.0f} this month, on pace for ${proj:.2f}"
+    if spent >= AI_MONTHLY_BUDGET:
+        out.append(_fail("AI budget", line + ". Over budget: everything is on the fast model."))
+    elif spent >= 0.85 * AI_MONTHLY_BUDGET or proj > AI_MONTHLY_BUDGET:
+        out.append(_warn("AI budget", line + "."))
+    else:
+        out.append(_ok("AI budget", line))
+    if reset:
+        AI_RUN["ok"] = AI_RUN["fail"] = 0
+    return out
+
+
+def ops_error_checks(since_iso: str) -> tuple:
+    with _ops_lock:
+        errs = [e for e in OPS["errors"] if e.get("t", "") > (since_iso or "")]
+    if not errs:
+        return [_ok("Errors", "None logged")], []
+    groups = {}
+    for e in errs:
+        k = _err_key(e["msg"])
+        g = groups.setdefault(k, {"n": 0, "last": e["msg"], "t": e["t"]})
+        g["n"] += 1
+        g["last"], g["t"] = e["msg"], e["t"]
+    top = sorted(groups.values(), key=lambda g: -g["n"])
+    tb = [g for g in top if "Traceback" in g["last"] or "Exception in" in g["last"]]
+    lines = [f"{g['n']}× {g['last'].splitlines()[0][:150]}" for g in top[:6]]
+    status = _fail if tb or len(errs) >= 25 else _warn
+    return [status("Errors", f"{len(errs)} logged, {len(groups)} distinct:\n" + "\n".join(lines))], errs
+
+
+def ops_runtime_checks() -> list:
+    out = []
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        return [_fail("Discord", "Bot can't see the QSR guild")]
+    want = ["staff-chat", "series-announcements", "pitlane", "dales-post-race", "dales-sportsbook"]
+    gone = [c for c in want if not discord.utils.get(guild.text_channels, name=c)]
+    lat = bot.latency
+    lat = round(lat * 1000) if isinstance(lat, (int, float)) and lat == lat else 0
+    if gone:
+        out.append(_warn("Discord", f"Channels missing/renamed: {', '.join(gone)} (posts there will silently fail)"))
+    else:
+        out.append(_ok("Discord", f"Connected, {lat} ms"))
+    try:
+        free = shutil.disk_usage(_DATA_DIR).free / 1e9
+        if free < 0.3:
+            out.append(_warn("Disk", f"Only {free:.2f} GB free on the data volume"))
+    except Exception:
+        pass
+    return out
+
+
+async def ops_triage(results: list, errs: list) -> str:
+    """Cheap-model read on what broke and what to do. Only runs when something isn't green."""
+    bad = [r for r in results if r[0] != "ok"]
+    if not bad or not ANTHROPIC_API_KEY:
+        return ""
+    lines = "\n".join(f"[{s.upper()}] {n}: {d}" for s, n, d in bad)
+    raw = "\n".join(e["msg"][:400] for e in errs[-25:])
+    system = (
+        "You are the QA engineer for QSR Simulations, an iRacing league run by one person (Quinten). "
+        "Stack: bot.py (Discord bot 'Dale', Railway, deploys from GitHub main), Race Control (qsr_app.py on his "
+        "Windows PC, pushes data.json to Railway via Post Results / Save), Dale's Book (auto sportsbook). "
+        "Known past failures: an old local bot.py pushed over newer code; schedulers dying silently; Race Setup "
+        "never saved so posts had no laps; results never pushed. Be blunt and specific. No preamble."
+    )
+    prompt = (f"Health check findings:\n{lines}\n\nRecent log lines:\n{raw or '(none)'}\n\n"
+              "Give at most 5 short bullets: what is actually broken (ignore noise), the most likely cause, "
+              "and the exact next action for Quinten (which app, which button or command). "
+              "If it's all minor, say so in one line.")
+    txt = await claude_api(system, [{"role": "user", "content": prompt}], tier="fast",
+                           max_tokens=400, feature="ops_triage")
+    return (txt or "").strip()
+
+
+async def run_ops_check(kind: str = "manual", post: bool = True, slash_count=None, ctx=None) -> discord.Embed:
+    _ops_flush()
+    st = load_ops()
+    since = st.get("last_check", "")
+    now = now_et()
+    results = []
+    for fn in (lambda: ops_code_checks(slash_count), ops_loop_checks, ops_runtime_checks,
+               lambda: ops_post_checks(now), lambda: ops_data_checks(now)):
+        try:
+            results += fn()
+        except Exception as e:
+            results.append(_warn("Ops", f"a check crashed: {type(e).__name__}: {e}"))
+    results += ops_ai_checks(reset=True)
+    errs_res, errs = ops_error_checks(since)
+    results += errs_res
+    worst = "fail" if any(r[0] == "fail" for r in results) else ("warn" if any(r[0] == "warn" for r in results) else "ok")
+    icon = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
+    color = {"ok": 0x2ECC71, "warn": 0xF1C40F, "fail": 0xE8272A}[worst]
+    title = {"nightly": "🩺 QSR Ops · nightly check", "preflight": "🩺 QSR Ops · race-day pre-flight",
+             "deploy": "🩺 QSR Ops · new deploy", "manual": "🩺 QSR Ops · health check"}.get(kind, "🩺 QSR Ops")
+    e = discord.Embed(title=title, color=color, timestamp=datetime.utcnow())
+    head = {"ok": "All green.", "warn": "Running, with things to look at.", "fail": "Something's broken."}[worst]
+    body = []
+    for s, n, d in results:
+        if s == "ok" and worst != "ok" and n not in ("Code", "Results", "Race setup", "AI budget"):
+            continue    # keep the noise down when there's a real problem
+        body.append(f"{icon[s]} **{n}** · {d}")
+    desc = head + "\n\n" + "\n".join(body)
+    e.description = desc[:4000]
+    tri = await ops_triage(results, errs) if worst != "ok" else ""
+    if tri:
+        e.add_field(name="🧠 Triage", value=tri[:1020], inline=False)
+    e.set_footer(text=f"since {since[:16].replace('T', ' ') or 'boot'} UTC · /opscheck anytime")
+    st = load_ops()
+    st["last_check"] = datetime.utcnow().isoformat(timespec="seconds")
+    st.setdefault("log", []).append({"t": st["last_check"], "kind": kind, "worst": worst,
+                                     "bad": [f"{n}: {d[:120]}" for s, n, d in results if s != "ok"]})
+    st["log"] = st["log"][-60:]
+    save_ops(st)
+    if worst == "ok" and slash_count is None:
+        ops_baseline()
+    if post:
+        guild = bot.get_guild(GUILD_ID)
+        ch = discord.utils.get(guild.text_channels, name=STAFF_CH) if guild else None
+        if ch:
+            await ch.send(embed=e)
+        if worst == "fail" and kind != "manual":
+            try:
+                owner = await bot.fetch_user(OWNER_ID)
+                await owner.send(f"🩺 QSR Ops found a problem ({kind}). Details in #staff-chat.\n"
+                                 + "\n".join(f"❌ {n}: {d[:180]}" for s, n, d in results if s == "fail")[:1800])
+            except Exception as ex:
+                _orig_print(f"🩺 couldn't DM owner: {ex}")
+    return e
+
+
+@tasks.loop(minutes=1)
+async def ops_tick():
+    try:
+        _ops_flush()
+        now = now_et()
+        if now.hour == OPS_NIGHTLY[0] and now.minute == OPS_NIGHTLY[1] and not already_fired("ops_nightly", now):
+            mark_fired("ops_nightly", now)
+            await run_ops_check("nightly")
+        if (todays_race(now) and now.hour == OPS_PREFLIGHT[0] and now.minute == OPS_PREFLIGHT[1]
+                and not already_fired("ops_preflight", now)):
+            mark_fired("ops_preflight", now)
+            await run_ops_check("preflight")
+    except Exception as e:
+        _orig_print(f"🩺 ops_tick failed: {e}\n{_traceback.format_exc()}")
+
+
+async def ops_on_deploy(slash_count: int):
+    """Right after login: only speaks up if the deploy lost code."""
+    try:
+        _ops_load_errors()
+        bad = [r for r in ops_code_checks(slash_count) if r[0] != "ok"]
+        if bad:
+            await run_ops_check("deploy", slash_count=slash_count)
+        else:
+            ops_baseline(slash_count)
+    except Exception as e:
+        _orig_print(f"🩺 deploy check failed: {e}")
+
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    tb = _traceback.format_exc()
+    _orig_print(f"Ignoring exception in {event}\n{tb}")
+    ops_note(f"Exception in {event}: {tb[-500:]}", "event")
+
+
+@bot.hybrid_command(name="opscheck", aliases=["ops", "health"],
+                    description="QSR Ops health check now (admin). 'accept' resets the command baseline.")
+@is_admin()
+async def opscheck_cmd(ctx, action: str = ""):
+    if action.lower() == "accept":
+        ops_baseline(len(bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))), force=True)
+        await ctx.send("✅ Baseline reset to the current command list.")
+        return
+    if ctx.interaction:
+        await ctx.defer()
+    e = await run_ops_check("manual", post=False)
+    await ctx.send(embed=e)
+
+
+@bot.hybrid_command(name="aibudget", aliases=["aispend"], description="Dale's AI spend this month (admin)")
+@is_admin()
+async def aibudget_cmd(ctx):
+    u = load_ai_usage()
+    m = u.get(_ai_month()) or {}
+    spent = ai_month_spend(u)
+    e = discord.Embed(title=f"🤖 AI spend · {now_et().strftime('%B %Y')}", color=0xFF6A00,
+                      description=f"**${spent:.2f}** of ${AI_MONTHLY_BUDGET:.0f} · "
+                                  f"{(m.get('total') or {}).get('calls', 0)} calls\n"
+                                  f"Tiers: fast `{AI_TIERS['fast']}` · chat `{AI_TIERS['chat']}` · smart `{AI_TIERS['smart']}`")
+    feats = sorted((m.get("features") or {}).items(), key=lambda kv: -kv[1]["cost"])
+    if feats:
+        e.add_field(name="By feature", inline=False, value="\n".join(
+            f"`{k[:24]}` ${v['cost']:.3f} · {v['calls']} calls" for k, v in feats[:12])[:1020])
+    mods = m.get("models") or {}
+    if mods:
+        lines = []
+        for k, v in sorted(mods.items(), key=lambda kv: -kv[1]["cost"]):
+            tot_in = v["in"] + v["cache_read"]
+            hit = f", {100 * v['cache_read'] / tot_in:.0f}% cached" if tot_in else ""
+            lines.append(f"`{k}` ${v['cost']:.3f} · {v['calls']} calls{hit}")
+        e.add_field(name="By model", inline=False, value="\n".join(lines)[:1020])
+    await ctx.send(embed=e)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  WRITERS' ROOM — the season bible.
+#  After every posted race the top model rewrites a running set of
+#  storylines (title fight, rivalries, breakouts, slumps, comebacks...)
+#  from the real results. Every Dale prompt reads it, so the takes,
+#  pre-race calls, predictions and chat all tell the same story.
+# ═══════════════════════════════════════════════════════════════════
+BIBLE_FILE = os.path.join(_DATA_DIR, "season_bible.json")
+BIBLE_KINDS = ["title_fight", "rivalry", "breakout", "slump", "comeback", "redemption", "streak",
+               "veteran", "rookie", "chaos", "milestone", "team", "underdog"]
+BIBLE_MAX_ACTIVE = 10
+_bible_lock = asyncio.Lock()
+
+
+def load_bible() -> dict:
+    try:
+        with open(BIBLE_FILE) as f:
+            b = json.load(f)
+        return b if isinstance(b, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_bible(b: dict):
+    try:
+        if os.path.exists(BIBLE_FILE):
+            bdir = os.path.join(_DATA_DIR, "backups")
+            os.makedirs(bdir, exist_ok=True)
+            shutil.copy2(BIBLE_FILE, os.path.join(bdir, f"bible_r{b.get('through_race', 0)}_"
+                                                        f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.json"))
+        tmp = BIBLE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(b, f, indent=1)
+        os.replace(tmp, BIBLE_FILE)
+    except Exception as e:
+        print(f"⚠️ couldn't save season bible: {e}")
+
+
+def _posted_races(data) -> list:
+    rh = data.get("race_history") or {}
+    out = []
+    for k, v in rh.items():
+        try:
+            n = int(v.get("race_number") or str(k).split("_")[-1])
+        except Exception:
+            continue
+        if any(isinstance(x.get("pos"), (int, float)) for x in v.get("results") or []):
+            out.append(n)
+    return sorted(set(out))
+
+
+def bible_facts(data: dict, races: list) -> str:
+    """Everything the writers get to work from. Facts only, all computed."""
+    hist = load_history()
+    parts = []
+    live = {r["round"]: r for r in QH.live_races(data)}
+    for n in races:
+        r = live.get(n)
+        if not r:
+            continue
+        maxlaps = max((x.get("laps") or 0) for x in r["results"]) or 0
+        rows = []
+        for x in r["results"]:
+            ex = QH._extra_for(hist, r.get("date"), x["name"]) or {}
+            st = x.get("st") if isinstance(x.get("st"), (int, float)) else ex.get("st")
+            led = x.get("led") if isinstance(x.get("led"), (int, float)) else ex.get("led")
+            inc = x.get("inc") if isinstance(x.get("inc"), (int, float)) else ex.get("inc")
+            dnf = bool(maxlaps and isinstance(x.get("laps"), (int, float)) and x["laps"] < 0.9 * maxlaps)
+            bits = [f"P{x['fin']} {x['name']}"]
+            if isinstance(st, (int, float)):
+                bits.append(f"started {int(st)}")
+            if led:
+                bits.append(f"led {int(led)}")
+            if isinstance(inc, (int, float)):
+                bits.append(f"{int(inc)}x")
+            if dnf:
+                bits.append(f"DNF ({x.get('laps')}/{maxlaps} laps)")
+            rows.append(" ".join(bits))
+        parts.append(f"RACE {n} · {r.get('track') or book_track(n)} · {r.get('date')} · {len(rows)} cars\n  "
+                     + "\n  ".join(rows))
+        try:
+            made = QH.history_made(hist, data, n)
+            if made:
+                parts.append(f"  Record book after Race {n}: " + " ".join(made))
+        except Exception:
+            pass
+    # season lines per driver
+    try:
+        rows = QH.current_rows(data, hist=hist)
+        fins = {}
+        for name, entries in (data.get("race_results") or {}).items():
+            seq = sorted((e for e in entries or [] if isinstance(e, dict) and isinstance(e.get("finish"), (int, float))),
+                         key=lambda e: e.get("race", 0))
+            fins[name] = ", ".join(f"R{e['race']} P{int(e['finish'])}" for e in seq)
+        lines = [f"  {r['name']}: {r['starts']} starts, {r['wins']} W, {r['top5']} top5, avg {r['avg_finish']}, "
+                 f"{r['incidents']} inc · {fins.get(r['name'], '')}"
+                 for r in sorted(rows, key=lambda r: (r["avg_finish"], -r["starts"]))]
+        parts.append("SEASON SO FAR, every driver:\n" + "\n".join(lines))
+    except Exception as e:
+        print(f"⚠️ bible season lines failed: {e}")
+    # title picture now and before the latest race
+    try:
+        parts.append(QH.title_context(data))
+        last = races[-1]
+        before = QH.title_table(QH._without_race(data, last)).get("rows") or []
+        bpos = {QH.norm(r["name"]): r["pos"] for r in before}
+        moves = []
+        for r in (QH.title_table(data).get("rows") or [])[:15]:
+            b = bpos.get(QH.norm(r["name"]))
+            if b and b != r["pos"]:
+                moves.append(f"{r['name']} P{b}→P{r['pos']}")
+        if moves:
+            parts.append(f"POINTS MOVES in Race {last}: " + ", ".join(moves))
+    except Exception as e:
+        print(f"⚠️ bible title facts failed: {e}")
+    # rating swings for the races in the pack
+    try:
+        rt = QH.ratings(hist, data)
+        for n in races[-3:]:
+            sw = []
+            for d in rt.values():
+                for h in d.get("hist") or []:
+                    if str(h.get("series", "")).startswith(QH.CURRENT_ID) and h.get("round") == n:
+                        sw.append((h["delta"], d["name"], h["rating"]))
+            if sw:
+                sw.sort()
+                up = ", ".join(f"{nm} {dl:+.0f} (now {rtg})" for dl, nm, rtg in sw[::-1][:4])
+                dn = ", ".join(f"{nm} {dl:+.0f} (now {rtg})" for dl, nm, rtg in sw[:3])
+                parts.append(f"QSR RATING (all-time Elo) Race {n}: biggest gains {up}; biggest drops {dn}")
+        cur = list((data.get("standings") or {}).keys())
+        board = QH.rating_board(rt, cur, 12)
+        parts.append("QSR RATING, current field: " + "; ".join(f"{d['rank']}. {d['name']} {d['rating']}" for d in board))
+    except Exception as e:
+        print(f"⚠️ bible rating facts failed: {e}")
+    rc = get_rivalry_context()
+    if rc.strip():
+        parts.append("RIVALRY TRACKER (close finishes against each other):" + rc)
+    pens = data.get("penalties") or []
+    if pens:
+        parts.append("PENALTIES: " + "; ".join(f"{p.get('driver')} -{p.get('points', 0)} "
+                                                f"({p.get('reason') or p.get('note') or ''}, race {p.get('race', '?')})"
+                                                for p in pens[-10:]))
+    try:
+        reg = load_reg()
+        teams = [t for t in reg.get("teams", []) if t.get("members")]
+        if teams:
+            parts.append("TEAMS: " + "; ".join(f"{t['name']} ({', '.join(m.get('driver_name', '') for m in t['members'])}) "
+                                               f"{t.get('points', 0)} pts" for t in teams))
+    except Exception:
+        pass
+    up = upcoming_race()
+    if up:
+        parts.append(f"NEXT RACE: Race {up[0]} at {book_track(up[0])} on {SCHEDULE[up[0] - 1]['date']}."
+                     + race_week_facts(up[0], 6))
+    left = QH.SEASON_RACES - (races[-1] if races else 0)
+    parts.append(f"Season 1 is {QH.SEASON_RACES} races, finale Race 14 Homestead Nov 9. {left} races left after Race {races[-1] if races else 0}.")
+    return "\n\n".join(p for p in parts if p)
+
+
+BIBLE_SYSTEM = (
+    "You are the head writer of the QSR Simulations Writers' Room. QSR is an iRacing league (QSR High Horsepower "
+    "Series, ARCA cars at 110%, Mondays 8PM ET, 14 races, full-season points with 2 drops, no playoffs). The league's "
+    "product is the story: a broadcast, Discord posts and a bot named Dale (Dale Earnhardt Sr.'s voice) all pull "
+    "their angles from the season bible you maintain.\n\n"
+    "Rules:\n"
+    "- Every storyline must be grounded in the facts given. Never invent wrecks, quotes, feuds, team drama or "
+    "anything that isn't in the numbers. You can interpret (a slump, a breakout) but the numbers must support it.\n"
+    "- Use driver names exactly as written in the facts.\n"
+    "- Storylines are arcs that run across races, not single-race recaps. A good bible has the title fight, 1-3 "
+    "rivalries or head-to-head battles, someone surging, someone slumping, a comeback or redemption arc, and the "
+    "chaos (who's wrecking). Only include what the data supports.\n"
+    "- Keep it alive: when a story ends (rival eliminated, slump broken), mark it resolved with a final beat. "
+    f"At most {BIBLE_MAX_ACTIVE} active storylines. Heat 1-10 = how much it matters right now.\n"
+    "- Write tight, punchy, broadcast-ready English. No em dashes.\n"
+    "Return ONLY a JSON object, no prose around it."
+)
+
+BIBLE_SCHEMA = """{
+  "season_arc": "2-3 sentences: the state of the season right now",
+  "storylines": [
+    {"id": "short-kebab-slug (keep existing ids for continuing stories)",
+     "title": "max 60 chars",
+     "kind": "one of: KINDS",
+     "drivers": ["exact names"],
+     "status": "active or resolved",
+     "heat": 1-10,
+     "logline": "1-2 sentences: where this story stands now",
+     "beats": [{"race": 3, "note": "max 20 words, what happened in this story that race"}],
+     "watch": "1 sentence: what to watch for in the next race",
+     "started_race": 1}
+  ],
+  "next_race_angles": ["3 short angles for the next race's coverage"],
+  "changes": "1 sentence: how the story moved this week"
+}""".replace("KINDS", ", ".join(BIBLE_KINDS))
+
+
+def _bible_parse(txt: str):
+    if not txt:
+        return None
+    a, b = txt.find("{"), txt.rfind("}")
+    if a < 0 or b <= a:
+        return None
+    try:
+        j = json.loads(txt[a:b + 1])
+    except Exception:
+        return None
+    return j if isinstance(j, dict) and isinstance(j.get("storylines"), list) else None
+
+
+def _bible_clean(new: dict, old: dict, through: int, data: dict) -> dict:
+    known = set()
+    for n in (data.get("race_results") or {}):
+        known.add(QH.norm(n))
+    for x in (data.get("standings") or {}):
+        known.add(QH.norm(x))
+    canon = {QH.norm(n): n for n in list((data.get("race_results") or {}).keys())}
+    seen, sl = set(), []
+    blocked = set(old.get("blocked") or [])
+    for s in new.get("storylines") or []:
+        if not isinstance(s, dict) or not s.get("title"):
+            continue
+        sid = re.sub(r"[^a-z0-9-]+", "-", str(s.get("id") or s["title"]).lower()).strip("-")[:40] or f"s{len(sl)}"
+        if sid in seen or sid in blocked or str(s["title"]).lower() in blocked:
+            continue
+        seen.add(sid)
+        drivers = [canon.get(QH.norm(d), d) for d in s.get("drivers") or [] if QH.norm(str(d)) in known]
+        kind = s.get("kind") if s.get("kind") in BIBLE_KINDS else "milestone"
+        if not drivers and kind != "title_fight":
+            continue
+        try:
+            heat = max(1, min(10, int(s.get("heat") or 5)))
+        except Exception:
+            heat = 5
+        beats = []
+        for bt in s.get("beats") or []:
+            try:
+                r = int(bt.get("race"))
+            except Exception:
+                continue
+            if 1 <= r <= through and bt.get("note"):
+                beats.append({"race": r, "note": str(bt["note"])[:200]})
+        sl.append({"id": sid, "title": str(s["title"])[:80], "kind": kind, "drivers": drivers[:6],
+                   "status": "resolved" if s.get("status") == "resolved" else "active", "heat": heat,
+                   "logline": str(s.get("logline") or "")[:400], "beats": beats[-8:],
+                   "watch": str(s.get("watch") or "")[:240],
+                   "started_race": int(s.get("started_race") or (beats[0]["race"] if beats else through))})
+    act = sorted([s for s in sl if s["status"] == "active"], key=lambda s: -s["heat"])
+    res = [s for s in sl if s["status"] == "resolved"]
+    for s in act[BIBLE_MAX_ACTIVE:]:
+        s["status"] = "resolved"
+    res += act[BIBLE_MAX_ACTIVE:]
+    keep_active = act[:BIBLE_MAX_ACTIVE]
+    new_ids = {s["id"] for s in sl}
+    archive = [s for s in (old.get("archive") or []) if s["id"] not in new_ids] + res
+    return {
+        "season": data.get("season_label") or "Season 1",
+        "through_race": through,
+        "updated_at": datetime.utcnow().isoformat(timespec="seconds"),
+        "season_arc": str(new.get("season_arc") or "")[:700],
+        "storylines": keep_active,
+        "archive": archive[-24:],
+        "next_race_angles": [str(x)[:200] for x in (new.get("next_race_angles") or [])][:4],
+        "blocked": sorted(blocked),
+        "changes": str(new.get("changes") or "")[:300],
+        "log": (old.get("log") or [])[-30:] + [{"race": through, "at": datetime.utcnow().isoformat(timespec="seconds"),
+                                                "changes": str(new.get("changes") or "")[:300]}],
+    }
+
+
+async def bible_update(through: int = None, rebuild: bool = False) -> dict | None:
+    """Fold any newly posted races into the bible. One model call."""
+    data = load_data()
+    posted = _posted_races(data)
+    if not posted:
+        return None
+    through = through or posted[-1]
+    old = {} if rebuild else load_bible()
+    done = old.get("through_race", 0)
+    races = [n for n in posted if n <= through] if (rebuild or not old.get("storylines")) else \
+        [n for n in posted if done < n <= through]
+    if not races:
+        return None
+    first = rebuild or not old.get("storylines")
+    facts = bible_facts(data, races)
+    if first:
+        task = (f"Build the season bible from scratch. Races {races[0]}-{races[-1]} have been run. "
+                f"Write the storylines as they stand after Race {races[-1]}, with beats going back to where each started.")
+    else:
+        prev = {k: old.get(k) for k in ("season_arc", "storylines", "next_race_angles")}
+        task = (f"Here is the bible through Race {done}:\n{json.dumps(prev, ensure_ascii=False)}\n\n"
+                f"Race {', '.join(map(str, races))} just ran. Update it: add a beat to every storyline this race "
+                f"touched, re-score heat, rewrite loglines and 'watch' lines, resolve stories that ended, and add new "
+                f"ones the results support. Keep ids for continuing stories.")
+        if old.get("blocked"):
+            task += f" Staff killed these storylines, never bring them back: {', '.join(old['blocked'])}."
+    prompt = f"{task}\n\nFACTS:\n{facts}\n\nReturn JSON in exactly this shape:\n{BIBLE_SCHEMA}"
+    out = None
+    for attempt in range(2):
+        txt = await claude_api(BIBLE_SYSTEM, [{"role": "user", "content": prompt}], tier="smart",
+                               max_tokens=6000, feature="writers_room", timeout=300)
+        out = _bible_parse(txt)
+        if out:
+            break
+        print(f"⚠️ Writers' Room: model reply wasn't valid JSON (attempt {attempt + 1})")
+    if not out:
+        return None
+    b = _bible_clean(out, old, races[-1], data)
+    if not b["storylines"]:
+        print("⚠️ Writers' Room: update came back with no usable storylines, kept the old bible")
+        return None
+    save_bible(b)
+    return b
+
+
+def _bible_mentions(b: dict, text: str) -> list:
+    low = (text or "").lower()
+    hits = []
+    for s in b.get("storylines") or []:
+        for d in s.get("drivers") or []:
+            toks = [t for t in re.split(r"\s+", d.lower()) if len(t) > 3 and t not in ("jr", "sr", "iii")]
+            if d.lower() in low or (toks and toks[-1] in low):
+                hits.append(s)
+                break
+    return hits
+
+
+def bible_context(text: str = "", n: int = 5) -> str:
+    """Compact block for any Dale prompt."""
+    b = load_bible()
+    act = [s for s in b.get("storylines") or [] if s.get("status") == "active"]
+    if not act:
+        return ""
+    act.sort(key=lambda s: -s.get("heat", 0))
+    named = _bible_mentions(b, text)
+    pick = []
+    for s in named + act:
+        if s not in pick:
+            pick.append(s)
+    pick = pick[:max(n, len(named))]
+    lines = [f"\n\nSEASON STORYLINES (the league's Writers' Room, through Race {b.get('through_race')}; real and "
+             f"grounded in results. Use them as angles when they fit; don't add details beyond them):"]
+    if b.get("season_arc"):
+        lines.append(f"  The season: {b['season_arc']}")
+    for s in pick:
+        line = f"  • {s['title']} ({', '.join(s['drivers'])}; heat {s['heat']}/10): {s['logline']}"
+        if s in named and s.get("beats"):
+            line += " Beats: " + "; ".join(f"R{bt['race']} {bt['note']}" for bt in s["beats"][-4:]) + "."
+        if s.get("watch"):
+            line += f" Watch: {s['watch']}"
+        lines.append(line)
+    if b.get("next_race_angles"):
+        lines.append("  Next race angles: " + " | ".join(b["next_race_angles"]))
+    return "\n".join(lines)[:2600]
+
+
+def _heat_bar(h: int) -> str:
+    return "🔥" * (3 if h >= 8 else 2 if h >= 5 else 1)
+
+
+def storylines_embed(driver: str = "") -> discord.Embed:
+    b = load_bible()
+    act = sorted([s for s in b.get("storylines") or [] if s.get("status") == "active"], key=lambda s: -s.get("heat", 0))
+    if not act:
+        return discord.Embed(title="📖 The Story So Far", color=0xFF6A00,
+                             description="The Writers' Room opens after results are posted. Check back after the next race.")
+    if driver:
+        pool = act + (b.get("archive") or [])
+        hits = _bible_mentions({"storylines": pool}, driver)
+        e = discord.Embed(title=f"📖 {driver.title()}'s storylines", color=0xFF6A00,
+                          description=None if hits else "Not in any storyline right now. Go make one Monday.")
+        for s in hits[:5]:
+            val = s["logline"]
+            if s.get("beats"):
+                val += "\n" + "\n".join(f"`R{bt['race']}` {bt['note']}" for bt in s["beats"][-5:])
+            if s.get("watch") and s["status"] == "active":
+                val += f"\n👀 {s['watch']}"
+            e.add_field(name=f"{_heat_bar(s['heat'])} {s['title']}" + (" (resolved)" if s["status"] == "resolved" else ""),
+                        value=val[:1020], inline=False)
+    else:
+        e = discord.Embed(title=f"📖 The Story So Far · through Race {b.get('through_race')}", color=0xFF6A00,
+                          description=b.get("season_arc") or None)
+        for s in act[:7]:
+            e.add_field(name=f"{_heat_bar(s['heat'])} {s['title']}",
+                        value=(s["logline"] + (f"\n👀 {s['watch']}" if s.get("watch") else ""))[:1020], inline=False)
+    e.set_footer(text="QSR Writers' Room · /storylines <driver> for one driver's arcs")
+    return e
+
+
+async def bible_notify_staff(b: dict, old: dict):
+    guild = bot.get_guild(GUILD_ID)
+    ch = discord.utils.get(guild.text_channels, name=STAFF_CH) if guild else None
+    if not ch:
+        return
+    old_ids = {s["id"] for s in old.get("storylines") or [] if s.get("status") == "active"}
+    new_act = [s for s in b["storylines"] if s["status"] == "active"]
+    born = [s["title"] for s in new_act if s["id"] not in old_ids]
+    ended = [s["title"] for s in b.get("archive") or [] if s["id"] in old_ids]
+    e = discord.Embed(title=f"📖 Writers' Room updated · through Race {b['through_race']}", color=0xFF6A00,
+                      description=b.get("changes") or None)
+    if born:
+        e.add_field(name="New", value="\n".join(f"• {t}" for t in born)[:1020], inline=False)
+    if ended:
+        e.add_field(name="Resolved", value="\n".join(f"• {t}" for t in ended)[:1020], inline=False)
+    e.add_field(name="Top of the board", inline=False, value="\n".join(
+        f"{_heat_bar(s['heat'])} **{s['title']}** · {s['logline'][:140]}" for s in new_act[:5])[:1020])
+    e.set_footer(text="Dale's takes, pre-race calls, predictions and chat now use these. Public: /storylines")
+    await ch.send(embed=e)
+
+
+@tasks.loop(minutes=10)
+async def bible_tick():
+    """Self-driving: as soon as Race Control's results land on Railway, the bible catches up."""
+    if not ANTHROPIC_API_KEY or _bible_lock.locked():
+        return
+    async with _bible_lock:
+        try:
+            data = load_data()
+            posted = _posted_races(data)
+            old = load_bible()
+            if not posted or old.get("through_race", 0) >= posted[-1]:
+                return
+            # don't hammer the API if it keeps failing: one try per race per hour
+            st = load_ops()
+            key = f"bible_try_{posted[-1]}"
+            last = st.get(key)
+            if last and datetime.utcnow() - datetime.fromisoformat(last) < timedelta(minutes=55):
+                return
+            st[key] = datetime.utcnow().isoformat(timespec="seconds")
+            save_ops(st)
+            b = await bible_update()
+            if b:
+                print(f"📖 Writers' Room updated through Race {b['through_race']}")
+                await bible_notify_staff(b, old)
+        except Exception as e:
+            print(f"⚠️ bible_tick failed: {e}\n{_traceback.format_exc()}")
+
+
+@bot.hybrid_command(name="storylines", aliases=["story", "storyline"],
+                    description="The season's storylines from the Writers' Room (add a driver for theirs)")
+async def storylines_cmd(ctx, *, driver: str = ""):
+    await ctx.send(embed=storylines_embed(driver.strip()))
+
+
+@bot.hybrid_command(name="writersroom", aliases=["bible"],
+                    description="Writers' Room admin: status | run | rebuild | drop <id>")
+@is_admin()
+async def writersroom_cmd(ctx, action: str = "status", *, arg: str = ""):
+    action = (action or "status").lower()
+    if action in ("run", "rebuild"):
+        if ctx.interaction:
+            await ctx.defer()
+        if _bible_lock.locked():
+            await ctx.send("⏳ The writers are already working.")
+            return
+        old = load_bible()
+        async with _bible_lock:
+            b = await bible_update(rebuild=(action == "rebuild"))
+        if b:
+            await ctx.send(f"📖 Bible updated through Race {b['through_race']}.")
+            await bible_notify_staff(b, old)
+        else:
+            await ctx.send("Nothing new to write (or the model call failed, check `/opscheck`).")
+        return
+    b = load_bible()
+    if action == "drop" and arg:
+        hit = next((s for s in b.get("storylines") or [] if s["id"] == arg.strip() or s["title"].lower() == arg.strip().lower()), None)
+        if not hit:
+            await ctx.send("No storyline with that id. `/writersroom status` lists them.")
+            return
+        hit["status"] = "resolved"
+        b["storylines"] = [s for s in b["storylines"] if s is not hit]
+        b["blocked"] = sorted(set(b.get("blocked") or []) | {hit["id"], hit["title"].lower()})
+        b.setdefault("archive", []).append(hit)
+        save_bible(b)
+        await ctx.send(f"🗑️ Dropped **{hit['title']}**. Dale stops using it now.")
+        return
+    if not b.get("storylines"):
+        await ctx.send("No bible yet. It builds itself once results are on Railway, or run `/writersroom run`.")
+        return
+    lines = [f"`{s['id']}` {_heat_bar(s['heat'])} {s['title']} · {', '.join(s['drivers'])}"
+             for s in sorted(b["storylines"], key=lambda s: -s["heat"]) if s["status"] == "active"]
+    await ctx.send(f"📖 **Bible through Race {b.get('through_race')}** (updated {b.get('updated_at', '')[:16]} UTC)\n"
+                   + "\n".join(lines)[:1800])
+
+
 @bot.event
 async def on_ready():
     bot.add_view(RoleSelectView())      # Re-register persistent views on restart
@@ -3842,17 +5007,17 @@ async def on_ready():
         synced = await bot.tree.sync(guild=guild_obj)
         print(f"✅  Synced {len(synced)} slash commands to guild {GUILD_ID}")
     except Exception as e:
+        synced = None
         print(f"⚠️  Slash command sync failed: {e}")
 
-    dales_weekly_take.start()
-    pre_race_trash_talk.start()
-    track_history_post.start()
-    throwback_post.start()
-    power_rankings_post.start()
-    race_prediction.start()
-    book_tick.start()
-    race_announcement_scheduler.start()
-    close_expired_polls.start()
+    # on_ready fires again on every reconnect; starting a running loop raises.
+    for _loop in (dales_weekly_take, pre_race_trash_talk, track_history_post, throwback_post,
+                  power_rankings_post, race_prediction, book_tick, race_announcement_scheduler,
+                  close_expired_polls, ops_tick, bible_tick):
+        if not _loop.is_running():
+            _loop.start()
+    if synced is not None:
+        asyncio.create_task(ops_on_deploy(len(synced)))
     await bot.change_presence(activity=discord.Game("QSR High Horsepower Series 🏁"))
     if ANTHROPIC_API_KEY:
         print("✅  Claude AI enabled — Ask Dale is fully intelligent!")
@@ -7665,6 +8830,7 @@ async def on_command_error(ctx, error):
     elif isinstance(error, commands.CommandNotFound):
         pass
     else:
+        ops_note(f"Command !{getattr(ctx.command, 'name', '?')} crashed: {type(error).__name__}: {error}", "command")
         await ctx.send(f"⚠️ Error: {error}")
 
 # ─────────────────────────────────────────────────────────────────
