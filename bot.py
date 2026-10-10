@@ -3834,7 +3834,9 @@ AI_PRICES = {
     "claude-fable-5-1":  (10.00, 50.00, 0.025),
 }
 _ai_lock = threading.Lock()
-AI_RUN = {"ok": 0, "fail": 0, "fails": _deque(maxlen=20)}   # since boot; ops reads + resets per check
+AI_RUN = {"ok": 0, "fail": 0, "fails": _deque(maxlen=20), "last_stop": ""}
+import warnings as _warnings
+_warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*utcnow.*")   # since boot; ops reads + resets per check
 
 
 def _ai_month(now=None) -> str:
@@ -3933,6 +3935,7 @@ async def claude_api(system, messages, tier: str = "chat", max_tokens: int = 500
                     body = await resp.text()
                     if resp.status == 200:
                         j = json.loads(body)
+                        AI_RUN["last_stop"] = j.get("stop_reason") or ""
                         _ai_record(feature, mdl, j.get("usage") or {})
                         text = "".join(b.get("text", "") for b in (j.get("content") or []) if b.get("type") == "text")
                         return text or None
@@ -4508,7 +4511,8 @@ async def aibudget_cmd(ctx):
 BIBLE_FILE = os.path.join(_DATA_DIR, "season_bible.json")
 BIBLE_KINDS = ["title_fight", "rivalry", "breakout", "slump", "comeback", "redemption", "streak",
                "veteran", "rookie", "chaos", "milestone", "team", "underdog"]
-BIBLE_MAX_ACTIVE = 10
+BIBLE_MAX_ACTIVE = 8
+BIBLE_VERSION = 2          # bump to make bible_tick retry right away after a fix
 _bible_lock = asyncio.Lock()
 
 
@@ -4671,7 +4675,8 @@ BIBLE_SYSTEM = (
     "chaos (who's wrecking). Only include what the data supports.\n"
     "- Keep it alive: when a story ends (rival eliminated, slump broken), mark it resolved with a final beat. "
     f"At most {BIBLE_MAX_ACTIVE} active storylines. Heat 1-10 = how much it matters right now.\n"
-    "- Write tight, punchy, broadcast-ready English. No em dashes.\n"
+    "- Write tight, punchy, broadcast-ready English. No em dashes. Be economical: the whole JSON should stay "
+    "well under 4,000 words.\n"
     "Return ONLY a JSON object, no prose around it."
 )
 
@@ -4685,7 +4690,7 @@ BIBLE_SCHEMA = """{
      "status": "active or resolved",
      "heat": 1-10,
      "logline": "1-2 sentences: where this story stands now",
-     "beats": [{"race": 3, "note": "max 20 words, what happened in this story that race"}],
+     "beats": [{"race": 3, "note": "max 15 words, what happened in this story that race (max 6 beats, the ones that matter)"}],
      "watch": "1 sentence: what to watch for in the next race",
      "started_race": 1}
   ],
@@ -4797,11 +4802,13 @@ async def bible_update(through: int = None, rebuild: bool = False) -> dict | Non
     out = None
     for attempt in range(2):
         txt = await claude_api(BIBLE_SYSTEM, [{"role": "user", "content": prompt}], tier="smart",
-                               max_tokens=6000, feature="writers_room", timeout=300)
+                               max_tokens=16000, feature="writers_room", timeout=420)
         out = _bible_parse(txt)
         if out:
             break
-        print(f"⚠️ Writers' Room: model reply wasn't valid JSON (attempt {attempt + 1})")
+        why = "cut off at the token limit" if AI_RUN.get("last_stop") == "max_tokens" else \
+              ("no reply" if not txt else f"stop={AI_RUN.get('last_stop')}, starts {txt[:80]!r}")
+        print(f"⚠️ Writers' Room: model reply wasn't valid JSON (attempt {attempt + 1}, {why})")
     if not out:
         return None
     b = _bible_clean(out, old, races[-1], data)
@@ -4921,7 +4928,7 @@ async def bible_tick():
                 return
             # don't hammer the API if it keeps failing: one try per race per hour
             st = load_ops()
-            key = f"bible_try_{posted[-1]}"
+            key = f"bible_try_v{BIBLE_VERSION}_{posted[-1]}"
             last = st.get(key)
             if last and datetime.utcnow() - datetime.fromisoformat(last) < timedelta(minutes=55):
                 return
