@@ -5934,6 +5934,7 @@ async def on_ready():
     bot.add_view(RSVPView())
     bot.add_view(BookLauncher())
     print(f"✅  Ask Dale Bot online as {bot.user}")
+    await refresh_role_post()
 
     # ── Slash command sync ──────────────────────────────────────
     # Every hybrid command below is registered globally the moment its
@@ -7827,6 +7828,45 @@ async def mynumber_cmd(ctx):
 #  ROLE SELECTION — #get-roles dropdown
 # ─────────────────────────────────────────────────────────────────
 
+# Roles anyone can grab from the #get-roles dropdown.
+# id: hard role ID (0 = look the role up by name instead). env var override wins.
+SELF_ROLES = [
+    {"key": "arca", "label": "ARCA Series", "emoji": "🏁",
+     "id": ARCA_ROLE_ID, "names": ["ARCA Series", "arca"],
+     "desc": "Get pinged for race announcements and series updates",
+     "blurb": "Race announcements, series updates, green flag pings"},
+    {"key": "studios", "label": "QSR Studios", "emoji": "🎬",
+     "id": int(os.getenv("QSR_STUDIOS_ROLE_ID", "0") or 0), "names": ["QSR Studios"],
+     "desc": "QSR Studios news, drops and updates",
+     "blurb": "QSR Studios news, drops and updates"},
+]
+
+
+def _self_role(guild, spec):
+    """Resolve a SELF_ROLES entry to a live role: ID first, then name (case-insensitive)."""
+    if spec.get("id"):
+        r = guild.get_role(int(spec["id"]))
+        if r:
+            return r
+    want = {n.lower() for n in spec.get("names", [])}
+    return next((r for r in guild.roles if r.name.strip().lower() in want), None)
+
+
+def role_select_embed():
+    lines = "\n\n".join(f"**{r['emoji']} {r['label']}**: {r['blurb']}" for r in SELF_ROLES)
+    embed = discord.Embed(
+        title="🏁 QSR Simulations — Get Your Roles",
+        description=(
+            "Select your roles below to get notified for the things that matter to you.\n\n"
+            f"{lines}\n\n"
+            "Pick everything you want each time: anything you leave unselected gets removed."
+        ),
+        color=0xE8272A
+    )
+    embed.set_footer(text="QSR Simulations | Use this menu again anytime to change your roles")
+    return embed
+
+
 class RoleSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)  # Persistent — never expires
@@ -7835,73 +7875,95 @@ class RoleSelectView(discord.ui.View):
         custom_id="role_select",
         placeholder="🏁 Select your roles...",
         min_values=0,
-        max_values=1,
-        options=[
-            discord.SelectOption(
-                label="ARCA Series",
-                value="arca",
-                description="Get pinged for race announcements and series updates",
-                emoji="🏁"
-            ),
-        ]
+        max_values=len(SELF_ROLES),
+        options=[discord.SelectOption(label=r["label"], value=r["key"],
+                                      description=r["desc"], emoji=r["emoji"])
+                 for r in SELF_ROLES]
     )
     async def role_select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
-        guild      = interaction.guild
-        arca_role  = guild.get_role(ARCA_ROLE_ID)
+        guild   = interaction.guild
+        member  = interaction.user
+        chosen  = set(select.values)
+        added, removed, missing = [], [], []
 
-        if not arca_role:
-            await interaction.response.send_message(
-                "⚠️ Role not found — contact an admin.", ephemeral=True
-            )
-            return
+        for spec in SELF_ROLES:
+            role = _self_role(guild, spec)
+            tag  = f"{spec['label']} {spec['emoji']}"
+            if not role:
+                if spec["key"] in chosen:
+                    missing.append(spec["label"])
+                continue
+            try:
+                if spec["key"] in chosen and role not in member.roles:
+                    await member.add_roles(role, reason="Self-role via #get-roles")
+                    added.append(tag)
+                elif spec["key"] not in chosen and role in member.roles:
+                    await member.remove_roles(role, reason="Self-role via #get-roles")
+                    removed.append(tag)
+            except discord.Forbidden:
+                missing.append(spec["label"])
 
-        member     = interaction.user
-        has_arca   = arca_role in member.roles
-        added      = []
-        removed    = []
+        parts = []
+        if added:
+            parts.append(f"✅ Added: **{', '.join(added)}**")
+        if removed:
+            parts.append(f"❌ Removed: **{', '.join(removed)}**")
+        if missing:
+            parts.append(f"⚠️ Couldn't set **{', '.join(missing)}** (role missing or above Dale). Ping an admin.")
+        await interaction.response.send_message("\n".join(parts) or "No changes made.", ephemeral=True)
 
-        if "arca" in select.values:
-            if not has_arca:
-                await member.add_roles(arca_role)
-                added.append("ARCA Series 🏁")
-        else:
-            if has_arca:
-                await member.remove_roles(arca_role)
-                removed.append("ARCA Series 🏁")
 
-        if added and removed:
-            msg = f"✅ Added: {', '.join(added)}\n❌ Removed: {', '.join(removed)}"
-        elif added:
-            msg = f"✅ You've been given the **{', '.join(added)}** role! You'll now get race announcements."
-        elif removed:
-            msg = f"❌ Removed: **{', '.join(removed)}**"
-        else:
-            msg = "No changes made."
+async def _find_role_post(ch):
+    """Dale's existing #get-roles dropdown message, if there is one."""
+    async for m in ch.history(limit=100):
+        if m.author.id != bot.user.id:
+            continue
+        for row in m.components:
+            for c in getattr(row, "children", []):
+                if getattr(c, "custom_id", None) == "role_select":
+                    return m
+    return None
 
-        await interaction.response.send_message(msg, ephemeral=True)
+
+_roles_post_refreshed = False
+
+async def refresh_role_post():
+    """Boot-time: update the live #get-roles post so new options show without a repost."""
+    global _roles_post_refreshed
+    if _roles_post_refreshed:
+        return
+    _roles_post_refreshed = True
+    try:
+        guild = bot.get_guild(GUILD_ID)
+        ch = discord.utils.get(guild.text_channels, name="get-roles") if guild else None
+        msg = await _find_role_post(ch) if ch else None
+        if msg:
+            await msg.edit(embed=role_select_embed(), view=RoleSelectView())
+            print("✅  #get-roles dropdown refreshed")
+    except Exception as e:
+        print(f"⚠️  #get-roles refresh failed: {e}")
 
 
 @bot.hybrid_command(name="setuproles", description="Post the role selection dropdown in #get-roles (admin)")
 @is_admin()
 async def setup_roles_cmd(ctx):
-    """Post the role selection dropdown in #get-roles. Run once."""
+    """Post (or update in place) the role selection dropdown in #get-roles."""
     guild = ctx.guild
     ch    = discord.utils.get(guild.text_channels, name="get-roles")
     if not ch:
         await ctx.send("❌ #get-roles channel not found. Create it first.")
         return
-    embed = discord.Embed(
-        title="🏁 QSR Simulations — Get Your Roles",
-        description=(
-            "Select your roles below to get notified for the things that matter to you.\n\n"
-            "**🏁 ARCA Series** — Race announcements, series updates, green flag pings\n\n"
-            "You can add or remove roles at any time by using this menu again."
-        ),
-        color=0xE8272A
-    )
-    embed.set_footer(text="QSR Simulations | More roles coming in future seasons")
-    await ch.send(embed=embed, view=RoleSelectView())
-    await ctx.send("✅ Role selection posted in #get-roles!")
+    missing = [r["label"] for r in SELF_ROLES if not _self_role(guild, r)]
+    existing = await _find_role_post(ch)
+    if existing:
+        await existing.edit(embed=role_select_embed(), view=RoleSelectView())
+        note = "✅ Role menu updated in #get-roles."
+    else:
+        await ch.send(embed=role_select_embed(), view=RoleSelectView())
+        note = "✅ Role selection posted in #get-roles!"
+    if missing:
+        note += f"\n⚠️ No Discord role found for: **{', '.join(missing)}**. Create it (exact name) or set its ID."
+    await ctx.send(note)
 
 
 
