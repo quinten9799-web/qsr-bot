@@ -159,7 +159,7 @@ def race_week_for(race_num: int):
         data = load_data()
         track = SCHEDULE[race_num - 1]["track"].replace(" — SEASON FINALE", "").strip()
         reg = load_reg()
-        field = [d.get("name") for d in reg.get("drivers", []) if d.get("name") and d.get("status") != "Withdrawn"]
+        field = [d.get("name") for d in public_drivers(reg, data)]
         if not field:
             field = list((data.get("standings") or {}).keys())
         return QH.race_week(hist, data, track, field)
@@ -1284,6 +1284,26 @@ def reg_paid_lookup(names, reg: dict) -> dict:
     return out
 
 
+def has_raced(name: str, data: dict = None) -> bool:
+    """True once a registered driver has started a race this season."""
+    data = data if data is not None else load_data()
+    rr = data.get("race_results", {}) or {}
+    started = {n for n, rows in rr.items() if rows}
+    return resolve_result_key(DRIVER_MERGES.get(name, name), {n: 1 for n in started}) is not None
+
+
+def public_drivers(reg: dict = None, data: dict = None) -> list:
+    """Registered drivers anyone in Discord gets to see: not withdrawn, and
+    started at least one race. Before Race 1 everyone registered shows.
+    Drivers who registered but never raced stay out of every public list."""
+    reg  = reg if reg is not None else load_reg()
+    data = data if data is not None else load_data()
+    drivers = [d for d in reg.get("drivers", []) if d.get("name") and d.get("status") != "Withdrawn"]
+    if not any((data.get("race_results") or {}).values()):
+        return drivers
+    return [d for d in drivers if has_raced(d["name"], data)]
+
+
 def recalc_team_points():
     """Recalculate team points from standings. Call after every race result save."""
     data = load_data()
@@ -1655,7 +1675,7 @@ def book_track(n: int) -> str:
 def book_field(reg=None, data=None):
     reg = reg or load_reg()
     data = data or load_data()
-    field = [d.get("name") for d in reg.get("drivers", []) if d.get("name") and d.get("status") != "Withdrawn"]
+    field = [d.get("name") for d in public_drivers(reg, data)]
     if len(field) < 5:
         field = list((data.get("standings") or {}).keys())
     seen, out = set(), []
@@ -2757,8 +2777,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
     # made a driver tell him to keep his name out of his mouth.
     try:
         reg = load_reg()
-        active = [d for d in reg.get("drivers", [])
-                  if d.get("status") != "Withdrawn" and d.get("name")]
+        active = public_drivers(reg)
         if active:
             roster = ", ".join(
                 f"#{d.get('number','?')} {d['name']}"
@@ -2772,7 +2791,7 @@ async def ask_claude(question: str, channel_id: int = 0, history: list = None, u
             teams = reg.get("teams", [])
             if teams:
                 live_context += "\n\nTEAMS: " + "; ".join(
-                    f"{t['name']} ({', '.join(m.get('driver_name','') for m in t.get('members', []))})"
+                    f"{t['name']} ({', '.join(m.get('driver_name','') for m in t.get('members', []) if has_raced(m.get('driver_name', '')))})"
                     for t in teams)
         else:
             live_context += ("\n\nLEAGUE ROSTER: not available right now. Do not "
@@ -3113,7 +3132,7 @@ async def race_announcement_scheduler():
 
     # Pull confirmed driver count from registration
     reg = load_reg()
-    confirmed = sum(1 for d in reg.get("drivers", []) if d.get("status") == "Confirmed")
+    confirmed = sum(1 for d in public_drivers(reg, data) if d.get("status") == "Confirmed")
     field_line = f"🚗 **Field:** {confirmed}/{reg.get('max_field', 40)} confirmed"
 
     import random
@@ -7690,8 +7709,7 @@ async def free_agents_cmd(ctx):
     # single most confusing failure mode it has.
     if reconcile_driver_teams(reg):
         save_reg(reg)
-    free = [d for d in reg.get("drivers", [])
-            if not d.get("team") and d.get("status") not in ("Withdrawn",)]
+    free = [d for d in public_drivers(reg) if not d.get("team")]
 
     if not free:
         await ctx.send("🏁 No free agents right now — every registered driver is on a team.")
@@ -7807,9 +7825,11 @@ async def teams_cmd(ctx):
     )
     medals = {1: "🥇", 2: "🥈", 3: "🥉"}
     lines  = []
+    _data  = load_data()
     for i, team in enumerate(teams, 1):
         icon    = medals.get(i, f"`{i:>2}.`")
-        members = ", ".join(m["driver_name"] for m in team.get("members", []))
+        members = ", ".join(m["driver_name"] for m in team.get("members", [])
+                            if has_raced(m.get("driver_name", ""), _data)) or "—"
         lines.append(f"{icon} **{team['name']}** — {team.get('points',0)} pts\n"
                      f"    👥 {members}")
     embed.description = "\n".join(lines)
@@ -7845,7 +7865,7 @@ async def roster_cmd(ctx):
     """Quick list of every registered driver and their car number, grouped
     by status and sorted low-to-high."""
     reg = load_reg()
-    drivers = [d for d in reg["drivers"] if d.get("status") != "Withdrawn"]
+    drivers = public_drivers(reg)
     if not drivers:
         await ctx.send("No drivers registered yet. Head to `#registration` to be the first! 🏁")
         return
