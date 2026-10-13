@@ -1162,6 +1162,128 @@ def resolve_result_key(name: str, race_results: dict):
     return hits[0] if len(hits) == 1 else None
 
 
+# ─────────────────────────────────────────────────────────────────
+#  DUPLICATE DRIVER PROFILES
+#  iRacing's results flip some drivers between two display names
+#  ("Ryan Walker" one week, "Ryan Walker12" the next), which split their
+#  starts and points across two standings rows. Verified Oct 13 2026: each
+#  pair never appears in the same race and runs the same car number.
+#  Applied to every data.json push and once at boot, so a re-import can't
+#  bring the split back. Key = name to fold in, value = the name to keep
+#  (the registration name).
+# ─────────────────────────────────────────────────────────────────
+DRIVER_MERGES = {
+    "Ryan Walker12":  "Ryan Walker",
+    "John Walker17":  "John Walker",
+    "Austin Dowdy2":  "Austin Dowdy",
+    "Austin Thomas6": "Austin Thomas",
+}
+_NAME_FIELDS = ("name", "driver", "winner", "driver_name", "leader", "fastest_lap")
+
+
+def _merge_value(keep, fold, sum_numbers: bool):
+    """Combine two records for the same driver. Lists concatenate; numbers sum
+    only where totals are being merged (standings); otherwise the kept record wins."""
+    if isinstance(keep, list) and isinstance(fold, list):
+        return keep + fold
+    if isinstance(keep, dict) and isinstance(fold, dict):
+        out = dict(fold)
+        for k, v in keep.items():
+            out[k] = _merge_value(v, fold[k], sum_numbers) if k in fold else v
+        return out
+    if sum_numbers and isinstance(keep, (int, float)) and isinstance(fold, (int, float)) \
+            and not isinstance(keep, bool) and not isinstance(fold, bool):
+        return keep + fold
+    return keep
+
+
+def _fold_names(obj, merges: dict, sum_numbers: bool = False):
+    """Recursively rename duplicate driver names in dict keys and name fields."""
+    if isinstance(obj, list):
+        return [_fold_names(x, merges, sum_numbers) for x in obj]
+    if not isinstance(obj, dict):
+        return obj
+    out = {}
+    for k, v in obj.items():
+        v = _fold_names(v, merges, sum_numbers)
+        if k in _NAME_FIELDS and isinstance(v, str) and v in merges:
+            v = merges[v]
+        nk = merges.get(k, k) if isinstance(k, str) else k
+        if nk in out:
+            # The canonical name's own record is the one that's kept.
+            out[nk] = _merge_value(v, out[nk], sum_numbers) if nk == k \
+                else _merge_value(out[nk], v, sum_numbers)
+        else:
+            out[nk] = v
+    return out
+
+
+def apply_driver_merges(data: dict, merges: dict = None) -> tuple:
+    """Fold duplicate profiles into one driver everywhere in data.json.
+    Returns (data, changed). Safe to run repeatedly."""
+    merges = merges if merges is not None else DRIVER_MERGES
+    if not isinstance(data, dict) or not merges:
+        return data, False
+    before = json.dumps(data, sort_keys=True, default=str)
+    out = {}
+    for key, val in data.items():
+        out[key] = _fold_names(val, merges, sum_numbers=(key == "standings"))
+    # A merged driver's race list must read in race order, one entry per race.
+    rr = out.get("race_results")
+    if isinstance(rr, dict):
+        for name, rows in rr.items():
+            if isinstance(rows, list):
+                seen, clean = set(), []
+                for r in sorted(rows, key=lambda r: (r.get("race") or 0) if isinstance(r, dict) else 0):
+                    rn = r.get("race") if isinstance(r, dict) else None
+                    if rn is not None and rn in seen:
+                        continue
+                    seen.add(rn)
+                    clean.append(r)
+                rr[name] = clean
+    # Standings "races" must match the merged race list, not a double count.
+    st = out.get("standings")
+    if isinstance(st, dict) and isinstance(rr, dict):
+        for name in set(merges.values()):
+            if isinstance(st.get(name), dict) and isinstance(rr.get(name), list):
+                st[name]["races"] = len(rr[name])
+    changed = json.dumps(out, sort_keys=True, default=str) != before
+    return out, changed
+
+
+# ─────────────────────────────────────────────────────────────────
+#  SEASON AWARD ELIGIBILITY (Rulebook 5.4.1)
+#  Start 50% of the season's races, minimum 6. 14 races -> 7 starts.
+# ─────────────────────────────────────────────────────────────────
+def eligibility_threshold() -> int:
+    return max(6, -(-len(SCHEDULE) // 2))
+
+
+def driver_eligibility(starts: int, races_run: int) -> dict:
+    need = eligibility_threshold()
+    left = max(0, len(SCHEDULE) - races_run)
+    if starts >= need:
+        state, to_go = "clinched", 0
+    elif starts + left >= need:
+        state, to_go = "alive", need - starts
+    else:
+        state, to_go = "out", need - starts
+    pct = round(100 * starts / races_run) if races_run else 0
+    return {"starts": starts, "races_run": races_run, "pct": pct, "need": need,
+            "left": left, "state": state, "to_go": to_go}
+
+
+def reg_paid_lookup(names, reg: dict) -> dict:
+    """Standings name -> True / False / None (not registered). Uses the same
+    tolerant matching as team scoring (Ryan J Munoz = Ryan Munoz)."""
+    by_name = {d["name"]: d for d in reg.get("drivers", []) if d.get("name")}
+    out = {}
+    for n in names:
+        key = resolve_result_key(DRIVER_MERGES.get(n, n), by_name)
+        out[n] = bool(by_name[key].get("paid")) if key else None
+    return out
+
+
 def recalc_team_points():
     """Recalculate team points from standings. Call after every race result save."""
     data = load_data()
@@ -7795,6 +7917,72 @@ async def mystats_cmd(ctx):
     await ctx.send(embed=embed, ephemeral=False)
 
 
+def paid_board() -> discord.Embed:
+    """Points order with starts, % of races run, award eligibility and entry
+    fee status. Purse-eligible = 7+ starts AND paid."""
+    data, _ = apply_driver_merges(load_data())
+    reg     = load_reg()
+    adj     = compute_adjusted_standings(data)
+    rr      = data.get("race_results", {}) or {}
+    races_run = max(0, int(data.get("race_number", 1) or 1) - 1)
+    order = sorted(adj.items(), key=lambda kv: (
+        -(kv[1].get("points") or 0), -(kv[1].get("wins") or 0),
+        -(kv[1].get("top5") or 0), -(kv[1].get("top10") or 0),
+        kv[1].get("avg_finish", 999)))
+    paid = reg_paid_lookup([n for n, _ in order], reg)
+    need = eligibility_threshold()
+
+    state_txt = {"clinched": "✅ Eligible", "alive": "🟡 Needs {n}", "out": "❌ Can't reach"}
+    pay_txt   = {True: "💰 Paid", False: "⏳ Unpaid", None: "❔ Not registered"}
+    lines, purse_ok = [], 0
+    for pos, (name, info) in enumerate(order, 1):
+        starts = len([r for r in rr.get(name, []) if isinstance(r, dict)]) or int(info.get("races") or 0)
+        e = driver_eligibility(starts, races_run)
+        st = state_txt[e["state"]].format(n=e["to_go"])
+        if e["state"] == "clinched" and paid[name]:
+            purse_ok += 1
+        lines.append(f"`P{pos:<2}` **{name}** · {starts}/{races_run} ({e['pct']}%) · {st} · {pay_txt[paid[name]]}")
+        if pos == 10 and len(order) > 10:
+            lines.append("── outside the paid spots ──")
+
+    left = max(0, len(SCHEDULE) - races_run)
+    unpaid = sum(1 for n in paid if paid[n] is False)
+    embed = discord.Embed(
+        title="💰 Paid + Eligibility Board",
+        description=(f"Season awards need **{need} starts** ({need} of {len(SCHEDULE)}) "
+                     f"**and** the entry fee paid. {races_run} races run, {left} left.\n\n"
+                     + "\n".join(lines))[:4096],
+        color=0xE8272A,
+    )
+    embed.set_footer(text=f"{purse_ok} purse-eligible right now · {unpaid} unpaid in the points · "
+                          f"Order = official points")
+    return embed
+
+
+@bot.hybrid_command(name="paid", aliases=["payments", "eligibility"],
+                    description="Who's paid, starts, and season award eligibility, in points order")
+@has_arca()
+async def paid_cmd(ctx):
+    await ctx.send(embed=paid_board())
+
+
+@bot.hybrid_command(name="setpaid", description="Mark a driver's entry fee paid or unpaid (admin)")
+@is_admin()
+async def setpaid_cmd(ctx, paid: bool, *, driver: str):
+    """/setpaid paid:True driver:Ronnie Holmes"""
+    reg     = load_reg()
+    by_name = {d["name"]: d for d in reg["drivers"] if d.get("name")}
+    key     = resolve_result_key(DRIVER_MERGES.get(driver.strip(), driver.strip()), by_name)
+    if not key:
+        await ctx.send(f"❌ Couldn't match **{driver}** to exactly one registered driver. "
+                       f"Use the name as it shows in registration.", ephemeral=True)
+        return
+    by_name[key]["paid"] = bool(paid)
+    save_reg(reg)
+    await ctx.send(f"{'💰' if paid else '⏳'} **{key}** marked **{'paid' if paid else 'unpaid'}**. "
+                   f"Run `/paid` for the board.", ephemeral=True)
+
+
 @bot.hybrid_command(name="mynumber", description="Change your car number")
 @has_arca()
 async def mynumber_cmd(ctx):
@@ -9950,6 +10138,12 @@ def post_data():
             with open(DATA_FILE) as f:
                 current = json.load(f)
 
+        # Fold duplicate driver profiles on BOTH sides before comparing, so the
+        # merge itself never reads as "standings shrank" and a re-import from
+        # Race Control can't split a driver back into two rows.
+        current, _ = apply_driver_merges(current)
+        payload, _ = apply_driver_merges(payload)
+
         force = str(request.args.get("force", "")).lower() in ("1", "true", "yes")
         problems = guard_destructive(current, payload, force)
         if problems:
@@ -10130,10 +10324,22 @@ def post_registration():
         merged_teams = merge_collection(current.get("teams"), payload.get("teams"),
                                         team_key, team_tombstones)
 
+        # Paid is sticky. Payments get confirmed on the server (/setpaid) while
+        # Race Control still holds an older "unpaid" snapshot; a routine push
+        # must not un-pay anyone. Un-paying from the app needs `unpaid_ids`.
+        unpaid_ids = {str(k).strip().lower() for k in payload.get("unpaid_ids", [])}
+        was_paid   = {key_of(d) for d in current.get("drivers", []) or [] if d.get("paid")}
+        kept_paid  = []
+        for i, d in enumerate(merged):
+            k = key_of(d)
+            if k in was_paid and not d.get("paid") and k not in unpaid_ids:
+                merged[i] = dict(d, paid=True)
+                kept_paid.append(d.get("name"))
+
         # Any OTHER list-of-records key gets the same protection automatically.
         # Without this, the next collection added to registration.json would
         # repeat this exact bug a third time.
-        handled    = {"drivers", "teams", "removed_ids", "removed_teams"}
+        handled    = {"drivers", "teams", "removed_ids", "removed_teams", "unpaid_ids"}
         extra_keys = {k for k, v in list(current.items()) + list(payload.items())
                       if k not in handled and isinstance(v, list)
                       and all(isinstance(i, dict) for i in (v or []))}
@@ -10153,6 +10359,7 @@ def post_registration():
         result.update(extra_merged)
         result.pop("removed_ids", None)
         result.pop("removed_teams", None)
+        result.pop("unpaid_ids", None)
 
         # Rosters win over the cached `team` field. Without this, a stale
         # client record overwrites a driver who just joined a team in Discord.
@@ -10169,6 +10376,7 @@ def post_registration():
             "tombstoned_drivers": sorted(tombstones),
             "tombstoned_teams":   sorted(team_tombstones),
             "team_fields_corrected": corrected,
+            "paid_kept": kept_paid,
         })
         return jsonify({"status": "ok", "drivers": len(merged), "teams": len(merged_teams),
                         "removed": dropped}), 200
@@ -10216,6 +10424,64 @@ def post_worklog():
 def run_sync_server():
     """Run Flask in a daemon thread — dies when the bot dies."""
     sync_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+
+PAID_CONFIRMED_2026_10_13 = ["Alan Dobbs", "Ryan Munoz", "Matthew Blackley", "Austin Thomas",
+                             "Tyler Ashley", "Ronnie Holmes"]
+# Raced and paid but never registered through Discord.
+PAID_UNREGISTERED_2026_10_13 = ["Trenton Wilken", "Travis Paul"]
+
+
+def boot_migrations():
+    """Idempotent fixes applied before the sync server starts."""
+    # 1) Fold duplicate driver profiles in the stored data.json.
+    try:
+        if os.path.exists(DATA_FILE):
+            data, changed = apply_driver_merges(load_data())
+            if changed:
+                save_data(data)
+                print(f"✅  Merged duplicate driver profiles: {', '.join(DRIVER_MERGES)}")
+    except Exception as e:
+        print(f"⚠️  Driver merge migration failed: {e}")
+
+    # 2) Payments confirmed by Quinten on Oct 13 2026 (runs once).
+    try:
+        reg = load_reg()
+        done = reg.setdefault("migrations", [])
+        if "paid_2026_10_13" not in done and reg["drivers"]:
+            by_name = {d["name"]: d for d in reg["drivers"] if d.get("name")}
+            fixed = []
+            for n in PAID_CONFIRMED_2026_10_13:
+                k = resolve_result_key(n, by_name)
+                if k and not by_name[k].get("paid"):
+                    by_name[k]["paid"] = True
+                    fixed.append(k)
+            # Car numbers for unregistered drivers come from their race results.
+            car_of = {}
+            for race in (load_data().get("race_history", {}) or {}).values():
+                for r in (race.get("results", []) if isinstance(race, dict) else []):
+                    if isinstance(r, dict) and r.get("name") and r.get("car_number") not in (None, ""):
+                        car_of[r["name"]] = str(r["car_number"])
+            taken = {str(d.get("number")) for d in reg["drivers"]}
+            for n in PAID_UNREGISTERED_2026_10_13:
+                if resolve_result_key(n, by_name):
+                    continue
+                num = car_of.get(n, "")
+                reg["drivers"].append({
+                    "name": n, "discord_id": "", "discord_tag": "", "iracing_id": "",
+                    "number": num if num and num not in taken else "",
+                    "status": "Confirmed", "paid": True, "team": None,
+                    "registered_at": datetime.utcnow().isoformat(),
+                    "note": "added by admin Oct 13 2026 (raced + paid, never registered)",
+                })
+                fixed.append(f"{n} (added)")
+            done.append("paid_2026_10_13")
+            save_reg(reg)
+            print(f"✅  Payment migration: {', '.join(fixed) or 'nothing to change'}")
+    except Exception as e:
+        print(f"⚠️  Payment migration failed: {e}")
+
+
+boot_migrations()
 
 # Start sync server in background before bot connects
 _sync_thread = threading.Thread(target=run_sync_server, daemon=True)
